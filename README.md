@@ -71,8 +71,8 @@ configuration file to the constructor function of the `NetworkConfig` instance.
 Once the network configuration is loaded, you create a `Network` instance that
 contains the streams to the peers.
 
-The streams for communication send `Packets`, which is an encapsulation of
-bytes. As an example, the packets may contain information of shares, field
-elements, polynomials, or any other serializable type in the library. The
-interaction between parties are done using the functions `send` and `recv`
-defined in the `Network` implementation.
+The streams for communication send `Packet` instances, which is an 
+encapsulation of bytes. As an example, the packets may contain information of 
+shares, field elements, polynomials, or any other serializable type in the 
+library. Theinteraction between parties are done using the functions `send` and 
+`recv` defined in the `Network` implementation.
