@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 use rand::Rng;
 use thiserror::Error;
 
-use super::ring::Ring;
+use super::{ring::Ring, vector::Vector};
 
 #[derive(Error, Debug)]
 pub enum MatrixError {
@@ -219,13 +219,13 @@ where
     }
 }
 
-impl<T> Mul<&Vec<T>> for Matrix<T>
+impl<T> Mul<&Vector<T>> for Matrix<T>
 where
     T: Ring,
 {
-    type Output = Result<Vec<T>>;
+    type Output = Result<Vector<T>>;
 
-    fn mul(self, rhs: &Vec<T>) -> Self::Output {
+    fn mul(self, rhs: &Vector<T>) -> Self::Output {
         if self.columns != rhs.len() {
             return Err(MatrixError::NotCompatible);
         }
@@ -237,6 +237,6 @@ where
             }
             elements.push(sum);
         }
-        Ok(elements)
+        Ok(Vector::from(elements))
     }
 }
