@@ -9,12 +9,12 @@ pub fn compute_lagrange_basis<T: FiniteField>(nodes: Vec<T>, x: &T) -> Vec<T> {
         for (m, node) in nodes.iter().enumerate() {
             if m != j {
                 let x_m = node;
-                let numerator = x.subtract(x_m);
-                let denominator = x_j.subtract(x_m);
+                let numerator = x.sub(x_m);
+                let denominator = x_j.sub(x_m);
 
                 // The unwrap is safe because x_j - x_m is not zero.
-                let term = numerator.multiply(&denominator.inverse().unwrap());
-                basis = basis.multiply(&term);
+                let term = numerator.mul(&denominator.inverse().unwrap());
+                basis = basis.mul(&term);
             }
         }
         lagrange_basis.push(basis);
@@ -28,7 +28,7 @@ pub fn interpolate_polynomial_at<T: FiniteField>(evaluations: Vec<T>, alphas: Ve
     let lagrange_basis = compute_lagrange_basis(alphas, x);
     let mut interpolation = T::ZERO;
     for (eval, basis) in evaluations.into_iter().zip(lagrange_basis) {
-        interpolation = interpolation.add(&eval.multiply(&basis));
+        interpolation = interpolation.add(&eval.mul(&basis));
     }
     interpolation
 }

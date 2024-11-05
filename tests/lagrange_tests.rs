@@ -1,7 +1,8 @@
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
-use scl_rs::math::field::{
-    lagrange::interpolate_polynomial_at, mersenne61::Mersenne61, FiniteField, Polynomial,
+use scl_rs::math::{
+    field::{lagrange::interpolate_polynomial_at, mersenne61::Mersenne61, FiniteField, Polynomial},
+    ring::Ring,
 };
 
 #[test]

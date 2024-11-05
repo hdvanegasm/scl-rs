@@ -1,11 +1,17 @@
+use std::ops::Add;
+use std::ops::Mul;
+use std::ops::Sub;
+
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::math::ring::Ring;
 
 use super::FieldError;
 use super::FiniteField;
 
 /// Representation of a field element modulo 2^{61} - 1.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Serialize, Deserialize, Clone, Debug)]
 pub struct Mersenne61(u64);
 
 impl From<u64> for Mersenne61 {
@@ -18,25 +24,51 @@ impl From<u64> for Mersenne61 {
     }
 }
 
-impl FiniteField for Mersenne61 {
+impl Ring for Mersenne61 {
     type ValueType = u64;
-
-    const MODULUS: u64 = 0x1FFFFFFFFFFFFFFF;
     const BIT_SIZE: usize = 61;
     const ONE: Self = Self(1);
     const ZERO: Self = Self(0);
-
-    fn add(&self, other: &Self) -> Self {
-        let add_result = self.0 + other.0;
-        Self::from(add_result)
-    }
 
     fn random<R: rand::Rng>(generator: &mut R) -> Self {
         let value: u64 = generator.gen();
         Self::from(value)
     }
 
-    fn multiply(&self, other: &Self) -> Self {
+    fn negate(&self) -> Self {
+        if !self.eq(&Self::ZERO) {
+            Self::from(Self::MODULUS - self.0)
+        } else {
+            Self::ZERO
+        }
+    }
+}
+
+impl Add<&Self> for Mersenne61 {
+    type Output = Self;
+
+    fn add(self, other: &Self) -> Self::Output {
+        let add_result = self.0 + other.0;
+        Self::from(add_result)
+    }
+}
+
+impl Sub<&Self> for Mersenne61 {
+    type Output = Self;
+
+    fn sub(self, other: &Self) -> Self::Output {
+        if other.0 > self.0 {
+            Self::from(self.0 + Self::MODULUS - other.0)
+        } else {
+            Self::from(self.0 - other.0)
+        }
+    }
+}
+
+impl Mul<&Self> for Mersenne61 {
+    type Output = Self;
+
+    fn mul(self, other: &Self) -> Self::Output {
         let non_reduced_mult: u128 = (self.0 as u128) * (other.0 as u128);
         let mut most_sig_bits = (non_reduced_mult >> Self::BIT_SIZE) as u64;
         let mut least_sig_bits = non_reduced_mult as u64;
@@ -49,13 +81,13 @@ impl FiniteField for Mersenne61 {
         let least_sig_bits_mod = Self::from(least_sig_bits);
         most_sig_bits_mod.add(&least_sig_bits_mod)
     }
+}
 
-    fn equal(&self, other: &Self) -> bool {
-        self == other
-    }
+impl FiniteField for Mersenne61 {
+    const MODULUS: u64 = 0x1FFFFFFFFFFFFFFF;
 
     fn inverse(&self) -> Result<Self, super::FieldError> {
-        if self.equal(&Self::ZERO) {
+        if self.eq(&Self::ZERO) {
             Err(FieldError::ZeroInverse)
         } else {
             let mut k: i64 = 0;
@@ -74,22 +106,6 @@ impl FiniteField for Mersenne61 {
             }
 
             Ok(Self::from(k as u64))
-        }
-    }
-
-    fn negate(&self) -> Self {
-        if !self.equal(&Self::ZERO) {
-            Self::from(Self::MODULUS - self.0)
-        } else {
-            Self::ZERO
-        }
-    }
-
-    fn subtract(&self, other: &Self) -> Self {
-        if other.0 > self.0 {
-            Self::from(self.0 + Self::MODULUS - other.0)
-        } else {
-            Self::from(self.0 - other.0)
         }
     }
 }

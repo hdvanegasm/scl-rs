@@ -1,5 +1,9 @@
 use rand::{thread_rng, Rng};
-use scl_rs::math::field::{mersenne61::Mersenne61, FiniteField};
+use scl_rs::math::{
+    field::{mersenne61::Mersenne61, FiniteField},
+    ring::Ring,
+};
+use std::ops::{Add, Mul, Sub};
 
 #[test]
 fn multiplicative_and_additive_properties() {
@@ -8,11 +12,11 @@ fn multiplicative_and_additive_properties() {
     let a = Mersenne61::from(rnd_value);
 
     let add_identity = a.add(&Mersenne61::ZERO);
-    assert!(add_identity.equal(&a));
+    assert!(add_identity.eq(&a));
 
     let neg_a = a.negate();
     let add_neg = a.add(&neg_a);
-    assert!(add_neg.equal(&Mersenne61::ZERO))
+    assert!(add_neg.eq(&Mersenne61::ZERO))
 }
 
 #[test]
@@ -23,7 +27,7 @@ fn zero() {
     assert_eq!(elem, s);
 
     let elem = Mersenne61::random(&mut rng);
-    let s = elem.subtract(&Mersenne61::ZERO);
+    let s = elem.sub(&Mersenne61::ZERO);
     assert_eq!(elem, s);
 }
 
@@ -31,7 +35,7 @@ fn zero() {
 fn one() {
     let mut rng = thread_rng();
     let elem = Mersenne61::random(&mut rng);
-    let s = elem.multiply(&Mersenne61::ONE);
+    let s = elem.mul(&Mersenne61::ONE);
     assert_eq!(elem, s);
 }
 
@@ -47,7 +51,7 @@ fn negate() {
 fn subract() {
     let mut rng = thread_rng();
     let elem = Mersenne61::random(&mut rng);
-    let s = elem.subtract(&elem);
+    let s = elem.sub(&elem);
     assert_eq!(s, Mersenne61::ZERO);
 }
 
@@ -57,7 +61,7 @@ fn inverse() {
     const SAMPLES: usize = 100;
     for _ in 0..SAMPLES {
         let elem = Mersenne61::random(&mut rng);
-        let s = elem.multiply(&elem.inverse().unwrap());
+        let s = elem.mul(&elem.inverse().unwrap());
         assert_eq!(s, Mersenne61::ONE);
     }
 }
@@ -68,7 +72,7 @@ fn mult_test1() {
     let b = Mersenne61::from(6);
     let r = Mersenne61::from(12);
 
-    let s = a.multiply(&b);
+    let s = a.mul(&b);
     assert_eq!(s, r);
 }
 
@@ -79,8 +83,8 @@ fn mult_conmutativity() {
     for _ in 0..SAMPLES {
         let a = Mersenne61::random(&mut rng);
         let b = Mersenne61::random(&mut rng);
-        let mult1 = a.multiply(&b);
-        let mult2 = b.multiply(&a);
+        let mult1 = a.mul(&b);
+        let mult2 = b.mul(&a);
         assert_eq!(mult1, mult2);
     }
 }

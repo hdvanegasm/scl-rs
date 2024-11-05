@@ -3,6 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use crate::math::ring;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,44 +18,12 @@ pub enum FieldError {
 }
 
 /// Trait that represent a finite field of integers modulo a prime p.
-pub trait FiniteField:
-    Debug + Sized + Clone + From<u64> + Serialize + for<'a> Deserialize<'a>
-{
-    /// Type of the underlying representation for a field element.
-    type ValueType;
-
+pub trait FiniteField: ring::Ring {
     /// Modulus used in for the field.
     const MODULUS: u64;
 
-    /// Bit size of the elements in the field.
-    const BIT_SIZE: usize;
-
-    /// Additive identity of the field.
-    const ZERO: Self;
-
-    /// Multiplicative identity of the field.
-    const ONE: Self;
-
-    /// Adds two elements in the field.
-    fn add(&self, other: &Self) -> Self;
-
-    /// Multiplies to elements in the field.
-    fn multiply(&self, other: &Self) -> Self;
-
     /// Computes the inverse of field element.
     fn inverse(&self) -> Result<Self, FieldError>;
-
-    /// Compares equality between two field elements.
-    fn equal(&self, other: &Self) -> bool;
-
-    /// Computes the additive inverse of a field element.
-    fn negate(&self) -> Self;
-
-    /// Computes the subtraction between two field elements.
-    fn subtract(&self, other: &Self) -> Self;
-
-    /// Generates a random finite field element with a provided pseudo-random generator.
-    fn random<R: Rng>(generator: &mut R) -> Self;
 }
 
 /// Represents a polynomial whose coefficients are elements in a finite field.
@@ -66,7 +35,7 @@ impl<T: FiniteField> Polynomial<T> {
     pub fn evaluate(&self, value: &T) -> T {
         let mut result = self.0.last().unwrap().clone();
         for coeff in self.0[0..self.0.len() - 1].iter().rev() {
-            result = coeff.add(&result.multiply(value));
+            result = coeff.add(&result.mul(value));
         }
         result
     }
