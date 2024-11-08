@@ -1,4 +1,5 @@
 use std::ops::Add;
+use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 
@@ -26,6 +27,7 @@ impl From<u64> for Mersenne61 {
 
 impl Ring for Mersenne61 {
     type ValueType = u64;
+
     const BIT_SIZE: usize = 61;
     const ONE: Self = Self(1);
     const ZERO: Self = Self(0);
@@ -80,6 +82,14 @@ impl Mul<&Self> for Mersenne61 {
         let most_sig_bits_mod = Self::from(most_sig_bits);
         let least_sig_bits_mod = Self::from(least_sig_bits);
         most_sig_bits_mod.add(&least_sig_bits_mod)
+    }
+}
+
+impl Div<&Self> for Mersenne61 {
+    type Output = Result<Self, FieldError>;
+    fn div(self, rhs: &Self) -> Self::Output {
+        let inverse = self.inverse()?;
+        Ok(rhs.mul(&inverse))
     }
 }
 

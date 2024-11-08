@@ -1,7 +1,7 @@
 use super::FiniteField;
 
 /// Computes the lagrange basis evaluated at `x`
-pub fn compute_lagrange_basis<T: FiniteField>(nodes: Vec<T>, x: &T) -> Vec<T> {
+pub(crate) fn compute_lagrange_basis<T: FiniteField>(nodes: Vec<T>, x: &T) -> Vec<T> {
     let mut lagrange_basis = Vec::with_capacity(nodes.len());
     for j in 0..nodes.len() {
         let mut basis = T::ONE;

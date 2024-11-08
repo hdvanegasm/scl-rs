@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    ops::{Index, IndexMut},
+    ops::{Div, Index, IndexMut},
 };
 
 use crate::math::ring;
@@ -17,7 +17,7 @@ pub enum FieldError {
 }
 
 /// Trait that represent a finite field of integers modulo a prime p.
-pub trait FiniteField: ring::Ring {
+pub trait FiniteField: ring::Ring + for<'a> Div<&'a Self> {
     /// Modulus used in for the field.
     const MODULUS: u64;
 

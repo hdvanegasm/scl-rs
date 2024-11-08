@@ -1,24 +1,32 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 use rand::Rng;
 use thiserror::Error;
 
 use super::{ring::Ring, vector::Vector};
 
+/// Errors that may occurs when creating and operating with matrices.
 #[derive(Error, Debug)]
 pub enum MatrixError {
+    /// The matrices that you are trying to operate are not compatible.
     #[error("matrices are not compatible")]
     NotCompatible,
 
+    /// The matrix that is being created does not have the correct dimension.
     #[error("invalid dimension: {0:?}, {1:?}")]
     InvalidDimension(usize, usize),
 }
 
+/// Specialized result for the [`MatrixError`] type.
 pub type Result<T> = std::result::Result<T, MatrixError>;
 
+/// Matrix with elements in a ring.
 pub struct Matrix<T: Ring> {
+    /// Elements of the matrix.
     elements: Vec<T>,
+    /// Columns of the matrix.
     pub columns: usize,
+    /// Rows of the matrix.
     pub rows: usize,
 }
 
@@ -26,7 +34,13 @@ impl<T> Matrix<T>
 where
     T: Ring,
 {
-    fn new(rows: usize, columns: usize) -> Result<Self> {
+    /// Returns a new matrix with memory allocated for the given rows and columns.
+    ///
+    /// # Errors
+    ///
+    /// If the rows or the columns are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// error.
+    fn allocate(rows: usize, columns: usize) -> Result<Self> {
         if rows == 0 || columns == 0 {
             return Err(MatrixError::InvalidDimension(rows, columns));
         }
@@ -38,8 +52,14 @@ where
         })
     }
 
+    /// Constructs a new matrix with the given rows, columns and list of elements.
+    ///
+    /// # Errors
+    ///
+    /// If the rows or the columns are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// error.
     pub fn from_vec(rows: usize, columns: usize, elements: Vec<T>) -> Result<Self> {
-        if rows * columns != elements.len() {
+        if rows * columns != elements.len() || rows == 0 || columns == 0 {
             return Err(MatrixError::InvalidDimension(rows, columns));
         }
         Ok(Self {
@@ -49,71 +69,92 @@ where
         })
     }
 
-    pub fn new_square(dim: usize) -> Result<Self> {
-        Self::new(dim, dim)
-    }
-
-    pub fn identity(dim: usize) -> Self {
-        let mut elements = Vec::with_capacity(dim * dim);
+    /// Constructs an identity matrix with the given dimension.
+    ///
+    /// Errors
+    ///
+    /// If the dimension is zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// error.
+    pub fn identity(dim: usize) -> Result<Self> {
+        let mut matrix = Self::allocate(dim, dim)?;
         for i in 0..dim {
             for j in 0..dim {
                 if i == j {
-                    elements.push(T::ONE);
+                    matrix.elements.push(T::ONE);
                 } else {
-                    elements.push(T::ZERO);
+                    matrix.elements.push(T::ZERO);
                 }
             }
         }
-        Self {
-            elements,
-            rows: dim,
-            columns: dim,
-        }
+        Ok(matrix)
     }
 
-    pub fn zero(dim: usize) -> Self {
-        let elements = vec![T::ZERO; dim * dim];
-        Self {
-            elements,
-            rows: dim,
-            columns: dim,
+    /// Creates a matrix filled with zeros with the given rows and colums.
+    ///
+    /// # Errors
+    ///
+    /// If the rows or colums are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// error.
+    pub fn zero(rows: usize, columns: usize) -> Result<Self> {
+        if rows == 0 || columns == 0 {
+            return Err(MatrixError::InvalidDimension(rows, columns));
         }
+        let elements = vec![T::ZERO; rows * columns];
+        Ok(Self {
+            elements,
+            rows,
+            columns,
+        })
     }
 
+    /// Creates a random matrix with the given dimensions.
+    ///
+    /// # Errors
+    ///
+    /// If one or more of the dimensions are zero, the function will return an
+    /// error.
     pub fn random<R: Rng>(rows: usize, columns: usize, rng: &mut R) -> Result<Self> {
-        let mut matrix = Self::new(rows, columns)?;
+        let mut matrix = Self::allocate(rows, columns)?;
         for _ in 0..rows * columns {
             matrix.elements.push(T::random(rng));
         }
         Ok(matrix)
     }
 
+    /// Returns the bit size of the matrix.
     pub fn bit_size(&self) -> usize {
-        self.rows * self.columns * T::BIT_SIZE
+        self.rows * self.columns * std::mem::size_of::<T::ValueType>()
     }
 
+    /// Returns whether the matrix is square or not.
     pub fn is_square(&self) -> bool {
         self.rows == self.columns
     }
 
+    /// Get the field element in i-th row and j-th column.
     pub fn get(&self, i: usize, j: usize) -> Option<&T> {
         self.elements.get(self.rows * i + j)
     }
 
+    /// Get the field element in i-th row and j-th column as a mutable reference.
     pub fn get_mut(&mut self, i: usize, j: usize) -> Option<&mut T> {
         self.elements.get_mut(self.rows * i + j)
     }
 
+    /// Return wether this matrix is compatible with another matrix for
+    /// multiplication.
     fn is_compatible_with(&self, other: &Self) -> bool {
         self.rows == other.rows && self.columns == other.columns
     }
 
+    /// Computes the scalar multiplication in place.
     pub fn scalar_mut_in_place(&mut self, scalar: &T) {
         for elem in &mut self.elements {
             *elem = elem.mul(scalar);
         }
     }
 
+    /// Computes the scalar multiplication.
     pub fn scalar_mult(&mut self, scalar: &T) -> Self {
         let mut elements = Vec::with_capacity(self.elements.len());
         for elem in &self.elements {
@@ -169,6 +210,7 @@ where
     T: Ring,
 {
     type Output = Result<Self>;
+
     fn sub(mut self, rhs: &Self) -> Self::Output {
         if !self.is_compatible_with(rhs) {
             return Err(MatrixError::NotCompatible);
@@ -194,6 +236,7 @@ where
     T: Ring,
 {
     type Output = Result<Self>;
+
     fn mul(self, rhs: &Self) -> Self::Output {
         if self.columns != rhs.rows {
             return Err(MatrixError::NotCompatible);
@@ -203,7 +246,7 @@ where
         let columns = rhs.columns;
         let interm = self.columns;
 
-        let mut matrix = Self::new(rows, columns)?;
+        let mut matrix = Self::allocate(rows, columns)?;
         for i in 0..rows {
             for j in 0..columns {
                 let mut sum = T::ZERO;
