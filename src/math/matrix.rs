@@ -7,7 +7,7 @@ use super::{ring::Ring, vector::Vector};
 
 /// Errors that may occurs when creating and operating with matrices.
 #[derive(Error, Debug)]
-pub enum MatrixError {
+pub enum Error {
     /// The matrices that you are trying to operate are not compatible.
     #[error("matrices are not compatible")]
     NotCompatible,
@@ -17,8 +17,8 @@ pub enum MatrixError {
     InvalidDimension(usize, usize),
 }
 
-/// Specialized result for the [`MatrixError`] type.
-pub type Result<T> = std::result::Result<T, MatrixError>;
+/// Specialized result for the [`Error`] type.
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Matrix with elements in a ring.
 pub struct Matrix<T: Ring> {
@@ -38,11 +38,11 @@ where
     ///
     /// # Errors
     ///
-    /// If the rows or the columns are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// If the rows or the columns are zero, the function will return an [`Error::InvalidDimension`]
     /// error.
     fn allocate(rows: usize, columns: usize) -> Result<Self> {
         if rows == 0 || columns == 0 {
-            return Err(MatrixError::InvalidDimension(rows, columns));
+            return Err(Error::InvalidDimension(rows, columns));
         }
         let elements = Vec::with_capacity(rows * columns);
         Ok(Self {
@@ -56,11 +56,11 @@ where
     ///
     /// # Errors
     ///
-    /// If the rows or the columns are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// If the rows or the columns are zero, the function will return an [`Error::InvalidDimension`]
     /// error.
     pub fn from_vec(rows: usize, columns: usize, elements: Vec<T>) -> Result<Self> {
         if rows * columns != elements.len() || rows == 0 || columns == 0 {
-            return Err(MatrixError::InvalidDimension(rows, columns));
+            return Err(Error::InvalidDimension(rows, columns));
         }
         Ok(Self {
             elements,
@@ -73,7 +73,7 @@ where
     ///
     /// Errors
     ///
-    /// If the dimension is zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// If the dimension is zero, the function will return an [`Error::InvalidDimension`]
     /// error.
     pub fn identity(dim: usize) -> Result<Self> {
         let mut matrix = Self::allocate(dim, dim)?;
@@ -93,11 +93,11 @@ where
     ///
     /// # Errors
     ///
-    /// If the rows or colums are zero, the function will return an [`MatrixError::InvalidDimension`]
+    /// If the rows or colums are zero, the function will return an [`Error::InvalidDimension`]
     /// error.
     pub fn zero(rows: usize, columns: usize) -> Result<Self> {
         if rows == 0 || columns == 0 {
-            return Err(MatrixError::InvalidDimension(rows, columns));
+            return Err(Error::InvalidDimension(rows, columns));
         }
         let elements = vec![T::ZERO; rows * columns];
         Ok(Self {
@@ -187,7 +187,7 @@ where
     type Output = Result<Self>;
     fn add(mut self, rhs: &Self) -> Self::Output {
         if !self.is_compatible_with(rhs) {
-            return Err(MatrixError::NotCompatible);
+            return Err(Error::NotCompatible);
         }
         self += rhs;
         Ok(self)
@@ -213,7 +213,7 @@ where
 
     fn sub(mut self, rhs: &Self) -> Self::Output {
         if !self.is_compatible_with(rhs) {
-            return Err(MatrixError::NotCompatible);
+            return Err(Error::NotCompatible);
         }
         self -= rhs;
         Ok(self)
@@ -239,7 +239,7 @@ where
 
     fn mul(self, rhs: &Self) -> Self::Output {
         if self.columns != rhs.rows {
-            return Err(MatrixError::NotCompatible);
+            return Err(Error::NotCompatible);
         }
 
         let rows = self.rows;
@@ -270,7 +270,7 @@ where
 
     fn mul(self, rhs: &Vector<T>) -> Self::Output {
         if self.columns != rhs.len() {
-            return Err(MatrixError::NotCompatible);
+            return Err(Error::NotCompatible);
         }
         let mut elements = Vec::with_capacity(self.rows);
         for i in 0..self.rows {

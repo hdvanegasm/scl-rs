@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Div;
 use std::ops::Mul;
@@ -117,6 +118,12 @@ impl FiniteField for Mersenne61 {
 
             Ok(Self::from(k as u64))
         }
+    }
+}
+
+impl Hash for Mersenne61 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 

@@ -1,7 +1,8 @@
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
 use scl_rs::math::{
-    field::{lagrange::interpolate_polynomial_at, mersenne61::Mersenne61, FiniteField, Polynomial},
+    field::mersenne61::Mersenne61,
+    poly::{interpolate_polynomial_at, Polynomial},
     ring::Ring,
 };
 
@@ -32,7 +33,7 @@ fn interpolation() {
             .collect();
 
         let interpolated_evaluation =
-            interpolate_polynomial_at(evaluations, eval_points, &evaluation_test);
+            interpolate_polynomial_at(evaluations, eval_points, &evaluation_test).unwrap();
 
         assert_eq!(
             interpolated_evaluation,
