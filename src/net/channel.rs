@@ -1,4 +1,5 @@
 use crate::net::Packet;
+use bincode::config;
 use rustls::pki_types::ServerName;
 use rustls::{
     ClientConfig, ClientConnection, ConnectionCommon, ServerConfig, ServerConnection, SideData,
@@ -26,10 +27,10 @@ pub enum ChannelError {
     EmptyBuffer,
 
     #[error("error during serialization")]
-    BadInputSerialization(bincode::Error),
+    BadInputSerialization(bincode::error::EncodeError),
 
     #[error("error during deserialization")]
-    BadInputDeserialization(bincode::Error),
+    BadInputDeserialization(bincode::error::DecodeError),
 
     #[error("error in IO")]
     IoError(io::Error),
@@ -67,8 +68,16 @@ where
         // First, we need to send the size of the packet to be able to know the amout
         // of bits that are being sent.
         let packet_size = packet.size();
-        let bytes_size_packet =
-            bincode::serialize(&packet_size).map_err(ChannelError::BadInputSerialization)?;
+        const USIZE_LENGTH: usize = (usize::BITS / 8) as usize;
+        let mut bytes_size_packet = [0; USIZE_LENGTH];
+        bincode::encode_into_slice(
+            packet_size,
+            &mut bytes_size_packet,
+            config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )
+        .map_err(ChannelError::BadInputSerialization)?;
         self.write_all(&bytes_size_packet)
             .map_err(ChannelError::IoError)?;
 
@@ -82,8 +91,13 @@ where
         let mut buffer_packet_size = [0; (usize::BITS / 8) as usize];
         self.read_exact(&mut buffer_packet_size)
             .map_err(ChannelError::IoError)?;
-        let packet_size: usize = bincode::deserialize(&buffer_packet_size)
-            .map_err(ChannelError::BadInputDeserialization)?;
+        let (packet_size, _): (usize, usize) = bincode::serde::decode_from_slice(
+            &buffer_packet_size,
+            config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )
+        .map_err(ChannelError::BadInputDeserialization)?;
 
         // Then, we receive the buffer the amount bytes until the end is reached.
         let mut payload_buffer = vec![0; packet_size];
