@@ -15,3 +15,5 @@ pub mod ring;
 /// This module contains the implementation of vectors over finite rings and
 /// their operations.
 pub mod vector;
+
+pub mod ec;

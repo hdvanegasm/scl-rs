@@ -26,9 +26,9 @@ pub type Result<T, R> = std::result::Result<T, Error<R>>;
 
 /// Represents a polynomial whose coefficients are elements in a finite field.
 #[derive(PartialEq, Eq, Debug)]
-pub struct Polynomial<T: FiniteField>(Vec<T>);
+pub struct Polynomial<const LIMBS: usize, T: FiniteField<LIMBS>>(Vec<T>);
 
-impl<T: FiniteField> Polynomial<T> {
+impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
     /// Evaluates the polynomial on a given value using the Horner's rule.
     pub fn evaluate(&self, value: &T) -> T {
         let mut result = self.0.last().unwrap().clone();
@@ -48,7 +48,7 @@ impl<T: FiniteField> Polynomial<T> {
     }
 }
 
-impl<T: FiniteField> Index<usize> for Polynomial<T> {
+impl<const LIMBS: usize, T: FiniteField<LIMBS>> Index<usize> for Polynomial<LIMBS, T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -56,20 +56,25 @@ impl<T: FiniteField> Index<usize> for Polynomial<T> {
     }
 }
 
-impl<T: FiniteField> IndexMut<usize> for Polynomial<T> {
+impl<const LIMBS: usize, T: FiniteField<LIMBS>> IndexMut<usize> for Polynomial<LIMBS, T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<const N: usize, T: FiniteField> From<[T; N]> for Polynomial<T> {
+impl<const LIMBS: usize, const N: usize, T: FiniteField<LIMBS>> From<[T; N]>
+    for Polynomial<LIMBS, T>
+{
     fn from(coefficients: [T; N]) -> Self {
         Self(Vec::from_iter(coefficients))
     }
 }
 
 /// Computes the lagrange basis evaluated at `x`
-pub(crate) fn compute_lagrange_basis<T: FiniteField>(nodes: Vec<T>, x: &T) -> Result<Vec<T>, T> {
+pub(crate) fn compute_lagrange_basis<const LIMBS: usize, T: FiniteField<LIMBS>>(
+    nodes: Vec<T>,
+    x: &T,
+) -> Result<Vec<T>, T> {
     if !all_different(&nodes) {
         return Err(Error::NotAllDifferentInterpolation(nodes));
     }
@@ -98,9 +103,7 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
     if list.is_empty() {
         return true;
     }
-
     let mut set = HashSet::with_capacity(list.len());
-
     for element in list {
         if !set.insert(element) {
             return false;
@@ -110,7 +113,7 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
 }
 
 /// Computes the evaluation of the interpolated polynomial at `x`.
-pub fn interpolate_polynomial_at<T: FiniteField>(
+pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     evaluations: Vec<T>,
     alphas: Vec<T>,
     x: &T,

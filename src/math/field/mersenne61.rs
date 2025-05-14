@@ -4,6 +4,7 @@ use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 
+use crypto_bigint::U64;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -19,16 +20,14 @@ pub struct Mersenne61(u64);
 impl From<u64> for Mersenne61 {
     fn from(value: u64) -> Self {
         let mut final_value = value;
-        while final_value >= Self::MODULUS {
-            final_value -= Self::MODULUS;
+        while final_value >= u64::from(Self::MODULUS.to_limbs()[0]) {
+            final_value -= u64::from(Self::MODULUS.to_limbs()[0]);
         }
         Self(final_value)
     }
 }
 
 impl Ring for Mersenne61 {
-    type ValueType = u64;
-
     const BIT_SIZE: usize = 61;
     const ONE: Self = Self(1);
     const ZERO: Self = Self(0);
@@ -40,7 +39,7 @@ impl Ring for Mersenne61 {
 
     fn negate(&self) -> Self {
         if !self.eq(&Self::ZERO) {
-            Self::from(Self::MODULUS - self.0)
+            Self::from(u64::from(Self::MODULUS.to_limbs()[0]) - self.0)
         } else {
             Self::ZERO
         }
@@ -61,7 +60,7 @@ impl Sub<&Self> for Mersenne61 {
 
     fn sub(self, other: &Self) -> Self::Output {
         if other.0 > self.0 {
-            Self::from(self.0 + Self::MODULUS - other.0)
+            Self::from(self.0 + u64::from(Self::MODULUS.to_limbs()[0]) - other.0)
         } else {
             Self::from(self.0 - other.0)
         }
@@ -77,7 +76,7 @@ impl Mul<&Self> for Mersenne61 {
         let mut least_sig_bits = non_reduced_mult as u64;
 
         most_sig_bits |= least_sig_bits >> Self::BIT_SIZE;
-        least_sig_bits &= Self::MODULUS;
+        least_sig_bits &= u64::from(Self::MODULUS.as_limbs()[0]);
 
         // Apply modular addition.
         let most_sig_bits_mod = Self::from(most_sig_bits);
@@ -94,8 +93,8 @@ impl Div<&Self> for Mersenne61 {
     }
 }
 
-impl FiniteField for Mersenne61 {
-    const MODULUS: u64 = 0x1FFFFFFFFFFFFFFF;
+impl FiniteField<1> for Mersenne61 {
+    const MODULUS: U64 = U64::from_u64(0x1FFFFFFFFFFFFFFF);
 
     fn inverse(&self) -> Result<Self, super::FieldError> {
         if self.eq(&Self::ZERO) {
@@ -103,7 +102,7 @@ impl FiniteField for Mersenne61 {
         } else {
             let mut k: i64 = 0;
             let mut new_k: i64 = 1;
-            let mut r: i64 = Self::MODULUS as i64;
+            let mut r: i64 = u64::from(Self::MODULUS.to_limbs()[0]) as i64;
             let mut new_r: i64 = self.0 as i64;
 
             while new_r != 0 {
@@ -113,7 +112,7 @@ impl FiniteField for Mersenne61 {
             }
 
             if k < 0 {
-                k += Self::MODULUS as i64;
+                k += u64::from(Self::MODULUS.to_limbs()[0]) as i64;
             }
 
             Ok(Self::from(k as u64))

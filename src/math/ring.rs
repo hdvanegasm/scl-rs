@@ -14,7 +14,6 @@ pub trait Ring:
     + Eq
     + Sized
     + Clone
-    + From<u64>
     + Serialize
     + for<'a> Deserialize<'a>
     + for<'a> Add<&'a Self, Output = Self>
@@ -23,12 +22,7 @@ pub trait Ring:
     + Copy
     + Hash
 {
-    /// Type of the underlying representation for a ring element.
-    type ValueType;
-
-    /// Number of bits of each element.
     const BIT_SIZE: usize;
-
     /// Additive identity of the ring.
     const ZERO: Self;
 

@@ -6,6 +6,7 @@ use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore, ServerConfig, StreamOwned,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     cmp::Ordering,
@@ -34,7 +35,21 @@ pub enum NetworkError {
 
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
+// This packet can be changed such that the elements in it can be of multiple types.
+// The idea would be as follows. The packet is a Vec<Vec<u8>>, so the packet has the structure
+//
+// [
+//  [obj1 bytes]
+//  [obj2 bytes]
+//  [obj3 bytes]
+// ]
+//
+// Hence each object can be deserialized according with its method. The method `read()` should be
+// changed so that one can read an element from the packet at a time, as in a queue or a deque. So
+// once you execute `read()` you obtain the first element of the vector (for example).
+
 /// Packet of information sent through a given channel.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Packet(Vec<u8>);
 
 impl Packet {
@@ -54,6 +69,24 @@ impl Packet {
     /// Returns the size of the packet.
     pub fn size(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn pop<'de, T>(&mut self) -> T
+    where
+        T: Deserialize<'de>,
+    {
+        todo!()
+    }
+
+    pub fn read<'de, T>(&self, obj_idx: usize) -> T {
+        todo!()
+    }
+
+    pub fn write<T>(&mut self, obj: T)
+    where
+        T: Serialize,
+    {
+        todo!()
     }
 }
 

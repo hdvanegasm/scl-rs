@@ -42,11 +42,6 @@ where
         }
         result
     }
-
-    /// Returns the bit size of the vector.
-    pub fn bit_size(&self) -> usize {
-        self.len() * std::mem::size_of::<T::ValueType>()
-    }
 }
 
 impl<T> Index<usize> for Vector<T>

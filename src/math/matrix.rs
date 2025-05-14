@@ -121,11 +121,6 @@ where
         Ok(matrix)
     }
 
-    /// Returns the bit size of the matrix.
-    pub fn bit_size(&self) -> usize {
-        self.rows * self.columns * std::mem::size_of::<T::ValueType>()
-    }
-
     /// Returns whether the matrix is square or not.
     pub fn is_square(&self) -> bool {
         self.rows == self.columns

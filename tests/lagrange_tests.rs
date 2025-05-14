@@ -15,7 +15,7 @@ fn interpolation() {
 
     for _ in 0..N_SAMPLES {
         let degree: usize = (rng.gen::<u64>() % MAX_DEGREE) as usize;
-        let random_poly: Polynomial<Mersenne61> = Polynomial::random(degree, &mut rng);
+        let random_poly: Polynomial<1, Mersenne61> = Polynomial::random(degree, &mut rng);
 
         let evaluation_test = Mersenne61::random(&mut rng);
 
