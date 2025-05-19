@@ -1,42 +1,91 @@
-use crypto_bigint::Uint;
+use crypto_bigint::{rand_core::RngCore, Limb, NonZero, RandomMod, Uint, Zero};
 use std::ops::{Add, Div, Mul, Sub};
 
 use serde::{Deserialize, Serialize};
 
 use crate::math::ring::Ring;
 
-use super::{FieldError, FiniteField};
+use super::{naf::NafEncoding, FieldError, FiniteField};
 
 const LIMBS: usize = 4;
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct Secp256k1ScalarField(Uint<LIMBS>);
+
+fn test_bit<const LIMBS: usize>(input: Uint<LIMBS>, pos: usize) -> bool {
+    assert!((pos as u32) < LIMBS as u32 * Limb::BITS);
+    let bits_per_limb = Limb::BITS;
+
+    let limbs_input = input.as_limbs();
+    let limb = pos as u32 / bits_per_limb;
+    let limb_pos = pos as u32 % bits_per_limb;
+    ((limbs_input[limb as usize] >> limb_pos) & Limb::ONE) == Limb::ONE
+}
+
+impl Secp256k1ScalarField {
+    pub fn to_naf(&self) -> NafEncoding {
+        let mut naf = NafEncoding::new(Self::BIT_SIZE + 1);
+        let mut val = self.0;
+        let mut i = 0;
+
+        while !bool::from(val.is_zero()) {
+            if test_bit(val, 0) {
+                if test_bit(val, 1) {
+                    naf.create_neg(i);
+                    val += Uint::<4>::ONE;
+                } else {
+                    naf.create_pos(i);
+                    val -= Uint::<4>::ONE;
+                }
+            } else {
+                naf.create_zero(i);
+            }
+            i += 1;
+            val >>= 1;
+        }
+        naf
+    }
+}
 
 impl FiniteField<4> for Secp256k1ScalarField {
     // TODO: Fix this number.
-    const MODULUS: Uint<4> = Uint::from_words([
-        0xFFFFFFFEFFFFFC2F,
+    const MODULUS: NonZero<Uint<4>> = NonZero::<Uint<4>>::new_unwrap(Uint::from_words([
+        0xBFD25E8CD0364141,
+        0xBAAEDCE6AF48A03B,
+        0xFFFFFFFFFFFFFFFE,
         0xFFFFFFFFFFFFFFFF,
-        0xFFFFFFFFFFFFFFFF,
-        0xFFFFFFFFFFFFFFFF,
-    ]);
+    ]));
 
     fn inverse(&self) -> Result<Self, super::FieldError> {
-        todo!()
+        if bool::from(self.0.is_zero()) {
+            Err(FieldError::ZeroInverse)
+        } else {
+            // SAFETY: This unwrap is safe as rhs is non-zero.
+            let inverse = self.0.inv_mod(&Self::MODULUS).unwrap();
+            Ok(Self(inverse))
+        }
+    }
+}
+
+impl From<u64> for Secp256k1ScalarField {
+    fn from(value: u64) -> Self {
+        Self(Uint::<4>::from_u64(value))
     }
 }
 
 impl Ring for Secp256k1ScalarField {
-    const BIT_SIZE: usize = 4 * u64::BITS as usize;
+    const BIT_SIZE: usize = Self::LIMBS * u64::BITS as usize;
     const ZERO: Self = Self(Uint::ZERO);
     const ONE: Self = Self(Uint::ONE);
+    const LIMBS: usize = 4;
 
     fn negate(&self) -> Self {
-        todo!()
+        Self(self.0.neg_mod(&Self::MODULUS))
     }
 
-    fn random<R: rand::Rng>(generator: &mut R) -> Self {
-        todo!()
+    fn random<R: RngCore>(generator: &mut R) -> Self {
+        let value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        Self(value)
     }
 }
 
@@ -44,7 +93,7 @@ impl Add<&Self> for Secp256k1ScalarField {
     type Output = Self;
 
     fn add(self, other: &Self) -> Self::Output {
-        todo!()
+        Self(self.0.add_mod(&other.0, &Self::MODULUS))
     }
 }
 
@@ -52,7 +101,7 @@ impl Sub<&Self> for Secp256k1ScalarField {
     type Output = Self;
 
     fn sub(self, other: &Self) -> Self::Output {
-        todo!()
+        Self(self.0.sub_mod(&other.0, &Self::MODULUS))
     }
 }
 
@@ -60,13 +109,14 @@ impl Mul<&Self> for Secp256k1ScalarField {
     type Output = Self;
 
     fn mul(self, other: &Self) -> Self::Output {
-        todo!()
+        Self(self.0.mul_mod(&other.0, &Self::MODULUS))
     }
 }
 
 impl Div<&Self> for Secp256k1ScalarField {
     type Output = Result<Self, FieldError>;
     fn div(self, rhs: &Self) -> Self::Output {
-        todo!()
+        let inverse = rhs.inverse()?;
+        Ok(self.mul(&inverse))
     }
 }

@@ -4,6 +4,8 @@ use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 
+use crypto_bigint::rand_core::RngCore;
+use crypto_bigint::NonZero;
 use crypto_bigint::U64;
 use serde::Deserialize;
 use serde::Serialize;
@@ -31,9 +33,10 @@ impl Ring for Mersenne61 {
     const BIT_SIZE: usize = 61;
     const ONE: Self = Self(1);
     const ZERO: Self = Self(0);
+    const LIMBS: usize = 1;
 
-    fn random<R: rand::Rng>(generator: &mut R) -> Self {
-        let value: u64 = generator.gen();
+    fn random<R: RngCore>(generator: &mut R) -> Self {
+        let value: u64 = generator.next_u64();
         Self::from(value)
     }
 
@@ -94,7 +97,7 @@ impl Div<&Self> for Mersenne61 {
 }
 
 impl FiniteField<1> for Mersenne61 {
-    const MODULUS: U64 = U64::from_u64(0x1FFFFFFFFFFFFFFF);
+    const MODULUS: NonZero<U64> = NonZero::<U64>::new_unwrap(U64::from_u64(0x1FFFFFFFFFFFFFFF));
 
     fn inverse(&self) -> Result<Self, super::FieldError> {
         if self.eq(&Self::ZERO) {

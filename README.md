@@ -76,3 +76,7 @@ encapsulation of bytes. As an example, the packets may contain information of
 shares, field elements, polynomials, or any other serializable type in the 
 library. Theinteraction between parties are done using the functions `send` and 
 `recv` defined in the `Network` implementation.
+
+## Acknowledgements
+
+I want to thank HashCloak Inc. for allowing me to dedicate some time to the development of this project. I also want to thank Anders Dalskov for its support and help.

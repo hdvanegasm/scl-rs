@@ -1,4 +1,4 @@
-use rand::Rng;
+use crypto_bigint::rand_core::RngCore;
 
 use super::ring::Ring;
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
@@ -15,6 +15,10 @@ where
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Generates a vector of zeroes.
     pub fn zero(len: usize) -> Self {
         Self(vec![T::ZERO; len])
@@ -26,7 +30,7 @@ where
     }
 
     /// Generates a random vector with a given length.
-    pub fn random<R: Rng>(len: usize, rng: &mut R) -> Self {
+    pub fn random<R: RngCore>(len: usize, rng: &mut R) -> Self {
         let mut elements = Vec::with_capacity(len);
         for _ in 0..len {
             elements.push(T::random(rng));

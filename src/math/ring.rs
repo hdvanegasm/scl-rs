@@ -4,7 +4,7 @@ use std::{
     ops::{Add, Mul, Sub},
 };
 
-use rand::Rng;
+use crypto_bigint::rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 
 /// This trait represent an algebraic finite Ring.
@@ -26,6 +26,8 @@ pub trait Ring:
     /// Additive identity of the ring.
     const ZERO: Self;
 
+    const LIMBS: usize;
+
     /// Multiplicative identity of the ring.
     const ONE: Self;
 
@@ -33,5 +35,5 @@ pub trait Ring:
     fn negate(&self) -> Self;
 
     /// Generates a random finite ring element with a provided pseudo-random generator.
-    fn random<R: Rng>(generator: &mut R) -> Self;
+    fn random<R: RngCore>(generator: &mut R) -> Self;
 }

@@ -1,4 +1,5 @@
 pub mod channel;
+pub mod fake_net;
 
 use crate::net::channel::Channel;
 use channel::{DummyChannel, LoopBackChannel};
@@ -78,11 +79,11 @@ impl Packet {
         todo!()
     }
 
-    pub fn read<'de, T>(&self, obj_idx: usize) -> T {
+    pub fn read<T>(&self, _obj_idx: usize) -> T {
         todo!()
     }
 
-    pub fn write<T>(&mut self, obj: T)
+    pub fn write<T>(&mut self, _obj: T)
     where
         T: Serialize,
     {
@@ -115,7 +116,7 @@ pub struct NetworkConfig<'a> {
     priv_key: PrivateKeyDer<'a>,
 }
 
-impl<'a> NetworkConfig<'a> {
+impl NetworkConfig<'_> {
     /// Creates a configuration for the network from a configuration file.
     pub fn new(path_file: &Path) -> io::Result<Self> {
         let json_content = fs::read_to_string(path_file)?;

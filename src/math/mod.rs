@@ -16,4 +16,5 @@ pub mod ring;
 /// their operations.
 pub mod vector;
 
+// This module contains the implementation of some elliptic curves used in cryptography.
 pub mod ec;

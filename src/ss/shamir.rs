@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::math::field::FiniteField;
 
 struct ShamirSS<const LIMBS: usize, F: FiniteField<LIMBS>> {

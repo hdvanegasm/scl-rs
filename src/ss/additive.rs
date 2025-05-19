@@ -1,6 +1,6 @@
-use rand::Rng;
+use crypto_bigint::rand_core::RngCore;
 
-use crate::math::{field::FiniteField, ring::Ring};
+use crate::math::ring::Ring;
 
 pub struct AdditiveSS<T: Ring>(T);
 
@@ -16,7 +16,7 @@ where
         self.0
     }
 
-    pub fn shares_from_secret<R: Rng>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
+    pub fn shares_from_secret<R: RngCore>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
         let mut shares = Vec::with_capacity(n_parties);
         let mut rand_acc = T::ZERO;
         for _ in 1..n_parties {

@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
-use rand::Rng;
+use crypto_bigint::rand_core::RngCore;
 use thiserror::Error;
 
 use super::{ring::Ring, vector::Vector};
@@ -13,7 +13,7 @@ pub enum Error {
     NotCompatible,
 
     /// The matrix that is being created does not have the correct dimension.
-    #[error("invalid dimension: {0:?}, {1:?}")]
+    #[error("the matrix has an invalid dimension: {0:?}, {1:?}")]
     InvalidDimension(usize, usize),
 }
 
@@ -113,7 +113,7 @@ where
     ///
     /// If one or more of the dimensions are zero, the function will return an
     /// error.
-    pub fn random<R: Rng>(rows: usize, columns: usize, rng: &mut R) -> Result<Self> {
+    pub fn random<R: RngCore>(rows: usize, columns: usize, rng: &mut R) -> Result<Self> {
         let mut matrix = Self::allocate(rows, columns)?;
         for _ in 0..rows * columns {
             matrix.elements.push(T::random(rng));

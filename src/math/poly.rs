@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::math::field::FiniteField;
-use rand::Rng;
+use crypto_bigint::rand_core::RngCore;
 use thiserror::Error;
 
 use super::ring::Ring;
@@ -19,6 +19,9 @@ where
     /// not all different.
     #[error("error in the interpolation, not all the elements in the list are different: {0:?}")]
     NotAllDifferentInterpolation(Vec<T>),
+
+    #[error("the polynomial has no coefficients")]
+    EmptyCoefficients,
 }
 
 /// Specialized type for the [`Error`] type.
@@ -31,7 +34,7 @@ pub struct Polynomial<const LIMBS: usize, T: FiniteField<LIMBS>>(Vec<T>);
 impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
     /// Evaluates the polynomial on a given value using the Horner's rule.
     pub fn evaluate(&self, value: &T) -> T {
-        let mut result = self.0.last().unwrap().clone();
+        let mut result = *self.0.last().unwrap();
         for coeff in self.0[0..self.0.len() - 1].iter().rev() {
             result = coeff.add(&result.mul(value));
         }
@@ -39,12 +42,20 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
     }
 
     /// Generates a random polynomial of a given degree using a given pseudo-random generator.
-    pub fn random<R: Rng>(degree: usize, rng: &mut R) -> Self {
+    pub fn random<R: RngCore>(degree: usize, rng: &mut R) -> Self {
         let mut coefficients = Vec::with_capacity(degree + 1);
         for _ in 0..degree + 1 {
             coefficients.push(T::random(rng));
         }
         Self(coefficients)
+    }
+
+    pub fn new(coef: Vec<T>) -> Result<Self, T> {
+        if coef.len() == 0 {
+            Err(Error::EmptyCoefficients)
+        } else {
+            Ok(Self(coef))
+        }
     }
 }
 
@@ -118,6 +129,7 @@ pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     alphas: Vec<T>,
     x: &T,
 ) -> Result<T, T> {
+    assert!(alphas.len() > 0);
     assert!(alphas.len() == evaluations.len());
     let lagrange_basis = compute_lagrange_basis(alphas, x)?;
     let mut interpolation = T::ZERO;
