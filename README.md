@@ -79,7 +79,7 @@ library. Theinteraction between parties are done using the functions `send` and
 
 ## Missing features
 
-- [x] ~~~Implement secp256k1~~~.
+- [x] ~Implement secp256k1~.
 - [ ] Implement Feldman VSS.
 - [ ] Document the source code.
 - [ ] Implement Shamir's secret-sharing.
