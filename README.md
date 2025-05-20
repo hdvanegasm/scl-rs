@@ -77,6 +77,17 @@ shares, field elements, polynomials, or any other serializable type in the
 library. Theinteraction between parties are done using the functions `send` and 
 `recv` defined in the `Network` implementation.
 
+### Missing features
+
+- [x] ~~~Implement secp256k1~~~.
+- [ ] Implement Feldman VSS.
+- [ ] Document the source code.
+- [ ] Implement Shamir's secret-sharing.
+- [ ] Implement a fake network so that the final user can prototype MPC protocols locally.
+- [ ] Implement polynomials over the prime field of the elliptic curves which is useful for Feldman VSS.
+- [ ] Improve the serialization and deserialization to optimize the communication.
+- [ ] Improve the finite field representation to represent any field modulo $p$, for $p$ prime.
+
 ## Acknowledgements
 
 I want to thank HashCloak Inc. for allowing me to dedicate some time to the development of this project. I also want to thank Anders Dalskov for its support and help.
