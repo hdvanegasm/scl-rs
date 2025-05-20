@@ -16,7 +16,7 @@ fn subtraction_validity() {
 #[test]
 fn inverse() {
     let mut rng = OsRng;
-    let value = Secp256k1PrimeField::random(&mut rng);
+    let value = Secp256k1PrimeField::random_non_zero(&mut rng);
     let inverse = value.inverse().unwrap();
     let mult = value.mul(&inverse);
     assert_eq!(mult, Secp256k1PrimeField::ONE);

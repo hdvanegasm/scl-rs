@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::ops::{Add, Mul};
 
 use crypto_bigint::Uint;
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,23 @@ pub struct Secp256k1(
 /// Representation of a secp256k1 point using affine coordinates.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct AffinePoint(Secp256k1PrimeField, Secp256k1PrimeField);
+
+impl AffinePoint {
+    pub fn x(&self) -> &Secp256k1PrimeField {
+        &self.0
+    }
+
+    pub fn y(&self) -> &Secp256k1PrimeField {
+        &self.1
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let b = Secp256k1PrimeField::from(7);
+        let lhs = self.y().mul(self.y());
+        let rhs = self.x().mul(self.x()).mul(self.x()).add(&b);
+        lhs.eq(&rhs)
+    }
+}
 
 impl Secp256k1 {
     /// Point at infinity using affine coordinates.
@@ -52,7 +69,7 @@ impl Secp256k1 {
         if self.z().eq(&Secp256k1PrimeField::ONE) {
             AffinePoint(*self.x(), *self.y())
         } else {
-            // TODO: Check the safety of this unwrap.
+            assert!(!(self.z() == &Secp256k1PrimeField::ZERO));
             let z = self.z().inverse().unwrap();
             AffinePoint(self.x().mul(&z), self.y().mul(&z))
         }
@@ -89,6 +106,7 @@ impl Secp256k1 {
         t1 = *self.x() * self.y();
         x3 = t0 * &t1;
         x3 = x3 + &x3;
+
         Self(x3, y3, z3)
     }
 }
@@ -99,10 +117,10 @@ impl EllipticCurve<4> for Secp256k1 {
 
     fn gen() -> Self {
         Self(
-            Secp256k1PrimeField::new(Uint::from_le_hex(
+            Secp256k1PrimeField::new(Uint::from_be_hex(
                 "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
             )),
-            Secp256k1PrimeField::new(Uint::from_le_hex(
+            Secp256k1PrimeField::new(Uint::from_be_hex(
                 "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
             )),
             Secp256k1PrimeField::ONE,
@@ -180,7 +198,7 @@ impl EllipticCurve<4> for Secp256k1 {
             let mut result = Self::POINT_AT_INFINITY;
             let naf = scalar.to_naf();
             for i in (0..naf.len()).rev() {
-                result = self.dbl();
+                result = result.dbl();
                 if naf.pos(i) {
                     result = result.add(self);
                 } else if naf.neg(i) {

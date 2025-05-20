@@ -55,6 +55,14 @@ impl Ring for Secp256k1PrimeField {
         let value = Uint::<4>::random_mod(generator, &Self::MODULUS);
         Self(value)
     }
+
+    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self {
+        let mut value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        while bool::from(value.is_zero()) {
+            value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        }
+        Self(value)
+    }
 }
 
 impl Add<&Self> for Secp256k1PrimeField {

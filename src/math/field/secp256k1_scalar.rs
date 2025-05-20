@@ -74,7 +74,7 @@ impl From<u64> for Secp256k1ScalarField {
 }
 
 impl Ring for Secp256k1ScalarField {
-    const BIT_SIZE: usize = Self::LIMBS * u64::BITS as usize;
+    const BIT_SIZE: usize = Self::LIMBS * Limb::BITS as usize;
     const ZERO: Self = Self(Uint::ZERO);
     const ONE: Self = Self(Uint::ONE);
     const LIMBS: usize = 4;
@@ -85,6 +85,14 @@ impl Ring for Secp256k1ScalarField {
 
     fn random<R: RngCore>(generator: &mut R) -> Self {
         let value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        Self(value)
+    }
+
+    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self {
+        let mut value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        while bool::from(value.is_zero()) {
+            value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+        }
         Self(value)
     }
 }

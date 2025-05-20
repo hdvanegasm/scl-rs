@@ -1,14 +1,17 @@
-/// Representation of a NAF encoding. The encoding is done in the following way:
+/// Representation of a non-adjacent form (NAF) encoding. The encoding is done in the following way:
 /// - Value 1 is encoded as 1 inside the array,
 /// - Value 0 is encoded as 0 inside the array,
 /// - Value -1 is encoded as 2 inside the array.
+#[derive(Eq, PartialEq, Debug)]
 pub struct NafEncoding(Vec<u8>);
 
 impl NafEncoding {
+    /// Returns the length of the representation.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Creates a new NAF representation using a given maximum number of digits.
     pub fn new(capacity: usize) -> Self {
         Self(vec![0; capacity])
     }

@@ -40,6 +40,14 @@ impl Ring for Mersenne61 {
         Self::from(value)
     }
 
+    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self {
+        let mut value = generator.next_u64();
+        while value == 0 {
+            value = generator.next_u64();
+        }
+        Self::from(value)
+    }
+
     fn negate(&self) -> Self {
         if !self.eq(&Self::ZERO) {
             Self::from(u64::from(Self::MODULUS.to_limbs()[0]) - self.0)

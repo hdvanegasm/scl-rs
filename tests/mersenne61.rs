@@ -54,7 +54,7 @@ fn subract() {
 fn inverse() {
     const SAMPLES: usize = 100;
     for _ in 0..SAMPLES {
-        let elem = Mersenne61::random(&mut OsRng);
+        let elem = Mersenne61::random_non_zero(&mut OsRng);
         let s = elem.mul(&elem.inverse().unwrap());
         assert_eq!(s, Mersenne61::ONE);
     }

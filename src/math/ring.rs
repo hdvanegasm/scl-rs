@@ -36,4 +36,6 @@ pub trait Ring:
 
     /// Generates a random finite ring element with a provided pseudo-random generator.
     fn random<R: RngCore>(generator: &mut R) -> Self;
+
+    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self;
 }

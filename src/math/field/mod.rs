@@ -12,7 +12,7 @@ pub mod secp256k1_prime;
 
 pub mod secp256k1_scalar;
 
-mod naf;
+pub mod naf;
 
 /// Errors for mathematical operations between field elements.
 #[derive(Error, Debug)]
