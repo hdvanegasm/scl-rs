@@ -63,7 +63,7 @@ you can execute the following command:
 bash gen_self_signed_certs.sh <n_parties>
 ```
 
-### Usage
+## Usage
 
 First, you need to load the configuration for the node using the `NetworkConfig`
 struct. To create a network configuration, you provide the path of the JSON
@@ -77,7 +77,7 @@ shares, field elements, polynomials, or any other serializable type in the
 library. Theinteraction between parties are done using the functions `send` and 
 `recv` defined in the `Network` implementation.
 
-### Missing features
+## Missing features
 
 - [x] ~~~Implement secp256k1~~~.
 - [ ] Implement Feldman VSS.
