@@ -9,6 +9,7 @@ computation protocols (MPC).
 - Traits for finite field arithmetic and an implementation of Mersenne61.
 - Communication point-to-point using TCP and secured using TLS.
 - Support for Lagrange interpolation over finite fields.
+- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, Shamir secret-sharing.
 
 ## How to run
 
@@ -65,16 +66,16 @@ bash gen_self_signed_certs.sh <n_parties>
 
 ## Usage
 
-First, you need to load the configuration for the node using the `NetworkConfig`
+First, you need to load the configuration from your JSON file for the node using the `NetworkConfig`
 struct. To create a network configuration, you provide the path of the JSON
 configuration file to the constructor function of the `NetworkConfig` instance.
 Once the network configuration is loaded, you create a `Network` instance that
-contains the streams to the peers.
+contains the channels to the peers.
 
-The streams for communication send `Packet` instances, which is an 
+The communication channels send `Packet` instances, which is an 
 encapsulation of bytes. As an example, the packets may contain information of 
-shares, field elements, polynomials, or any other serializable type in the 
-library. Theinteraction between parties are done using the functions `send` and 
+shares, field elements, polynomials, elliptic curve points, or any other serializable type in the 
+library. The interaction between parties are done using the functions `send` and 
 `recv` defined in the `Network` implementation.
 
 ## Missing features
@@ -90,4 +91,4 @@ library. Theinteraction between parties are done using the functions `send` and
 
 ## Acknowledgements
 
-I want to thank HashCloak Inc. for allowing me to dedicate some time to the development of this project. I also want to thank Anders Dalskov for its support and help.
+I want to thank [HashCloak Inc](https://hashcloak.com/) for allowing me to dedicate some time to the development of this project as part of an internal learning initiative. I also want to thank Anders Dalskov for its support and help.
