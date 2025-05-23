@@ -1,7 +1,6 @@
-use std::{fmt::Debug, ops::Div};
-
 use crate::math::ring;
 use crypto_bigint::{NonZero, Uint};
+use std::{fmt::Debug, ops::Div};
 use thiserror::Error;
 
 /// This module contains an implementation of the field Mersenne 61 which is the
@@ -23,7 +22,9 @@ pub enum FieldError {
 }
 
 /// Trait that represent a finite field of integers modulo a prime $p$.
-pub trait FiniteField<const LIMBS: usize>: ring::Ring + for<'a> Div<&'a Self> {
+pub trait FiniteField<const LIMBS: usize>:
+    ring::Ring + for<'a> Div<&'a Self> + Copy + Clone
+{
     /// Modulus used in for the field represented in Little-Endian.
     const MODULUS: NonZero<Uint<LIMBS>>;
 

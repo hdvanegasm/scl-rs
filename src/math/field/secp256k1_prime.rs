@@ -1,13 +1,10 @@
-use std::ops::{Add, Div, Mul, Sub};
-
+use super::{FieldError, FiniteField};
+use crate::math::ring::Ring;
 use crypto_bigint::{rand_core::RngCore, NonZero, RandomMod, Uint, Zero};
 use serde::{Deserialize, Serialize};
+use std::ops::{Add, Div, Mul, Sub};
 
-use crate::math::ring::Ring;
-
-use super::{FieldError, FiniteField};
-
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct Secp256k1PrimeField(Uint<4>);
 
 impl Secp256k1PrimeField {

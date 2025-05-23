@@ -1,7 +1,8 @@
-use crypto_bigint::rand_core::RngCore;
-
 use crate::math::ring::Ring;
+use crypto_bigint::rand_core::RngCore;
+use serde::Serialize;
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct AdditiveSS<T: Ring>(T);
 
 impl<T> AdditiveSS<T>
@@ -12,8 +13,8 @@ where
         Self(value)
     }
 
-    pub fn value(&self) -> T {
-        self.0
+    pub fn share(&self) -> &T {
+        &self.0
     }
 
     pub fn shares_from_secret<R: RngCore>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
@@ -32,6 +33,6 @@ where
     pub fn secret_from_shares(shares: &[Self]) -> T {
         shares
             .iter()
-            .fold(T::ZERO, |acc, share| acc + &share.value())
+            .fold(T::ZERO, |acc, share| acc + share.share())
     }
 }

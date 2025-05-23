@@ -1,9 +1,8 @@
-use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
-
-use crypto_bigint::rand_core::RngCore;
-use thiserror::Error;
-
 use super::{ring::Ring, vector::Vector};
+use crypto_bigint::rand_core::RngCore;
+use serde::Serialize;
+use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
+use thiserror::Error;
 
 /// Errors that may occurs when creating and operating with matrices.
 #[derive(Error, Debug)]
@@ -21,6 +20,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Matrix with elements in a ring.
+#[derive(Serialize, Debug, Eq)]
 pub struct Matrix<T: Ring> {
     /// Elements of the matrix.
     elements: Vec<T>,

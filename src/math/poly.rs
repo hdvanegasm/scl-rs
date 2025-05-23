@@ -1,13 +1,12 @@
+use super::ring::Ring;
+use crate::math::field::FiniteField;
+use crypto_bigint::rand_core::RngCore;
+use serde::Serialize;
 use std::{
     collections::HashSet,
     ops::{Index, IndexMut},
 };
-
-use crate::math::field::FiniteField;
-use crypto_bigint::rand_core::RngCore;
 use thiserror::Error;
-
-use super::ring::Ring;
 
 /// Errors for all the polynomial operations.
 #[derive(Debug, Error)]
@@ -28,7 +27,7 @@ where
 pub type Result<T, R> = std::result::Result<T, Error<R>>;
 
 /// Represents a polynomial whose coefficients are elements in a finite field.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Serialize)]
 pub struct Polynomial<const LIMBS: usize, T: FiniteField<LIMBS>>(Vec<T>);
 
 impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
@@ -41,6 +40,14 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
         result
     }
 
+    pub fn coefficients(&self) -> &[T] {
+        &self.0
+    }
+
+    pub fn degree(&self) -> usize {
+        self.0.len() - 1
+    }
+
     /// Generates a random polynomial of a given degree using a given pseudo-random generator.
     pub fn random<R: RngCore>(degree: usize, rng: &mut R) -> Self {
         let mut coefficients = Vec::with_capacity(degree + 1);
@@ -48,6 +55,10 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
             coefficients.push(T::random(rng));
         }
         Self(coefficients)
+    }
+
+    pub fn set_constant_coeff(&mut self, value: T) {
+        self[0] = value;
     }
 
     pub fn new(coef: Vec<T>) -> Result<Self, T> {
@@ -82,12 +93,12 @@ impl<const LIMBS: usize, const N: usize, T: FiniteField<LIMBS>> From<[T; N]>
 }
 
 /// Computes the lagrange basis evaluated at `x`
-pub(crate) fn compute_lagrange_basis<const LIMBS: usize, T: FiniteField<LIMBS>>(
-    nodes: Vec<T>,
+pub fn compute_lagrange_basis<const LIMBS: usize, T: FiniteField<LIMBS>>(
+    nodes: &[T],
     x: &T,
 ) -> Result<Vec<T>, T> {
-    if !all_different(&nodes) {
-        return Err(Error::NotAllDifferentInterpolation(nodes));
+    if !all_different(nodes) {
+        return Err(Error::NotAllDifferentInterpolation(nodes.to_vec()));
     }
     let mut lagrange_basis = Vec::with_capacity(nodes.len());
     for j in 0..nodes.len() {
@@ -125,15 +136,15 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
 
 /// Computes the evaluation of the interpolated polynomial at `x`.
 pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
-    evaluations: Vec<T>,
-    alphas: Vec<T>,
+    evaluations: &[T],
+    alphas: &[T],
     x: &T,
 ) -> Result<T, T> {
     assert!(alphas.len() > 0);
     assert!(alphas.len() == evaluations.len());
     let lagrange_basis = compute_lagrange_basis(alphas, x)?;
     let mut interpolation = T::ZERO;
-    for (eval, basis) in evaluations.into_iter().zip(lagrange_basis) {
+    for (eval, basis) in evaluations.iter().zip(lagrange_basis) {
         interpolation = interpolation.add(&eval.mul(&basis));
     }
     Ok(interpolation)

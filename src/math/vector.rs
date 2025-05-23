@@ -1,9 +1,10 @@
-use crypto_bigint::rand_core::RngCore;
-
 use super::ring::Ring;
+use crypto_bigint::rand_core::RngCore;
+use serde::Serialize;
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
 /// Vector whose elements belong to a ring.
+#[derive(Serialize, PartialEq, Eq, Debug)]
 pub struct Vector<T: Ring>(Vec<T>);
 
 impl<T> Vector<T>

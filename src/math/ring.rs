@@ -1,11 +1,10 @@
+use crypto_bigint::rand_core::RngCore;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     hash::Hash,
     ops::{Add, Mul, Sub},
 };
-
-use crypto_bigint::rand_core::RngCore;
-use serde::{Deserialize, Serialize};
 
 /// This trait represent an algebraic finite Ring.
 pub trait Ring:

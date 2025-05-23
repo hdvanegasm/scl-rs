@@ -1,26 +1,13 @@
-use crypto_bigint::{rand_core::RngCore, Limb, NonZero, RandomMod, Uint, Zero};
-use std::ops::{Add, Div, Mul, Sub};
-
-use serde::{Deserialize, Serialize};
-
-use crate::math::ring::Ring;
-
 use super::{naf::NafEncoding, FieldError, FiniteField};
+use crate::math::ring::Ring;
+use crypto_bigint::{rand_core::RngCore, Limb, NonZero, RandomMod, Uint, Zero};
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, Div, Mul, Sub};
 
 const LIMBS: usize = 4;
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct Secp256k1ScalarField(Uint<LIMBS>);
-
-fn test_bit<const LIMBS: usize>(input: Uint<LIMBS>, pos: usize) -> bool {
-    assert!((pos as u32) < LIMBS as u32 * Limb::BITS);
-    let bits_per_limb = Limb::BITS;
-
-    let limbs_input = input.as_limbs();
-    let limb = pos as u32 / bits_per_limb;
-    let limb_pos = pos as u32 % bits_per_limb;
-    ((limbs_input[limb as usize] >> limb_pos) & Limb::ONE) == Limb::ONE
-}
 
 impl Secp256k1ScalarField {
     pub fn to_naf(&self) -> NafEncoding {
@@ -48,7 +35,6 @@ impl Secp256k1ScalarField {
 }
 
 impl FiniteField<4> for Secp256k1ScalarField {
-    // TODO: Fix this number.
     const MODULUS: NonZero<Uint<4>> = NonZero::<Uint<4>>::new_unwrap(Uint::from_words([
         0xBFD25E8CD0364141,
         0xBAAEDCE6AF48A03B,
@@ -127,4 +113,14 @@ impl Div<&Self> for Secp256k1ScalarField {
         let inverse = rhs.inverse()?;
         Ok(self.mul(&inverse))
     }
+}
+
+fn test_bit<const LIMBS: usize>(input: Uint<LIMBS>, pos: usize) -> bool {
+    assert!((pos as u32) < LIMBS as u32 * Limb::BITS);
+    let bits_per_limb = Limb::BITS;
+
+    let limbs_input = input.as_limbs();
+    let limb = pos as u32 / bits_per_limb;
+    let limb_pos = pos as u32 % bits_per_limb;
+    ((limbs_input[limb as usize] >> limb_pos) & Limb::ONE) == Limb::ONE
 }

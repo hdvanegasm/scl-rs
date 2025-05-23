@@ -81,9 +81,9 @@ library. The interaction between parties are done using the functions `send` and
 ## Missing features
 
 - [x] ~Implement secp256k1~.
-- [ ] Implement Feldman VSS.
+- [x] ~Implement Feldman VSS~.
 - [ ] Document the source code.
-- [ ] Implement Shamir's secret-sharing.
+- [x] ~Implement Shamir's secret-sharing.~
 - [ ] Implement a fake network so that the final user can prototype MPC protocols locally.
 - [ ] Implement polynomials over the prime field of the elliptic curves which is useful for Feldman VSS.
 - [ ] Improve the serialization and deserialization to optimize the communication.

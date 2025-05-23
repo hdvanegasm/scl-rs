@@ -25,13 +25,13 @@ fn interpolation() {
             .map(|elem| Mersenne61::from(*elem as u64))
             .collect();
 
-        let evaluations = eval_points
+        let evaluations: Vec<Mersenne61> = eval_points
             .iter()
             .map(|x| random_poly.evaluate(x))
             .collect();
 
         let interpolated_evaluation =
-            interpolate_polynomial_at(evaluations, eval_points, &evaluation_test).unwrap();
+            interpolate_polynomial_at(&evaluations, &eval_points, &evaluation_test).unwrap();
 
         assert_eq!(
             interpolated_evaluation,

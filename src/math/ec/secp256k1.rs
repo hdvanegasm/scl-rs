@@ -1,19 +1,17 @@
-use std::ops::{Add, Mul};
-
-use crypto_bigint::Uint;
-use serde::{Deserialize, Serialize};
-
 use crate::math::{
     field::{
         secp256k1_prime::Secp256k1PrimeField, secp256k1_scalar::Secp256k1ScalarField, FiniteField,
     },
     ring::Ring,
 };
+use crypto_bigint::Uint;
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, Mul};
 
 use super::EllipticCurve;
 
 /// Implementation of secp256k1 using projective coordinates.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq)]
 pub struct Secp256k1(
     Secp256k1PrimeField,
     Secp256k1PrimeField,
@@ -21,7 +19,7 @@ pub struct Secp256k1(
 );
 
 /// Representation of a secp256k1 point using affine coordinates.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AffinePoint(Secp256k1PrimeField, Secp256k1PrimeField);
 
 impl AffinePoint {
@@ -114,6 +112,7 @@ impl Secp256k1 {
 impl EllipticCurve<4> for Secp256k1 {
     type ScalarField = Secp256k1ScalarField;
     type PrimeField = Secp256k1PrimeField;
+    const ZERO: Self = Self::POINT_AT_INFINITY;
 
     fn gen() -> Self {
         Self(
@@ -214,9 +213,15 @@ impl EllipticCurve<4> for Secp256k1 {
     fn sub(&self, rhs: &Self) -> Self {
         self.add(&rhs.negate())
     }
+}
 
+impl PartialEq for Secp256k1 {
     fn eq(&self, other: &Self) -> bool {
         self.x().mul(other.z()).eq(&other.x().mul(self.z()))
             && self.y().mul(other.z()).eq(&other.y().mul(self.z()))
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !(self == other)
     }
 }
