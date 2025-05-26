@@ -6,10 +6,14 @@ computation protocols (MPC).
 
 **scl-rs** provides the following features:
 
-- Traits for finite field arithmetic and an implementation of Mersenne61.
+- Traits for finite field arithmetic.
+- Implementation of Mersenne61 ($\mathbb{Z}_p$ with $p = 2^{61}-1$).
+- Implementation of secp256k1 using affine coordinates, its scalar field and its prime field.
+- Implementation of basic arithmetic for matrices and vectors with coefficients in rings.
+- Implementation of basic arithmetic over polynomials with coefficients in rings.
 - Communication point-to-point using TCP and secured using TLS.
 - Support for Lagrange interpolation over finite fields.
-- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, Shamir secret-sharing.
+- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, and Shamir secret-sharing.
 
 ## How to run
 
