@@ -40,10 +40,12 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
         result
     }
 
+    /// Returns the coefficients of the polynomial.
     pub fn coefficients(&self) -> &[T] {
         &self.0
     }
 
+    /// Returns the degree of the polynomial.
     pub fn degree(&self) -> usize {
         self.0.len() - 1
     }
@@ -57,12 +59,18 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
         Self(coefficients)
     }
 
+    /// Changes the value of the constant coefficient of the polynomial.
     pub fn set_constant_coeff(&mut self, value: T) {
         self[0] = value;
     }
 
+    /// Creates a polynomial from its coefficients.
+    ///
+    /// # Errors
+    ///
+    /// If the array of coefficients is empty, the function returns [`Error::EmptyCoefficients`].
     pub fn new(coef: Vec<T>) -> Result<Self, T> {
-        if coef.len() == 0 {
+        if coef.is_empty() {
             Err(Error::EmptyCoefficients)
         } else {
             Ok(Self(coef))
@@ -92,7 +100,12 @@ impl<const LIMBS: usize, const N: usize, T: FiniteField<LIMBS>> From<[T; N]>
     }
 }
 
-/// Computes the lagrange basis evaluated at `x`
+/// Computes the lagrange basis evaluated at `x`.
+///
+/// # Errors
+///
+/// The function returns [`Error::NotAllDifferentInterpolation`] if the list of nodes are not all
+/// different.
 pub fn compute_lagrange_basis<const LIMBS: usize, T: FiniteField<LIMBS>>(
     nodes: &[T],
     x: &T,
@@ -135,6 +148,10 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
 }
 
 /// Computes the evaluation of the interpolated polynomial at `x`.
+///
+/// # Error
+///
+/// If the lagrange basis is not computed correctly, the function returns an [`Error`].
 pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     evaluations: &[T],
     alphas: &[T],

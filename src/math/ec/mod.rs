@@ -8,12 +8,14 @@ pub mod secp256k1;
 pub trait EllipticCurve<const LIMBS: usize>:
     Serialize + for<'a> Deserialize<'a> + PartialEq + Copy + Clone
 {
+    /// Field of coefficients of the elliptic curve.
     type ScalarField: FiniteField<LIMBS>;
 
     /// Field in which the elliptic curve is defined. The points in the elliptic curve will be
     /// pairs in this field.
     type PrimeField: FiniteField<LIMBS>;
 
+    /// The zero point in the elliptic courve group.
     const ZERO: Self;
 
     /// Returns the generator of the curve.

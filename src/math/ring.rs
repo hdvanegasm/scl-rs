@@ -21,10 +21,13 @@ pub trait Ring:
     + Copy
     + Hash
 {
+    /// Bit size of an element of the ring.
     const BIT_SIZE: usize;
+
     /// Additive identity of the ring.
     const ZERO: Self;
 
+    /// Number of limbs used to represent a ring element.
     const LIMBS: usize;
 
     /// Multiplicative identity of the ring.
@@ -36,5 +39,6 @@ pub trait Ring:
     /// Generates a random finite ring element with a provided pseudo-random generator.
     fn random<R: RngCore>(generator: &mut R) -> Self;
 
+    /// Returns a non-zero element from the ring sampled uniformly at random.
     fn random_non_zero<R: RngCore>(generator: &mut R) -> Self;
 }

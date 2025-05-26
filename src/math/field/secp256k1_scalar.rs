@@ -6,10 +6,12 @@ use std::ops::{Add, Div, Mul, Sub};
 
 const LIMBS: usize = 4;
 
+/// Represents a finite field modulo a secp256k1 prime order sub-group.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct Secp256k1ScalarField(Uint<LIMBS>);
 
 impl Secp256k1ScalarField {
+    /// Computes the NAF representation of this field element.
     pub fn to_naf(&self) -> NafEncoding {
         let mut naf = NafEncoding::new(Self::BIT_SIZE + 1);
         let mut val = self.0;
@@ -115,6 +117,7 @@ impl Div<&Self> for Secp256k1ScalarField {
     }
 }
 
+/// Returns `true` if the bit in the position is 1, otherwise returns `false`.
 fn test_bit<const LIMBS: usize>(input: Uint<LIMBS>, pos: usize) -> bool {
     assert!((pos as u32) < LIMBS as u32 * Limb::BITS);
     let bits_per_limb = Limb::BITS;

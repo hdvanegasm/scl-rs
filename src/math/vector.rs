@@ -3,8 +3,16 @@ use crypto_bigint::rand_core::RngCore;
 use serde::Serialize;
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("the operands do not have the same dimension: {0:?} and {1:?}")]
+    IncompatibleDimension(usize, usize),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Vector whose elements belong to a ring.
-#[derive(Serialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, PartialEq, Eq, Debug, Clone)]
 pub struct Vector<T: Ring>(Vec<T>);
 
 impl<T> Vector<T>
@@ -16,8 +24,9 @@ where
         self.0.len()
     }
 
+    /// Returns whether the vector has no elements.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.0.is_empty()
     }
 
     /// Generates a vector of zeroes.
@@ -40,12 +49,15 @@ where
     }
 
     /// Computes the dot product between two vectors.
-    pub fn dot(&self, other: &Vector<T>) -> T {
+    pub fn dot(&self, other: &Vector<T>) -> Result<T> {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
         let mut result = T::ZERO;
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
             result = result + &(*self_elem * other_elem);
         }
-        result
+        Ok(result)
     }
 }
 
@@ -82,14 +94,35 @@ impl<T> Add<&Vector<T>> for Vector<T>
 where
     T: Ring,
 {
-    type Output = Self;
+    type Output = Result<Self>;
 
     fn add(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
             output.push(*self_elem + other_elem);
         }
-        Self(output)
+        Ok(Self(output))
+    }
+}
+
+impl<T> Add<&Vector<T>> for &Vector<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn add(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
+        let mut output = Vec::with_capacity(other.0.len());
+        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
+            output.push(*self_elem + other_elem);
+        }
+        Ok(Vector(output))
     }
 }
 
@@ -97,14 +130,35 @@ impl<T> Sub<&Vector<T>> for Vector<T>
 where
     T: Ring,
 {
-    type Output = Self;
+    type Output = Result<Self>;
 
     fn sub(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
             output.push(*self_elem - other_elem);
         }
-        Self(output)
+        Ok(Self(output))
+    }
+}
+
+impl<T> Sub<&Vector<T>> for &Vector<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn sub(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
+        let mut output = Vec::with_capacity(other.0.len());
+        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
+            output.push(*self_elem - other_elem);
+        }
+        Ok(Vector(output))
     }
 }
 
@@ -112,13 +166,34 @@ impl<T> Mul<&Vector<T>> for Vector<T>
 where
     T: Ring,
 {
-    type Output = Self;
+    type Output = Result<Self>;
 
     fn mul(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
             output.push(*self_elem * other_elem);
         }
-        Self(output)
+        Ok(Self(output))
+    }
+}
+
+impl<T> Mul<&Vector<T>> for &Vector<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn mul(self, other: &Vector<T>) -> Self::Output {
+        if self.len() != other.len() {
+            return Err(Error::IncompatibleDimension(self.len(), other.len()));
+        }
+        let mut output = Vec::with_capacity(other.0.len());
+        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
+            output.push(*self_elem * other_elem);
+        }
+        Ok(Vector(output))
     }
 }

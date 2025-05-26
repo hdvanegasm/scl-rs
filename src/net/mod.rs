@@ -21,18 +21,23 @@ use std::{
 };
 use thiserror::Error;
 
+/// Error type for network errors.
 #[derive(Debug, Error)]
 pub enum NetworkError {
+    /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
     TlsError(rustls::Error),
 
+    /// This error is returned when there is an IO error.
     #[error("IO error: {0:?}")]
     IoError(io::Error),
 
+    /// This error encapsulates a channel error.
     #[error("channel error: {0:?}")]
     ChannelError(channel::ChannelError),
 }
 
+/// Special type for the network error.
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
 // This packet can be changed such that the elements in it can be of multiple types.
@@ -71,6 +76,7 @@ impl Packet {
         self.0.len()
     }
 
+    /// Extract the first element in the packet.
     pub fn pop<'de, T>(&mut self) -> T
     where
         T: Deserialize<'de>,
@@ -78,10 +84,12 @@ impl Packet {
         todo!()
     }
 
+    /// Read the element at the given index inside the packet.
     pub fn read<T>(&self, _obj_idx: usize) -> T {
         todo!()
     }
 
+    /// Write an element at the end of the packet.
     pub fn write<T>(&mut self, _obj: T)
     where
         T: Serialize,
@@ -206,6 +214,12 @@ pub struct Network {
 }
 
 impl Network {
+    /// Configure the TLS channel according to the provided network configuration.
+    ///
+    /// # Error
+    ///
+    /// The function returns an error if the cerificate and the private key are not configured
+    /// correctly.
     fn configure_tls(config: &NetworkConfig<'static>) -> Result<(ClientConfig, ServerConfig)> {
         // Configure the client TLS
         let client_conf = ClientConfig::builder()
@@ -222,6 +236,15 @@ impl Network {
 
     /// Creates a new network using the ID of the current party and the number of parties connected
     /// to the network.
+    ///
+    /// # Error
+    ///
+    /// The function returns an error in the following cases:
+    /// - When the binding of the channel to a certain IP address is
+    /// not done correctly.
+    /// - When the TLS configuration is not done correctly.
+    /// - When the node is trying to connect as a server but is unable to accept the provided
+    /// client.
     pub fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
         log::info!("creating network");
         let n_parties = config.peer_ips.len();

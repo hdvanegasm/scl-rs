@@ -23,14 +23,17 @@ pub struct Secp256k1(
 pub struct AffinePoint(Secp256k1PrimeField, Secp256k1PrimeField);
 
 impl AffinePoint {
+    /// Returns the x-coordinate of the affine point.
     pub fn x(&self) -> &Secp256k1PrimeField {
         &self.0
     }
 
+    /// Returns the y-coordinate of the affine point.
     pub fn y(&self) -> &Secp256k1PrimeField {
         &self.1
     }
 
+    /// Checks if the affine point lies in the elliptic curve.
     pub fn is_valid(&self) -> bool {
         let b = Secp256k1PrimeField::from(7);
         let lhs = self.y().mul(self.y());
@@ -78,6 +81,7 @@ impl Secp256k1 {
         self.z().eq(&Secp256k1PrimeField::ZERO)
     }
 
+    /// Doubles this point.
     pub fn dbl(&self) -> Self {
         let b3 = Secp256k1PrimeField::from(3 * 7);
 

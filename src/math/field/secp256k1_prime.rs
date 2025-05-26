@@ -4,10 +4,12 @@ use crypto_bigint::{rand_core::RngCore, NonZero, RandomMod, Uint, Zero};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Sub};
 
+/// Represents an element in the field in which secp256k1 is defined.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub struct Secp256k1PrimeField(Uint<4>);
 
 impl Secp256k1PrimeField {
+    /// Created a new point in the field in which secp256k1 is defined.
     pub fn new(value: Uint<4>) -> Self {
         Self(value)
     }
