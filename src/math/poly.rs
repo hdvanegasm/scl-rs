@@ -147,7 +147,7 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
     true
 }
 
-/// Computes the evaluation of the interpolated polynomial at `x`.
+/// Computes the evaluation of the interpolated polynomial at `x` using the naive Lagrange formula.
 ///
 /// # Error
 ///
@@ -157,8 +157,8 @@ pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     alphas: &[T],
     x: &T,
 ) -> Result<T, T> {
-    assert!(alphas.len() > 0);
-    assert!(alphas.len() == evaluations.len());
+    assert!(!alphas.is_empty());
+    assert_eq!(alphas.len(), evaluations.len());
     let lagrange_basis = compute_lagrange_basis(alphas, x)?;
     let mut interpolation = T::ZERO;
     for (eval, basis) in evaluations.iter().zip(lagrange_basis) {

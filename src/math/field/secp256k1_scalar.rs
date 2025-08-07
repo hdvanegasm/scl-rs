@@ -64,8 +64,8 @@ impl From<u64> for Secp256k1ScalarField {
 impl Ring for Secp256k1ScalarField {
     const BIT_SIZE: usize = Self::LIMBS * Limb::BITS as usize;
     const ZERO: Self = Self(Uint::ZERO);
-    const ONE: Self = Self(Uint::ONE);
     const LIMBS: usize = 4;
+    const ONE: Self = Self(Uint::ONE);
 
     fn negate(&self) -> Self {
         Self(self.0.neg_mod(&Self::MODULUS))

@@ -1,19 +1,16 @@
-use std::hash::Hash;
-use std::ops::Add;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Sub;
-
+use super::FieldError;
+use super::FiniteField;
+use crate::math::ring::Ring;
 use crypto_bigint::rand_core::RngCore;
 use crypto_bigint::NonZero;
 use crypto_bigint::U64;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::math::ring::Ring;
-
-use super::FieldError;
-use super::FiniteField;
+use std::hash::Hash;
+use std::ops::Add;
+use std::ops::Div;
+use std::ops::Mul;
+use std::ops::Sub;
 
 /// Representation of a field element modulo 2^{61} - 1.
 #[derive(PartialEq, Eq, Copy, Serialize, Deserialize, Clone, Debug)]

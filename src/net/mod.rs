@@ -1,4 +1,5 @@
 pub mod channel;
+pub mod fake;
 
 use crate::net::channel::Channel;
 use channel::{DummyChannel, LoopBackChannel};
@@ -6,7 +7,7 @@ use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore, ServerConfig, StreamOwned,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     cmp::Ordering,
@@ -35,78 +36,87 @@ pub enum NetworkError {
     /// This error encapsulates a channel error.
     #[error("channel error: {0:?}")]
     ChannelError(channel::ChannelError),
+
+    #[error("error during the serialization: {0:?}")]
+    SerializationError(#[from] bincode::error::EncodeError),
 }
 
 /// Special type for the network error.
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
-// This packet can be changed such that the elements in it can be of multiple types.
-// The idea would be as follows. The packet is a Vec<Vec<u8>>, so the packet has the structure
-//
-// [
-//  [obj1 bytes]
-//  [obj2 bytes]
-//  [obj3 bytes]
-// ]
-//
-// Hence each object can be deserialized according with its method. The method `read()` should be
-// changed so that one can read an element from the packet at a time, as in a queue or a deque. So
-// once you execute `read()` you obtain the first element of the vector (for example).
-
 /// Packet of information sent through a given channel.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Packet(Vec<u8>);
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Packet(Vec<Vec<u8>>);
 
 impl Packet {
+    /// Creates an empty [`Packet`].
     pub fn empty() -> Self {
         Self(Vec::new())
     }
-    /// Creates a new packet.
-    pub fn new(buffer: Vec<u8>) -> Self {
+
+    /// Creates a new [`Packet`] from a buffer.
+    pub fn new(buffer: Vec<Vec<u8>>) -> Self {
         Self(buffer)
     }
 
-    /// Returns an slice to the packet.
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Returns the size of the packet.
+    /// Returns the size of the [`Packet`].
     pub fn size(&self) -> usize {
-        self.0.len()
+        self.0
+            .iter()
+            .fold(0, |total_length, obj| total_length + obj.len())
     }
 
-    /// Extract the first element in the packet.
-    pub fn pop<'de, T>(&mut self) -> T
+    /// Extract the last element added into the [`Packet`].
+    pub fn pop<'de, T>(&mut self) -> Option<T>
     where
-        T: Deserialize<'de>,
+        T: DeserializeOwned,
     {
-        todo!()
+        let bytes = self.0.pop()?;
+        let (object, _) = bincode::serde::decode_from_slice(
+            &bytes,
+            bincode::config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )
+        .ok()?;
+        Some(object)
     }
 
-    /// Read the element at the given index inside the packet.
-    pub fn read<T>(&self, _obj_idx: usize) -> T {
-        todo!()
+    /// Read the element at the given index inside the [`Packet`].
+    pub fn read<'de, T>(&self, obj_idx: usize) -> Option<T>
+    where
+        T: DeserializeOwned,
+    {
+        let bytes = self.0.get(obj_idx)?;
+        let (object, _) = bincode::serde::decode_from_slice(
+            bytes,
+            bincode::config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )
+        .ok()?;
+        Some(object)
     }
 
     /// Write an element at the end of the packet.
-    pub fn write<T>(&mut self, _obj: T)
+    pub fn write<T>(&mut self, obj: &T) -> Result<()>
     where
         T: Serialize,
     {
-        todo!()
-    }
-}
-
-impl From<&[u8]> for Packet {
-    fn from(value: &[u8]) -> Self {
-        Self(Vec::from(value))
+        let bytes_obj = bincode::serde::encode_to_vec(
+            obj,
+            bincode::config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )?;
+        self.0.push(bytes_obj);
+        Ok(())
     }
 }
 
 /// Configuration of the network
 pub struct NetworkConfig<'a> {
-    /// Port that will be use as a base to define the port of each party. Party `i` will listen at
+    /// Port that will be used as a base to define the port of each party. Party `i` will listen at
     /// port `base_port + i`.
     base_port: u16,
     /// Timeout for receiving a message after calling the `recv()` function.
@@ -192,11 +202,11 @@ impl NetworkConfig<'_> {
             ))? as u16,
             timeout: Duration::from_millis(json["timeout"].as_u64().ok_or(Error::new(
                 ErrorKind::InvalidInput,
-                "timeout is not correct",
+                "the timeout is not correct",
             ))?),
             sleep_time: Duration::from_millis(json["sleep_time"].as_u64().ok_or(Error::new(
                 ErrorKind::InvalidInput,
-                "the timeout is not correct",
+                "the sleep time is not correct",
             ))?),
             peer_ips,
             root_cert_store,
@@ -241,10 +251,10 @@ impl Network {
     ///
     /// The function returns an error in the following cases:
     /// - When the binding of the channel to a certain IP address is
-    /// not done correctly.
+    ///   not done correctly.
     /// - When the TLS configuration is not done correctly.
     /// - When the node is trying to connect as a server but is unable to accept the provided
-    /// client.
+    ///   client.
     pub fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
         log::info!("creating network");
         let n_parties = config.peer_ips.len();

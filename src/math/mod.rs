@@ -1,3 +1,6 @@
+//! This module contains all the mathematical utilities commonly used in cryptography, such as,
+//! basic abstract algebra structures, matrices, vectors, polynomials, and elliptic curves.
+
 /// This module contains the main traits and implementations of finite fields.
 pub mod field;
 

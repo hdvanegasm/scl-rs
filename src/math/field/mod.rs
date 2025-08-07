@@ -7,10 +7,14 @@ use thiserror::Error;
 /// finite field of integers modulo $2^61 - 1$.
 pub mod mersenne61;
 
+/// This module contains the field used to define the elliptic curve secp256k1.
 pub mod secp256k1_prime;
 
+/// This module contains the scalar field for secp256k1 curve.
 pub mod secp256k1_scalar;
 
+/// This module contains the Non-Adjacent Form (NAF) implementation for a field element. This is
+/// particularly useful to implement some elliptic curve operations.
 pub mod naf;
 
 /// Errors for mathematical operations between field elements.

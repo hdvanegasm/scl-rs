@@ -45,7 +45,7 @@ where
     }
 
     pub fn secret_from_shares(shares: &[Self], party_indexes: &[F]) -> Result<F, ShareError<F>> {
-        if shares.len() == 0 {
+        if shares.is_empty() {
             return Err(ShareError::NotEnoughShares);
         }
 

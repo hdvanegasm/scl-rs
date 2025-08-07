@@ -3,13 +3,17 @@ use crate::math::{ec::EllipticCurve, poly::compute_lagrange_basis};
 use crypto_bigint::rand_core::RngCore;
 use serde::Serialize;
 
+/// Represents a Feldman Secret Sharing element.
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct FeldmanSS<const LIMBS: usize, C: EllipticCurve<LIMBS>> {
+    /// The Shamir secret sharing for the Feldman representation.
     shamir_share: ShamirSS<LIMBS, C::ScalarField>,
+    /// The commitment of this share.
     commitments: Vec<C>,
 }
 
 impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
+    /// Creates a new Feldman Secret Sharing element.
     pub fn new(shamir_share: ShamirSS<LIMBS, C::ScalarField>, commitments: Vec<C>) -> Self {
         Self {
             shamir_share,
@@ -21,21 +25,23 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     pub fn is_valid(&self, party_indexes: &[C::ScalarField], share_idx: &C::ScalarField) -> bool {
         let lagrange_basis_result = compute_lagrange_basis(party_indexes, share_idx);
         if lagrange_basis_result.is_err() {
-            return false;
+            false
         } else {
             let lagrange_basis = lagrange_basis_result.unwrap();
             let mut inner_prod = C::ZERO;
             for (basis, commitment) in lagrange_basis.iter().zip(self.commitments.iter()) {
                 inner_prod = inner_prod.add(&commitment.scalar_mul(basis));
             }
-            return inner_prod == C::gen().scalar_mul(self.shamir_share().share());
+            inner_prod == C::gen().scalar_mul(self.shamir_share().share())
         }
     }
 
+    /// Returns the Shamir secret share associated with the Feldman share.
     pub fn shamir_share(&self) -> &ShamirSS<LIMBS, C::ScalarField> {
         &self.shamir_share
     }
 
+    /// Computes the Feldman Shares of a secret element.
     pub fn shares_from_secret(
         secret: C::ScalarField,
         degree: usize,
@@ -54,6 +60,7 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
             .collect()
     }
 
+    /// Recovers the secret from its shares.
     pub fn secret_from_shares(
         shares: &[Self],
         party_indexes: &[C::ScalarField],

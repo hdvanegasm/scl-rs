@@ -224,8 +224,4 @@ impl PartialEq for Secp256k1 {
         self.x().mul(other.z()).eq(&other.x().mul(self.z()))
             && self.y().mul(other.z()).eq(&other.y().mul(self.z()))
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        !(self == other)
-    }
 }

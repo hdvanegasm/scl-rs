@@ -20,20 +20,20 @@ use thiserror::Error;
 pub enum ChannelError {
     /// The party tried to connect to the other party but the timeout was reached.
     #[error("connection timeout")]
-    Timeout,
+    ConnectionTimeout,
 
     /// Trying to read from a channel with no information.
     #[error("channel buffer is empty")]
     EmptyBuffer,
 
     #[error("error during serialization")]
-    BadInputSerialization(bincode::error::EncodeError),
+    SerializationError(#[from] bincode::error::EncodeError),
 
     #[error("error during deserialization")]
-    BadInputDeserialization(bincode::error::DecodeError),
+    DeserializationError(#[from] bincode::error::DecodeError),
 
     #[error("error in IO")]
-    IoError(io::Error),
+    IoError(#[from] io::Error),
 
     #[error("error in TLS")]
     TlsError(rustls::Error),
@@ -77,13 +77,20 @@ where
                 .with_big_endian()
                 .with_fixed_int_encoding(),
         )
-        .map_err(ChannelError::BadInputSerialization)?;
+        .map_err(ChannelError::SerializationError)?;
         self.write_all(&bytes_size_packet)
             .map_err(ChannelError::IoError)?;
 
         // Then, we send the actual packet.
-        self.write_all(packet.as_slice())
-            .map_err(ChannelError::IoError)?;
+        let mut packet_bytes = Vec::new();
+        bincode::serde::encode_into_slice(
+            packet,
+            &mut packet_bytes,
+            config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )?;
+        self.write_all(&packet_bytes)?;
         Ok(packet.size())
     }
 
@@ -97,14 +104,19 @@ where
                 .with_big_endian()
                 .with_fixed_int_encoding(),
         )
-        .map_err(ChannelError::BadInputDeserialization)?;
+        .map_err(ChannelError::DeserializationError)?;
 
         // Then, we receive the buffer the amount bytes until the end is reached.
         let mut payload_buffer = vec![0; packet_size];
-        self.read_exact(&mut payload_buffer)
-            .map_err(ChannelError::IoError)?;
+        self.read_exact(&mut payload_buffer)?;
+        let (packet, _) = bincode::serde::decode_from_slice(
+            &payload_buffer,
+            config::standard()
+                .with_big_endian()
+                .with_fixed_int_encoding(),
+        )?;
 
-        Ok(Packet::new(payload_buffer))
+        Ok(Packet::new(packet))
     }
 }
 
@@ -226,7 +238,7 @@ pub(crate) fn connect_as_client(
                         "timeout reached, server not listening from ID {local_id} to server {:?}",
                         remote_addr
                     );
-                    return Err(ChannelError::Timeout);
+                    return Err(ChannelError::ConnectionTimeout);
                 }
                 // The connection was not successfull. Hence, we try to connect again with the
                 // "server" party.
@@ -252,7 +264,7 @@ impl Channel for LoopBackChannel {
 
     fn send(&mut self, packet: &Packet) -> Result<usize> {
         log::info!("sent {} bytes to myself", packet.0.len());
-        self.buffer.push_back(Packet::from(packet.as_slice()));
+        self.buffer.push_back(packet.clone());
         Ok(packet.0.len())
     }
 

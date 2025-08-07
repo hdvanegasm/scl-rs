@@ -11,6 +11,10 @@ impl NafEncoding {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Creates a new NAF representation using a given maximum number of digits.
     pub fn new(capacity: usize) -> Self {
         Self(vec![0; capacity])

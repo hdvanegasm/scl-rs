@@ -55,9 +55,9 @@ The fields above are explained next:
 - The `peer_ips` is the list of IPs for all the peers engaged in the protocol.
   In this case, the array is specified in such a way that the party with index
   `i` has IP `peer_ips[i]`.
-- The server_cert is the certificate path for that node for secure communication.
+- The `server_cert` is the certificate path for that node for secure communication.
 - The `priv_key` is the file with the private key associated with the
-  certificate in server_cert. This private key is used for secure communication.
+  certificate in `server_cert`. This private key is used for secure communication.
 - `trusted_certs` is a list of paths with trusted CA certificates. This is useful
   in executions where the certificates are self-signed.
 
