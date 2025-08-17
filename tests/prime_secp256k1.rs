@@ -3,7 +3,7 @@ use scl_rs::math::{
     field::{secp256k1_prime::Secp256k1PrimeField, FiniteField},
     ring::Ring,
 };
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Mul, Sub};
 
 #[test]
 fn subtraction_validity() {

@@ -1,5 +1,5 @@
 pub mod channel;
-pub mod fake;
+pub mod simulation;
 
 use crate::net::channel::Channel;
 use channel::{DummyChannel, LoopBackChannel};

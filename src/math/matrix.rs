@@ -136,7 +136,7 @@ where
         self.elements.get_mut(self.rows * i + j)
     }
 
-    /// Return wether this matrix is compatible with another matrix for
+    /// Return whether this matrix is compatible with another matrix for
     /// multiplication.
     fn is_compatible_with(&self, other: &Self) -> bool {
         self.rows == other.rows && self.columns == other.columns

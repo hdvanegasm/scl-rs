@@ -13,7 +13,8 @@ computation protocols (MPC).
 - Implementation of basic arithmetic over polynomials with coefficients in rings.
 - Communication point-to-point using TCP and secured using TLS.
 - Support for Lagrange interpolation over finite fields.
-- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, and Shamir secret-sharing.
+- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, and Shamir
+  secret-sharing.
 
 ## How to run
 
@@ -76,14 +77,15 @@ configuration file to the constructor function of the `NetworkConfig` instance.
 Once the network configuration is loaded, you create a `Network` instance that
 contains the channels to the peers.
 
-The communication channels send `Packet` instances, which is an 
-encapsulation of bytes. As an example, the packets may contain information of 
-shares, field elements, polynomials, elliptic curve points, or any other serializable type in the 
-library. The interaction between parties are done using the functions `send` and 
+The communication channels send `Packet` instances, which is an
+encapsulation of bytes. As an example, the packets may contain information of
+shares, field elements, polynomials, elliptic curve points, or any other serializable type in the
+library. The interaction between parties are done using the functions `send` and
 `recv` defined in the `Network` implementation.
 
 ## Missing features
 
+- [ ] Write missing tests for all the functionalities.
 - [x] ~Implement secp256k1~.
 - [x] ~Implement Feldman VSS~.
 - [ ] Document the source code.
@@ -95,4 +97,5 @@ library. The interaction between parties are done using the functions `send` and
 
 ## Acknowledgements
 
-I want to thank [HashCloak Inc](https://hashcloak.com/) for allowing me to dedicate some time to the development of this project as part of an internal learning initiative. I also want to thank Anders Dalskov for its support and help.
+I want to thank [HashCloak Inc](https://hashcloak.com/) for allowing me to dedicate some time to the development of this
+project as part of an internal learning initiative. I also want to thank Anders Dalskov for its support and help.

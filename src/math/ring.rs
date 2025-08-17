@@ -42,8 +42,10 @@ pub trait Ring:
     /// Returns a non-zero element from the ring sampled uniformly at random.
     fn random_non_zero<R: RngCore>(generator: &mut R) -> Self;
 
-    /// Computes the power of a ring with an exponent. The maximum possible exponent is $2^{64}$
-    /// which is enough for common cryptography applications. This algorithm was adapted from the [num-bigint](https://github.com/rust-num/num-bigint/blob/master/src/biguint/power.rs) crate.
+    /// Computes the power of a ring with an exponent.
+    ///
+    /// The maximum possible exponent is $2^{64}$ which is enough for common cryptography
+    /// applications. This algorithm was adapted from the [num-bigint](https://github.com/rust-num/num-bigint/blob/master/src/biguint/power.rs) crate.
     fn pow(&self, mut exp: u64) -> Self {
         if exp == 0 {
             Self::ONE
