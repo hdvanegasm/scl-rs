@@ -1,14 +1,18 @@
 pub mod channel;
 pub mod simulation;
 
-use crate::net::channel::Channel;
-use channel::{DummyChannel, LoopBackChannel};
+use crate::net::channel::{Channel, ChannelError, TcpChannel};
+use crate::net::simulation::channel::ChannelId;
+use crate::net::simulation::channel::NetworkType::Tcp;
+use async_trait::async_trait;
+use channel::LoopBackChannel;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore, ServerConfig, StreamOwned,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 use std::{
     cmp::Ordering,
     net::{Ipv4Addr, SocketAddr, TcpListener},
@@ -22,20 +26,29 @@ use std::{
 };
 use thiserror::Error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Eq, Default)]
+pub struct PartyId(usize);
+
+impl From<PartyId> for usize {
+    fn from(id: PartyId) -> Self {
+        id.0
+    }
+}
+
 /// Error type for network errors.
 #[derive(Debug, Error)]
 pub enum NetworkError {
     /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
-    TlsError(rustls::Error),
+    TlsError(#[from] rustls::Error),
 
     /// This error is returned when there is an IO error.
     #[error("IO error: {0:?}")]
-    IoError(io::Error),
+    IoError(#[from] io::Error),
 
     /// This error encapsulates a channel error.
     #[error("channel error: {0:?}")]
-    ChannelError(channel::ChannelError),
+    ChannelError(#[from] ChannelError),
 
     #[error("error during the serialization: {0:?}")]
     SerializationError(#[from] bincode::error::EncodeError),
@@ -45,8 +58,18 @@ pub enum NetworkError {
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
 /// Packet of information sent through a given channel.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Packet(Vec<Vec<u8>>);
+
+impl PartialEq<Packet> for Arc<Packet> {
+    fn eq(&self, other: &Packet) -> bool {
+        self.0 == other.0
+    }
+
+    fn ne(&self, other: &Packet) -> bool {
+        self.0 != other.0
+    }
+}
 
 impl Packet {
     /// Creates an empty [`Packet`].
@@ -216,19 +239,31 @@ impl NetworkConfig<'_> {
     }
 }
 
-/// Network that contains all the channels connected to the party. Each channel is
-/// a connection to other parties.
-pub struct Network {
-    /// Channnels for each peer.
-    peer_channels: Vec<Box<dyn Channel>>,
+#[async_trait]
+pub trait Network {
+    async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
+    async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
+    async fn close(&mut self) -> Result<()>;
 }
 
-impl Network {
+/// Network that contains all the channels connected to the party. Each channel is
+/// a connection to other parties.
+pub struct TcpNetwork {
+    /// Channels for each peer.
+    peer_channels: Vec<TcpChannel>,
+}
+
+impl TcpNetwork {
+    /// Creates a new network from its channels.
+    pub fn new(peer_channels: Vec<TcpChannel>) -> Self {
+        Self { peer_channels }
+    }
+
     /// Configure the TLS channel according to the provided network configuration.
     ///
     /// # Error
     ///
-    /// The function returns an error if the cerificate and the private key are not configured
+    /// The function returns an error if the certificate and the private key are not configured
     /// correctly.
     fn configure_tls(config: &NetworkConfig<'static>) -> Result<(ClientConfig, ServerConfig)> {
         // Configure the client TLS
@@ -266,14 +301,7 @@ impl Network {
 
         let (client_conf, server_conf) = Self::configure_tls(&config)?;
 
-        let mut peers: Vec<Box<dyn Channel>> = Vec::new();
-        for i in 0..n_parties {
-            if i != id {
-                peers.push(Box::new(DummyChannel));
-            } else {
-                peers.push(Box::new(LoopBackChannel::default()));
-            }
-        }
+        let mut peers = Vec::new();
 
         for i in 0..n_parties {
             match i.cmp(&id) {
@@ -288,22 +316,20 @@ impl Network {
                         config.timeout,
                         config.sleep_time,
                         &client_conf,
-                    )
-                    .map_err(NetworkError::ChannelError)?;
+                    )?;
                     let stream = StreamOwned::new(client_conn, tcp_stream);
-                    peers[i] = Box::new(stream);
+                    peers.push(TcpChannel::StreamClient(stream));
                 }
                 Ordering::Greater => {
                     log::info!("acting as a server for peer ID {i}");
-                    let (server_conn, tcp_stream, remote_id) =
-                        channel::accept_connection(&server_listener, &server_conf)
-                            .map_err(NetworkError::ChannelError)?;
+                    let (server_conn, tcp_stream, _) =
+                        channel::accept_connection(&server_listener, &server_conf)?;
                     let stream = StreamOwned::new(server_conn, tcp_stream);
-                    peers[remote_id] = Box::new(stream);
+                    peers.push(TcpChannel::StreamServer(stream));
                 }
                 Ordering::Equal => {
                     log::info!("adding the loop-back channel");
-                    peers[i] = Box::new(LoopBackChannel::default());
+                    peers.push(TcpChannel::LoopBack(LoopBackChannel::default()));
                 }
             }
         }
@@ -313,7 +339,7 @@ impl Network {
     }
 
     /// Send a packet to every party in the network.
-    pub fn send(&mut self, packet: &Packet) -> Result<usize> {
+    pub async fn send(&mut self, packet: &Packet) -> Result<usize> {
         let mut bytes_sent = 0;
         for i in 0..self.peer_channels.len() {
             bytes_sent = self
@@ -321,13 +347,14 @@ impl Network {
                 .get_mut(i)
                 .expect("channel index not found")
                 .send(packet)
+                .await
                 .map_err(NetworkError::ChannelError)?;
         }
         Ok(bytes_sent)
     }
 
     /// Receive a packet from each party in the network.
-    pub fn recv(&mut self) -> Result<Vec<Packet>> {
+    pub async fn recv(&mut self) -> Result<Vec<Packet>> {
         let mut packets = Vec::new();
         for i in 0..self.peer_channels.len() {
             let packet = self
@@ -335,38 +362,45 @@ impl Network {
                 .get_mut(i)
                 .expect("channel index not found")
                 .recv()
+                .await
                 .map_err(NetworkError::ChannelError)?;
             packets.push(packet);
         }
 
         Ok(packets)
     }
+}
 
-    /// Closes the network by closing each channel.
-    pub fn close(&mut self) -> Result<()> {
-        for i in 0..self.peer_channels.len() {
-            self.peer_channels
-                .get_mut(i)
-                .expect("channel index not found")
-                .shutdown()
-                .map_err(NetworkError::ChannelError)?;
-        }
-        Ok(())
-    }
-
+#[async_trait]
+impl Network for TcpNetwork {
     /// Sends a packet of information to a given party.
-    pub fn send_to(&mut self, packet: &Packet, party_id: usize) -> Result<usize> {
-        let bytes_sent = self.peer_channels[party_id]
+    async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize> {
+        let bytes_sent = self.peer_channels[usize::from(party_id)]
             .send(packet)
+            .await
             .map_err(NetworkError::ChannelError)?;
         Ok(bytes_sent)
     }
 
     /// Receives a packet from a given party.
-    pub fn recv_from(&mut self, party_id: usize) -> Result<Packet> {
-        let packet = self.peer_channels[party_id]
+    async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet> {
+        let packet = self.peer_channels[usize::from(party_id)]
             .recv()
+            .await
             .map_err(NetworkError::ChannelError)?;
         Ok(packet)
+    }
+
+    /// Closes the network by closing each channel.
+    async fn close(&mut self) -> Result<()> {
+        for i in 0..self.peer_channels.len() {
+            self.peer_channels
+                .get_mut(i)
+                .expect("channel index not found")
+                .close()
+                .await
+                .map_err(NetworkError::ChannelError)?;
+        }
+        Ok(())
     }
 }

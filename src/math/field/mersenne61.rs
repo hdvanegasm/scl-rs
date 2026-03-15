@@ -28,9 +28,17 @@ impl From<u64> for Mersenne61 {
 
 impl Ring for Mersenne61 {
     const BIT_SIZE: usize = 61;
-    const ONE: Self = Self(1);
     const ZERO: Self = Self(0);
     const LIMBS: usize = 1;
+    const ONE: Self = Self(1);
+
+    fn negate(&self) -> Self {
+        if !self.eq(&Self::ZERO) {
+            Self::from(u64::from(Self::MODULUS.to_limbs()[0]) - self.0)
+        } else {
+            Self::ZERO
+        }
+    }
 
     fn random<R: RngCore>(generator: &mut R) -> Self {
         let value: u64 = generator.next_u64();
@@ -43,14 +51,6 @@ impl Ring for Mersenne61 {
             value = generator.next_u64();
         }
         Self::from(value)
-    }
-
-    fn negate(&self) -> Self {
-        if !self.eq(&Self::ZERO) {
-            Self::from(u64::from(Self::MODULUS.to_limbs()[0]) - self.0)
-        } else {
-            Self::ZERO
-        }
     }
 }
 

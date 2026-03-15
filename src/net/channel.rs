@@ -1,4 +1,8 @@
+use crate::net;
+use crate::net::simulation::channel::ChannelId;
+use crate::net::simulation::context;
 use crate::net::Packet;
+use async_trait::async_trait;
 use bincode::config;
 use rustls::pki_types::ServerName;
 use rustls::{
@@ -37,34 +41,45 @@ pub enum ChannelError {
 
     #[error("error in TLS")]
     TlsError(rustls::Error),
+
+    #[error("channel not found: {0:?}")]
+    ChannelNotFound(ChannelId),
+
+    #[error("error in the context: {0:?}")]
+    ContextError(#[from] context::Error),
+
+    #[error("error in the underlying network: {0:?}")]
+    NetworkError(#[from] Box<crate::net::NetworkError>),
 }
 
 /// Specialized [`Result`] for channel errors.
 pub type Result<T> = std::result::Result<T, ChannelError>;
 
 /// Defines a channel of the network.
+#[async_trait]
 pub trait Channel {
     /// Closes a channel.
-    fn shutdown(&mut self) -> Result<()>;
+    async fn close(&mut self) -> Result<()>;
     /// Send a packet using the current channel.
-    fn send(&mut self, packet: &Packet) -> Result<usize>;
+    async fn send(&mut self, packet: &Packet) -> Result<usize>;
     /// Receives a packet from the current channel.
-    fn recv(&mut self) -> Result<Packet>;
+    async fn recv(&mut self) -> Result<Packet>;
 }
 
+#[async_trait]
 impl<C, T, S> Channel for StreamOwned<C, T>
 where
-    C: Sized + DerefMut + Deref<Target = ConnectionCommon<S>>,
-    T: Sized + Read + Write,
+    C: Sized + DerefMut + Deref<Target = ConnectionCommon<S>> + Send + Sync,
+    T: Sized + Read + Write + Send + Sync,
     S: SideData,
 {
-    fn shutdown(&mut self) -> Result<()> {
+    async fn close(&mut self) -> Result<()> {
         self.conn.send_close_notify();
         log::info!("channel successfully closed");
         Ok(())
     }
 
-    fn send(&mut self, packet: &Packet) -> Result<usize> {
+    async fn send(&mut self, packet: &Packet) -> Result<usize> {
         // First, we need to send the size of the packet to be able to know the amout
         // of bits that are being sent.
         let packet_size = packet.size();
@@ -94,7 +109,7 @@ where
         Ok(packet.size())
     }
 
-    fn recv(&mut self) -> Result<Packet> {
+    async fn recv(&mut self) -> Result<Packet> {
         let mut buffer_packet_size = [0; (usize::BITS / 8) as usize];
         self.read_exact(&mut buffer_packet_size)
             .map_err(ChannelError::IoError)?;
@@ -255,38 +270,61 @@ pub struct LoopBackChannel {
     buffer: VecDeque<Packet>,
 }
 
+#[async_trait]
 impl Channel for LoopBackChannel {
-    fn shutdown(&mut self) -> Result<()> {
+    async fn close(&mut self) -> Result<()> {
         self.buffer.clear();
         log::info!("channel successfully closed");
         Ok(())
     }
 
-    fn send(&mut self, packet: &Packet) -> Result<usize> {
+    async fn send(&mut self, packet: &Packet) -> Result<usize> {
         log::info!("sent {} bytes to myself", packet.0.len());
         self.buffer.push_back(packet.clone());
         Ok(packet.0.len())
     }
 
-    fn recv(&mut self) -> Result<Packet> {
+    async fn recv(&mut self) -> Result<Packet> {
         log::info!("received packet from myself");
         self.buffer.pop_front().ok_or(ChannelError::EmptyBuffer)
     }
 }
 
-/// A dumy channel acting as a placeholder.
-pub struct DummyChannel;
+/// Channel for a TCP network.
+///
+/// A TCP channel can be:
+/// - A dummy loopback channel for when a party sends information to itself.
+/// - A TCP stream to send elements to other parties through the network.
+pub enum TcpChannel {
+    LoopBack(LoopBackChannel),
+    StreamClient(StreamOwned<ClientConnection, TcpStream>),
+    StreamServer(StreamOwned<ServerConnection, TcpStream>),
+}
 
-impl Channel for DummyChannel {
-    fn shutdown(&mut self) -> Result<()> {
-        Ok(())
+// Here, we basically are performing trait dispatching.
+#[async_trait]
+impl Channel for TcpChannel {
+    async fn close(&mut self) -> Result<()> {
+        match self {
+            TcpChannel::LoopBack(b) => b.close().await,
+            TcpChannel::StreamClient(s) => s.close().await,
+            TcpChannel::StreamServer(s) => s.close().await,
+        }
     }
 
-    fn send(&mut self, _: &Packet) -> Result<usize> {
-        Ok(0)
+    async fn send(&mut self, packet: &Packet) -> Result<usize> {
+        match self {
+            TcpChannel::LoopBack(b) => b.send(packet).await,
+            TcpChannel::StreamClient(s) => s.send(packet).await,
+            TcpChannel::StreamServer(s) => s.send(packet).await,
+        }
     }
 
-    fn recv(&mut self) -> Result<Packet> {
-        Ok(Packet::empty())
+    async fn recv(&mut self) -> Result<Packet> {
+        match self {
+            TcpChannel::LoopBack(b) => b.recv().await,
+            TcpChannel::StreamClient(s) => s.recv().await,
+            TcpChannel::StreamServer(s) => s.recv().await,
+        }
     }
 }

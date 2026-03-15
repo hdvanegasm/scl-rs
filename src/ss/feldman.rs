@@ -24,15 +24,14 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     /// Checks if the share is valid with respect to the commitment.
     pub fn is_valid(&self, party_indexes: &[C::ScalarField], share_idx: &C::ScalarField) -> bool {
         let lagrange_basis_result = compute_lagrange_basis(party_indexes, share_idx);
-        if lagrange_basis_result.is_err() {
-            false
-        } else {
-            let lagrange_basis = lagrange_basis_result.unwrap();
+        if let Ok(lagrange_basis) = lagrange_basis_result {
             let mut inner_prod = C::ZERO;
             for (basis, commitment) in lagrange_basis.iter().zip(self.commitments.iter()) {
                 inner_prod = inner_prod.add(&commitment.scalar_mul(basis));
             }
             inner_prod == C::gen().scalar_mul(self.shamir_share().share())
+        } else {
+            false
         }
     }
 

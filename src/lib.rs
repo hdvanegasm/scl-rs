@@ -18,9 +18,11 @@
 pub mod math;
 
 /// This module contains all the network facilities and methods that allow a set of parties
-/// to conect between them using TLS.
+/// to connect between them using TLS.
 pub mod net;
 
 /// This module contains the implementation of some tools commonly used in MPC protocols
 /// based on secret-sharing techniques.
 pub mod ss;
+
+pub mod protocol;
