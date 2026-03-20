@@ -1,4 +1,3 @@
-use crypto_bigint::rand_core::OsRng;
 use scl_rs::math::{
     field::{secp256k1_scalar::Secp256k1ScalarField, FiniteField},
     ring::Ring,
@@ -7,7 +6,7 @@ use std::ops::{Add, Mul, Sub};
 
 #[test]
 fn subtraction_validity() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let value = Secp256k1ScalarField::random(&mut rng);
     let subtraction = value.sub(&value);
     assert_eq!(subtraction, Secp256k1ScalarField::ZERO)
@@ -15,7 +14,7 @@ fn subtraction_validity() {
 
 #[test]
 fn inverse_correctness() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let value = Secp256k1ScalarField::random_non_zero(&mut rng);
     let inverse = value.inverse().unwrap();
     let mult = value.mul(&inverse);

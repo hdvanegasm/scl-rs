@@ -1,5 +1,5 @@
-use crypto_bigint::rand_core::{OsRng, RngCore};
 use rand::seq::SliceRandom;
+use rand::Rng;
 use scl_rs::math::{
     field::mersenne61::Mersenne61,
     poly::{interpolate_polynomial_at, Polynomial},
@@ -12,10 +12,11 @@ fn interpolation() {
     const N_SAMPLES: u64 = 100;
 
     for _ in 0..N_SAMPLES {
-        let degree: usize = (OsRng.next_u64() % MAX_DEGREE) as usize;
-        let random_poly: Polynomial<1, Mersenne61> = Polynomial::random(degree, &mut OsRng);
+        let mut rng = rand::rng();
+        let degree: usize = (rng.next_u64() % MAX_DEGREE) as usize;
+        let random_poly: Polynomial<1, Mersenne61> = Polynomial::random(degree, &mut rng);
 
-        let evaluation_test = Mersenne61::random(&mut OsRng);
+        let evaluation_test = Mersenne61::random(&mut rng);
 
         // Generates degree + 1 evaluation points
         let mut eval_points: Vec<usize> = (0..1000).collect();

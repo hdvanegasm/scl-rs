@@ -15,7 +15,7 @@ fn serialize_deserialize_one_object() {
 
 #[test]
 fn serialize_deserialize_multiple_different_objects() {
-    let mut rng = crypto_bigint::rand_core::OsRng;
+    let mut rng = rand::rng();
     let scalar = Secp256k1ScalarField::random_non_zero(&mut rng);
     let ec_element = Secp256k1::gen().scalar_mul(&scalar);
     let mut packet = Packet::empty();

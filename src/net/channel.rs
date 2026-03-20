@@ -1,6 +1,6 @@
 use crate::net;
 use crate::net::simulation::channel::ChannelId;
-use crate::net::simulation::context;
+use crate::net::simulation::{context, SimulationError};
 use crate::net::Packet;
 use async_trait::async_trait;
 use bincode::config;
@@ -45,11 +45,14 @@ pub enum ChannelError {
     #[error("channel not found: {0:?}")]
     ChannelNotFound(ChannelId),
 
-    #[error("error in the context: {0:?}")]
-    ContextError(#[from] context::Error),
+    #[error("errir during the execution of the simulation")]
+    Internal(Box<dyn std::error::Error + Send + Sync>),
+}
 
-    #[error("error in the underlying network: {0:?}")]
-    NetworkError(#[from] Box<crate::net::NetworkError>),
+impl From<SimulationError> for ChannelError {
+    fn from(err: SimulationError) -> Self {
+        ChannelError::Internal(Box::new(err))
+    }
 }
 
 /// Specialized [`Result`] for channel errors.

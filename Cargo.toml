@@ -8,12 +8,12 @@ authors = ["hdvanegasm"]
 
 [dependencies]
 thiserror = "2.0.12"
-rand = "0.9.1"
-log = "0.4.22"
+rand = "0.10"
+log = "0.4.29"
 rustls = "0.23.26"
-serde_json = "1.0.132"
-bincode = { version = "2.0.1", features = ["serde"] }
-serde = { version = "1.0.214", features = ["derive"] }
+serde_json = "1"
+bincode = { version = "2", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1"
-crypto-bigint = { version = "0.6.1", features = ["serde"] }
+crypto-bigint = { version = "0.7", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }

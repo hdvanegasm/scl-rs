@@ -1,21 +1,14 @@
 use crate::net::simulation::channel::{ChannelId, NetworkConfig, SimpleNetworkConfig};
-use crate::net::simulation::context::Error::PartyNotFound;
 use crate::net::simulation::event::Event;
 use crate::net::simulation::hook::TriggeredHook;
 use crate::net::simulation::SimulationTrace;
-use crate::net::{Network, PartyId};
+use crate::net::simulation::{Result, SimulationError};
+use crate::net::PartyId;
+use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use thiserror::Error;
-
-const TCP_IP_HEADER_SIZE: usize = 40;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Party {0:?} not found")]
-    PartyNotFound(PartyId),
-}
+use tokio::sync::Mutex;
 
 pub struct SimulationContext<N: NetworkConfig> {
     /// IDs for parties in the simulation.
@@ -26,9 +19,9 @@ pub struct SimulationContext<N: NetworkConfig> {
     traces: HashMap<PartyId, SimulationTrace>,
     /// Individual clock for each party.
     party_clocks: HashMap<PartyId, Instant>,
-
+    /// Tracker for sends.
     sends: HashMap<ChannelId, VecDeque<Duration>>,
-    /// Tells whether the some party is receiving data from the other party.
+    /// Tells whether some party is receiving data from the other party.
     ///
     /// For example, if PartyId A is receiving information from PartyId B, then we insert
     /// `ChannelId { local: A, remote: B }` into the [`HashSet`]. If the channel is not in the
@@ -36,9 +29,10 @@ pub struct SimulationContext<N: NetworkConfig> {
     recv_data_tracker: HashSet<ChannelId>,
     /// Tracker for cancellation events.
     ///
-    /// If the party has called a cancelation, then the party will appear in the [`HashSet`].
+    /// If the party has called a cancellation, then the party will appear in the [`HashSet`].
     cancellation_tracker: HashSet<PartyId>,
-    hooks: Vec<Arc<TriggeredHook<N>>>,
+    /// Hooks that are triggered during the simulation.
+    hooks: Vec<Arc<dyn TriggeredHook<N>>>,
 }
 
 impl<N: NetworkConfig> SimulationContext<N> {
@@ -54,20 +48,42 @@ impl<N: NetworkConfig> SimulationContext<N> {
         self.party_clocks.insert(party_id, Instant::now());
     }
 
-    pub fn record_event(&mut self, party_id: PartyId, event: Event) {
-        self.traces
-            .entry(party_id)
-            .or_insert(SimulationTrace::empty())
-            .0
-            .push(event);
-    }
-
-    pub fn send(&mut self, sender: PartyId, receiver: PartyId, timestamp: Duration) {
+    pub fn send(&mut self, sender: PartyId, receiver: PartyId, timestamp: Duration) -> Result<()> {
         let channel_id = ChannelId::new(sender, receiver);
         self.sends
-            .entry(channel_id)
-            .or_default()
+            .get_mut(&channel_id)
+            .ok_or(SimulationError::ChannelNotFound {
+                id: channel_id,
+                err_context: "while invoking send in the simulation context",
+            })?
             .push_back(timestamp);
+        Ok(())
+    }
+
+    pub fn recv(
+        &mut self,
+        receiver: PartyId,
+        sender: PartyId,
+        num_bytes: usize,
+        timestamp: Duration,
+    ) -> Result<Duration> {
+        let channel_id = ChannelId::new(receiver, sender);
+        let send_time = self
+            .sends
+            .get_mut(&channel_id)
+            .ok_or(SimulationError::ChannelNotFound {
+                id: channel_id,
+                err_context: "while invoking recv in the simulation context",
+            })?
+            .pop_front()
+            .ok_or(SimulationError::SendsEmpty)?;
+
+        Ok(max(
+            self.network_config
+                .channel_config(channel_id)
+                .adjust_send_time(send_time, num_bytes),
+            timestamp,
+        ))
     }
 
     pub fn is_receiving(&self, receiver: PartyId, sender: PartyId) -> bool {
@@ -85,7 +101,7 @@ impl<N: NetworkConfig> SimulationContext<N> {
         self.recv_data_tracker.remove(&channel_id);
     }
 
-    pub fn is_dead(&self, party_id: PartyId) -> Result<bool, Error> {
+    pub fn is_dead(&self, party_id: PartyId) -> Result<bool> {
         match self.traces.get(&party_id) {
             Some(trace) => {
                 if trace.0.is_empty() {
@@ -101,21 +117,21 @@ impl<N: NetworkConfig> SimulationContext<N> {
                     }
                 }
             }
-            None => Err(PartyNotFound(party_id)),
+            None => Err(SimulationError::PartyNotFound(party_id)),
         }
     }
 
-    pub fn elapsed_time_for_party(&self, party_id: PartyId) -> Result<Duration, Error> {
+    pub fn elapsed_time_for_party(&self, party_id: PartyId) -> Result<Duration> {
         let most_recent = self.last_event_timestamp(party_id)?;
         let current_instant_of_party = match self.party_clocks.get(&party_id) {
             Some(instant) => *instant,
-            None => return Err(PartyNotFound(party_id)),
+            None => return Err(SimulationError::PartyNotFound(party_id)),
         };
 
         Ok(most_recent + (Instant::now() - current_instant_of_party))
     }
 
-    fn last_event_timestamp(&self, party_id: PartyId) -> Result<Duration, Error> {
+    pub fn last_event_timestamp(&self, party_id: PartyId) -> Result<Duration> {
         match self.traces.get(&party_id) {
             Some(trace) => {
                 if trace.0.is_empty() {
@@ -126,11 +142,11 @@ impl<N: NetworkConfig> SimulationContext<N> {
                     Ok(last_event.timestamp())
                 }
             }
-            None => Err(PartyNotFound(party_id)),
+            None => Err(SimulationError::PartyNotFound(party_id)),
         }
     }
 
-    pub fn current_time_of_party(&self, party_id: PartyId) -> Result<Duration, Error> {
+    pub fn current_time_of_party(&self, party_id: PartyId) -> Result<Duration> {
         self.last_event_timestamp(party_id)
     }
 
@@ -151,14 +167,27 @@ impl<N: NetworkConfig> SimulationContext<N> {
     pub fn new(
         party_ids: Vec<PartyId>,
         network_config: N,
-        hooks: Vec<Arc<TriggeredHook<N>>>,
+        hooks: Vec<Arc<dyn TriggeredHook<N>>>,
     ) -> Self {
+        // Create empty sends HashMap.
+        let mut sends = HashMap::new();
+        let mut traces = HashMap::new();
+        let party_clocks = HashMap::new();
+
+        for party_id in &party_ids {
+            traces.insert(*party_id, SimulationTrace::empty());
+            for other_id in &party_ids {
+                let channel_id = ChannelId::new(*party_id, *other_id);
+                sends.insert(channel_id, VecDeque::new());
+            }
+        }
+
         Self {
             party_ids,
             network_config,
-            traces: HashMap::new(),
-            party_clocks: HashMap::new(),
-            sends: HashMap::new(),
+            traces,
+            party_clocks,
+            sends,
             recv_data_tracker: HashSet::new(),
             cancellation_tracker: HashSet::new(),
             hooks,
@@ -166,7 +195,28 @@ impl<N: NetworkConfig> SimulationContext<N> {
     }
 }
 
-fn size_with_headers_in_bits(bytes: usize, mss: usize) -> usize {
-    let num_packets = bytes.div_ceil(mss);
-    8 * (bytes + num_packets * TCP_IP_HEADER_SIZE)
+pub async fn record_event<N: NetworkConfig>(
+    party_id: PartyId,
+    event: Event,
+    context: Arc<Mutex<SimulationContext<N>>>,
+) {
+    let hooks_to_run = {
+        let mut context_guard = context.lock().await;
+        context_guard
+            .traces
+            .entry(party_id)
+            .or_insert(SimulationTrace::empty())
+            .add_event(event.clone());
+
+        context_guard
+            .hooks
+            .iter()
+            .filter(|hook| hook.trigger().is_none() && hook.trigger() == Some(event.event_type()))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    for hook in hooks_to_run {
+        hook.run(party_id, context.clone());
+    }
 }

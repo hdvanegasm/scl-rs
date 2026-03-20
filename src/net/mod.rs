@@ -6,6 +6,7 @@ use crate::net::simulation::channel::ChannelId;
 use crate::net::simulation::channel::NetworkType::Tcp;
 use async_trait::async_trait;
 use channel::LoopBackChannel;
+use log::__private_api::loc;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore, ServerConfig, StreamOwned,
@@ -35,6 +36,18 @@ impl From<PartyId> for usize {
     }
 }
 
+impl From<usize> for PartyId {
+    fn from(id: usize) -> Self {
+        Self(id)
+    }
+}
+
+impl PartyId {
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
+}
+
 /// Error type for network errors.
 #[derive(Debug, Error)]
 pub enum NetworkError {
@@ -52,6 +65,9 @@ pub enum NetworkError {
 
     #[error("error during the serialization: {0:?}")]
     SerializationError(#[from] bincode::error::EncodeError),
+
+    #[error("party not found: {0:?}")]
+    PartyNotFound(PartyId),
 }
 
 /// Special type for the network error.
@@ -134,6 +150,13 @@ impl Packet {
         )?;
         self.0.push(bytes_obj);
         Ok(())
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        self.0.iter().fold(Vec::new(), |mut acc, obj| {
+            acc.extend_from_slice(obj);
+            acc
+        })
     }
 }
 
@@ -244,19 +267,24 @@ pub trait Network {
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
     async fn close(&mut self) -> Result<()>;
+    fn local_party(&self) -> PartyId;
 }
 
 /// Network that contains all the channels connected to the party. Each channel is
 /// a connection to other parties.
 pub struct TcpNetwork {
+    local_party_id: PartyId,
     /// Channels for each peer.
     peer_channels: Vec<TcpChannel>,
 }
 
 impl TcpNetwork {
     /// Creates a new network from its channels.
-    pub fn new(peer_channels: Vec<TcpChannel>) -> Self {
-        Self { peer_channels }
+    pub fn new(local_party: PartyId, peer_channels: Vec<TcpChannel>) -> Self {
+        Self {
+            local_party_id: local_party,
+            peer_channels,
+        }
     }
 
     /// Configure the TLS channel according to the provided network configuration.
@@ -334,6 +362,7 @@ impl TcpNetwork {
             }
         }
         Ok(Self {
+            local_party_id: PartyId(id),
             peer_channels: peers,
         })
     }
@@ -402,5 +431,9 @@ impl Network for TcpNetwork {
                 .map_err(NetworkError::ChannelError)?;
         }
         Ok(())
+    }
+
+    fn local_party(&self) -> PartyId {
+        self.local_party_id
     }
 }

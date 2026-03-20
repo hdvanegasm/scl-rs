@@ -2,7 +2,7 @@ use crate::net::simulation::channel::ChannelId;
 use std::time::Duration;
 
 /// Type of the event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Start {
         timestamp: Duration,
@@ -41,6 +41,7 @@ pub enum Event {
     },
     Output {
         timestamp: Duration,
+        output: Vec<u8>,
     },
     ProtocolBegin {
         timestamp: Duration,
@@ -69,6 +70,39 @@ impl Event {
             | Event::ProtocolEnd { timestamp, .. } => *timestamp,
         }
     }
+
+    pub fn event_type(&self) -> EventType {
+        match self {
+            Event::Start { .. } => EventType::Start,
+            Event::Stop { .. } => EventType::Stop,
+            Event::Killed { .. } => EventType::Killed,
+            Event::Cancelled { .. } => EventType::Cancelled,
+            Event::CloseChannel { .. } => EventType::CloseChannel,
+            Event::SendData { .. } => EventType::SendData,
+            Event::ReceiveData { .. } => EventType::ReceiveData,
+            Event::HasData { .. } => EventType::HasData,
+            Event::Sleep { .. } => EventType::Sleep,
+            Event::Output { .. } => EventType::Output,
+            Event::ProtocolBegin { .. } => EventType::ProtocolBegin,
+            Event::ProtocolEnd { .. } => EventType::ProtocolEnd,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum EventType {
+    Start,
+    Stop,
+    Killed,
+    Cancelled,
+    CloseChannel,
+    SendData,
+    ReceiveData,
+    HasData,
+    Sleep,
+    Output,
+    ProtocolBegin,
+    ProtocolEnd,
 }
 
 pub struct SimulationTrace(Vec<Event>);

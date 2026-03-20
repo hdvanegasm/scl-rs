@@ -1,9 +1,8 @@
-use crypto_bigint::rand_core::OsRng;
 use scl_rs::math::{field::secp256k1_prime::Secp256k1PrimeField, ring::Ring, vector::Vector};
 
 #[test]
 fn dot_with_zero() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len);
@@ -13,7 +12,7 @@ fn dot_with_zero() {
 
 #[test]
 fn add_with_zero() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len);
@@ -24,7 +23,7 @@ fn add_with_zero() {
 #[test]
 #[should_panic]
 fn incompatible_dot() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len + 1);
@@ -34,7 +33,7 @@ fn incompatible_dot() {
 #[test]
 #[should_panic]
 fn incompatible_add_with_zero() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len + 1);
@@ -45,7 +44,7 @@ fn incompatible_add_with_zero() {
 #[test]
 #[should_panic]
 fn incompatible_sub_with_zero() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len + 1);
@@ -56,7 +55,7 @@ fn incompatible_sub_with_zero() {
 #[test]
 #[should_panic]
 fn incompatible_mul_with_zero() {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
     let len = 100;
     let vector = Vector::<Secp256k1PrimeField>::random(len, &mut rng);
     let zero_vec = Vector::zero(len + 1);

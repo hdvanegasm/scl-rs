@@ -1,26 +1,11 @@
 use crate::net::simulation::channel::NetworkConfig;
-use crate::net::simulation::event::Event;
+use crate::net::simulation::context::SimulationContext;
+use crate::net::simulation::event::EventType;
 use crate::net::PartyId;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub trait Hook<N: NetworkConfig>: Send + Sync {
-    fn run(&self, party_id: PartyId, context: &mut N);
-}
-
-pub struct TriggeredHook<N: NetworkConfig> {
-    /// Trigger of the hook.
-    ///
-    /// This trigger could be optional meaning that the Hook could be executed unconditionally.
-    trigger: Option<Event>,
-    /// Hook that will be executed after the trigger is dispatched.
-    hook: Box<dyn Hook<N>>,
-}
-
-impl<N> TriggeredHook<N>
-where
-    N: NetworkConfig,
-{
-    /// Creates a new trigger of the hook.
-    pub fn new(trigger: Option<Event>, hook: Box<dyn Hook<N>>) -> Self {
-        Self { trigger, hook }
-    }
+pub trait TriggeredHook<N: NetworkConfig>: Send + Sync {
+    fn trigger(&self) -> Option<EventType>;
+    fn run(&self, party_id: PartyId, context: Arc<Mutex<SimulationContext<N>>>);
 }

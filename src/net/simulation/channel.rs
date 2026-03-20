@@ -1,26 +1,13 @@
-use crate::net;
 use crate::net::channel::{Channel, ChannelError};
-use crate::net::simulation::context;
-use crate::net::simulation::context::SimulationContext;
+use crate::net::simulation::context::{record_event, SimulationContext};
 use crate::net::simulation::event::Event;
-use crate::net::simulation::transport::SimulatedNetwork;
-use crate::net::{Network, NetworkError, Packet, PartyId};
+use crate::net::simulation::network::Transport;
+use crate::net::simulation::{Result, SimulationError};
+use crate::net::{Network, Packet, PartyId};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
-use thiserror::Error;
 use tokio::sync::Mutex;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("invalid configuration parameters for the channel: {0:?}")]
-    InvalidConfig(ChannelConfigBuilder),
-
-    #[error("error in the context: {0:?}")]
-    ContextError(#[from] context::Error),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Hash, PartialEq, PartialOrd, Debug, Eq, Copy, Clone)]
 pub struct ChannelId {
@@ -39,7 +26,7 @@ impl ChannelId {
 }
 
 pub trait NetworkConfig: Clone + Send + Sync {
-    fn channel_config(&self, channel_id: ChannelId) -> Result<ChannelConfig>;
+    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig;
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -92,7 +79,7 @@ inner_value_manipulations!(Mss, usize);
 inner_value_manipulations!(PackageLoss, f64);
 inner_value_manipulations!(WindowSize, usize);
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NetworkType {
     /// A network where the channels are TCP channels.
     Tcp,
@@ -100,7 +87,7 @@ pub enum NetworkType {
     Instant,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChannelConfig {
     pub net_type: NetworkType,
     pub bandwidth: Bandwidth,
@@ -231,12 +218,23 @@ impl ChannelConfigBuilder {
                 self.window_size,
             ))
         } else {
-            Err(Error::InvalidConfig(self))
+            Err(SimulationError::InvalidConfig(self))
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        todo!()
+        if self.bandwidth.value() == 0 {
+            return false;
+        } else if self.mss.value() == 0 {
+            return false;
+        } else if self.package_loss.value() < 0.0 {
+            return false;
+        } else if self.package_loss.value() > 1.0 {
+            return false;
+        } else if self.window_size.value() == 0 {
+            return false;
+        }
+        true
     }
 }
 
@@ -256,7 +254,7 @@ impl Default for ChannelConfigBuilder {
 pub struct SimulatedChannel<N: NetworkConfig> {
     id: ChannelId,
     context: Arc<Mutex<SimulationContext<N>>>,
-    transport: Arc<Mutex<SimulatedNetwork>>,
+    transport: Arc<Mutex<Transport>>,
 }
 
 impl<N> SimulatedChannel<N>
@@ -266,7 +264,7 @@ where
     pub fn new(
         end_point_a: PartyId,
         end_point_b: PartyId,
-        transport: Arc<Mutex<SimulatedNetwork>>,
+        transport: Arc<Mutex<Transport>>,
         context: Arc<Mutex<SimulationContext<N>>>,
     ) -> Self {
         let channel_id = ChannelId::new(end_point_a, end_point_b);
@@ -280,15 +278,19 @@ where
     pub async fn has_data(&self) -> Result<bool> {
         // Save the event and update execute the command in the transport.
         let now = {
-            let mut ctxt_guard = self.context.lock().await;
-            let elapsed_time = ctxt_guard.elapsed_time_for_party(self.id.local)?;
-            ctxt_guard.record_event(
+            let elapsed_time = {
+                let ctxt_guard = self.context.lock().await;
+                ctxt_guard.elapsed_time_for_party(self.id.local)?
+            };
+            record_event(
                 self.id.local,
                 Event::HasData {
                     timestamp: elapsed_time,
                     channel_id: self.id,
                 },
-            );
+                self.context.clone(),
+            )
+            .await;
             elapsed_time
         };
         let has_data = {
@@ -336,45 +338,49 @@ where
     N: NetworkConfig,
 {
     async fn close(&mut self) -> crate::net::channel::Result<()> {
-        let mut context_guard = self.context.lock().await;
-        let elapsed_time = context_guard.elapsed_time_for_party(self.id.local)?;
-        context_guard.record_event(
+        let elapsed_time = {
+            let context_guard = self.context.lock().await;
+            context_guard.elapsed_time_for_party(self.id.local)?
+        };
+
+        record_event(
             self.id.local,
             Event::CloseChannel {
                 timestamp: elapsed_time,
                 channel_id: self.id,
             },
-        );
+            self.context.clone(),
+        )
+        .await;
         Ok(())
     }
 
     async fn send(&mut self, packet: &Packet) -> crate::net::channel::Result<usize> {
-        {
+        let elapsed_time = {
             let mut context_guard = self.context.lock().await;
             let elapsed_time = context_guard.elapsed_time_for_party(self.id.local)?;
-
-            context_guard.send(self.id.local, self.id.remote, elapsed_time);
-            context_guard.record_event(
-                self.id.local,
-                Event::SendData {
-                    timestamp: elapsed_time,
-                    channel_id: self.id,
-                    size: packet.size(),
-                },
-            )
+            context_guard.send(self.id.local, self.id.remote, elapsed_time)?;
+            elapsed_time
         };
+
+        record_event(
+            self.id.local,
+            Event::SendData {
+                timestamp: elapsed_time,
+                channel_id: self.id,
+                size: packet.size(),
+            },
+            self.context.clone(),
+        )
+        .await;
 
         {
             let mut transport_guard = self.transport.lock().await;
-            transport_guard
-                .send_to(self.id.remote, packet)
-                .await
-                .map_err(|error| ChannelError::NetworkError(Box::new(error)))?;
+            transport_guard.send_to(self.id, packet)?;
         };
         Ok(packet.size())
     }
 
-    // TODO: Finish this.
     async fn recv(&mut self) -> crate::net::channel::Result<Packet> {
         let elapsed = {
             let mut ctxt_guard = self.context.lock().await;
@@ -393,14 +399,28 @@ where
 
         let packet = {
             let mut transport_guard = self.transport.lock().await;
-            transport_guard
-                .recv_from(self.id.remote)
-                .await
-                .map_err(|error| ChannelError::NetworkError(Box::new(error)))?
+            transport_guard.recv(self.id)?
         };
 
-        let mut ctxt_guard = self.context.lock().await;
-        ctxt_guard.recv_done(self.id.local, self.id.remote);
+        let pck_size = packet.size() + usize::BITS as usize / 8;
+        let elapsed = {
+            let mut ctxt_guard = self.context.lock().await;
+            ctxt_guard.recv_done(self.id.local, self.id.remote);
+            ctxt_guard.start_clock(self.id.local);
+            ctxt_guard.recv(self.id.local, self.id.remote, pck_size, elapsed)?
+        };
+
+        record_event(
+            self.id.local,
+            Event::ReceiveData {
+                timestamp: elapsed,
+                channel_id: self.id,
+                size: pck_size,
+            },
+            self.context.clone(),
+        )
+        .await;
+
         Ok(packet)
     }
 }
@@ -409,11 +429,12 @@ where
 pub struct SimpleNetworkConfig;
 
 impl NetworkConfig for SimpleNetworkConfig {
-    fn channel_config(&self, channel_id: ChannelId) -> Result<ChannelConfig> {
+    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
         let mut default_config = ChannelConfigBuilder::default();
         if channel_id.local == channel_id.remote {
             default_config = default_config.net_type(NetworkType::Instant);
         }
-        default_config.build()
+        // SAFETY: The default values are correct. Hence, this will not panic.
+        default_config.build().unwrap()
     }
 }

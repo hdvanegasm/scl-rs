@@ -4,6 +4,7 @@ use crate::math::ring::Ring;
 use crypto_bigint::rand_core::RngCore;
 use crypto_bigint::NonZero;
 use crypto_bigint::U64;
+use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use std::hash::Hash;
@@ -40,14 +41,19 @@ impl Ring for Mersenne61 {
         }
     }
 
-    fn random<R: RngCore>(generator: &mut R) -> Self {
-        let value: u64 = generator.next_u64();
+    fn random<R: Rng>(generator: &mut R) -> Self {
+        let mut value: u64 = generator.next_u64();
+        let modulus = u64::from(Self::MODULUS.to_limbs()[0]);
+        while value > modulus {
+            value = generator.next_u64();
+        }
         Self::from(value)
     }
 
-    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self {
+    fn random_non_zero<R: Rng>(generator: &mut R) -> Self {
         let mut value = generator.next_u64();
-        while value == 0 {
+        let modulus = u64::from(Self::MODULUS.to_limbs()[0]);
+        while value == 0 || value > modulus {
             value = generator.next_u64();
         }
         Self::from(value)
