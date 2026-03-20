@@ -29,16 +29,10 @@ example shows a basic configuration.
   "base_port": 5000,
   "timeout": 5000,
   "sleep_time": 500,
-  "peer_ips": [
-    "127.0.0.1",
-    "127.0.0.1",
-    "127.0.0.1"
-  ],
+  "peer_ips": ["127.0.0.1", "127.0.0.1", "127.0.0.1"],
   "server_cert": "./certs/server_cert_p0.crt",
   "priv_key": "./certs/priv_key_p0.pem",
-  "trusted_certs": [
-    "./certs/rootCA.crt"
-  ]
+  "trusted_certs": ["./certs/rootCA.crt"]
 }
 ```
 
@@ -90,9 +84,9 @@ library. The interaction between parties are done using the functions `send` and
 - [x] ~Implement Feldman VSS~.
 - [ ] Document the source code.
 - [x] ~Implement Shamir's secret-sharing.~
-- [ ] Implement a fake network so that the final user can prototype MPC protocols locally.
+- [x] ~Implement a fake network so that the final user can prototype MPC protocols locally.~
 - [ ] Implement polynomials over the prime field of the elliptic curves which is useful for Feldman VSS.
-- [ ] Improve the serialization and deserialization to optimize the communication.
+- [x] ~Improve the serialization and deserialization to optimize the communication.~
 - [ ] Improve the finite field representation to represent any field modulo $p$, for $p$ prime.
 
 ## Acknowledgements
