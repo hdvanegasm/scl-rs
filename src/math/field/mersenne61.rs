@@ -1,7 +1,6 @@
 use super::FieldError;
 use super::FiniteField;
 use crate::math::ring::Ring;
-use crypto_bigint::rand_core::RngCore;
 use crypto_bigint::NonZero;
 use crypto_bigint::U64;
 use rand::Rng;

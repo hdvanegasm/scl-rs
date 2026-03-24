@@ -98,6 +98,14 @@ impl<N: NetworkConfig> SimulatedNetwork<N> {
 
 #[async_trait]
 impl<N: NetworkConfig> Network for SimulatedNetwork<N> {
+    fn other(&self) -> net::Result<PartyId> {
+        if self.channels.len() != 2 {
+            return Err(NetworkError::ExpectedTwoNodeNet(self.channels.len()));
+        } else {
+            Ok(PartyId::from(1 - self.local_party_id.as_usize()))
+        }
+    }
+
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> net::Result<usize> {
         let channel = self
             .channels

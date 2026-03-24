@@ -1,6 +1,6 @@
 use super::ring::Ring;
-use crypto_bigint::rand_core::RngCore;
-use serde::Serialize;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
 #[derive(thiserror::Error, Debug)]
@@ -12,8 +12,8 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Vector whose elements belong to a ring.
-#[derive(Serialize, PartialEq, Eq, Debug, Clone)]
-pub struct Vector<T: Ring>(Vec<T>);
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct Vector<T>(Vec<T>);
 
 impl<T> Vector<T>
 where
@@ -40,7 +40,7 @@ where
     }
 
     /// Generates a random vector with a given length.
-    pub fn random<R: RngCore>(len: usize, rng: &mut R) -> Self {
+    pub fn random<R: Rng>(len: usize, rng: &mut R) -> Self {
         let mut elements = Vec::with_capacity(len);
         for _ in 0..len {
             elements.push(T::random(rng));

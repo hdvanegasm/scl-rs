@@ -1,7 +1,7 @@
 use super::ring::Ring;
 use crate::math::field::FiniteField;
-use crypto_bigint::rand_core::RngCore;
-use serde::Serialize;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     ops::{Index, IndexMut},
@@ -10,10 +10,7 @@ use thiserror::Error;
 
 /// Errors for all the polynomial operations.
 #[derive(Debug, Error)]
-pub enum Error<T>
-where
-    T: Ring,
-{
+pub enum Error<T> {
     /// This error is triggered when there is an interpolation and the elements in the x-axis are
     /// not all different.
     #[error("error in the interpolation, not all the elements in the list are different: {0:?}")]
@@ -27,10 +24,10 @@ where
 pub type Result<T, R> = std::result::Result<T, Error<R>>;
 
 /// Represents a polynomial whose coefficients are elements in a finite field.
-#[derive(PartialEq, Eq, Debug, Serialize)]
-pub struct Polynomial<const LIMBS: usize, T: FiniteField<LIMBS>>(Vec<T>);
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Polynomial<T>(Vec<T>);
 
-impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
+impl<T: Ring> Polynomial<T> {
     /// Evaluates the polynomial on a given value using the Horner's rule.
     pub fn evaluate(&self, value: &T) -> T {
         let mut result = *self.0.last().unwrap();
@@ -51,7 +48,7 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
     }
 
     /// Generates a random polynomial of a given degree using a given pseudo-random generator.
-    pub fn random<R: RngCore>(degree: usize, rng: &mut R) -> Self {
+    pub fn random<R: Rng>(degree: usize, rng: &mut R) -> Self {
         let mut coefficients = Vec::with_capacity(degree + 1);
         for _ in 0..degree + 1 {
             coefficients.push(T::random(rng));
@@ -78,7 +75,7 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Polynomial<LIMBS, T> {
     }
 }
 
-impl<const LIMBS: usize, T: FiniteField<LIMBS>> Index<usize> for Polynomial<LIMBS, T> {
+impl<T: Ring> Index<usize> for Polynomial<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -86,15 +83,13 @@ impl<const LIMBS: usize, T: FiniteField<LIMBS>> Index<usize> for Polynomial<LIMB
     }
 }
 
-impl<const LIMBS: usize, T: FiniteField<LIMBS>> IndexMut<usize> for Polynomial<LIMBS, T> {
+impl<T: Ring> IndexMut<usize> for Polynomial<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl<const LIMBS: usize, const N: usize, T: FiniteField<LIMBS>> From<[T; N]>
-    for Polynomial<LIMBS, T>
-{
+impl<const N: usize, T: Ring> From<[T; N]> for Polynomial<T> {
     fn from(coefficients: [T; N]) -> Self {
         Self(Vec::from_iter(coefficients))
     }

@@ -1,10 +1,14 @@
 use super::{shamir::ShamirSS, ShareError};
 use crate::math::{ec::EllipticCurve, poly::compute_lagrange_basis};
-use crypto_bigint::rand_core::RngCore;
-use serde::Serialize;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 /// Represents a Feldman Secret Sharing element.
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C: Serialize, C::ScalarField: Serialize",
+    deserialize = "C: Serialize, C::ScalarField: Serialize"
+))]
 pub struct FeldmanSS<const LIMBS: usize, C: EllipticCurve<LIMBS>> {
     /// The Shamir secret sharing for the Feldman representation.
     shamir_share: ShamirSS<LIMBS, C::ScalarField>,
@@ -45,7 +49,7 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
         secret: C::ScalarField,
         degree: usize,
         party_indexes: &[C::ScalarField],
-        rng: &mut impl RngCore,
+        rng: &mut impl Rng,
     ) -> Vec<Self> {
         let (shamir_shares, polynomial) =
             ShamirSS::shares_from_secret(secret, degree, party_indexes, rng);

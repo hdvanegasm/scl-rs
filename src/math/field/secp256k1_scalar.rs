@@ -1,6 +1,7 @@
 use super::{naf::NafEncoding, FieldError, FiniteField};
 use crate::math::ring::Ring;
-use crypto_bigint::{rand_core::RngCore, Limb, NonZero, RandomMod, Uint, Zero};
+use crypto_bigint::{Limb, NonZero, RandomMod, Uint};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -49,7 +50,7 @@ impl FiniteField<4> for Secp256k1ScalarField {
             Err(FieldError::ZeroInverse)
         } else {
             // SAFETY: This unwrap is safe as rhs is non-zero.
-            let inverse = self.0.inv_mod(&Self::MODULUS).unwrap();
+            let inverse = self.0.invert_mod(&Self::MODULUS).unwrap();
             Ok(Self(inverse))
         }
     }
@@ -71,15 +72,15 @@ impl Ring for Secp256k1ScalarField {
         Self(self.0.neg_mod(&Self::MODULUS))
     }
 
-    fn random<R: RngCore>(generator: &mut R) -> Self {
-        let value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+    fn random<R: Rng>(generator: &mut R) -> Self {
+        let value = Uint::<4>::random_mod_vartime(generator, &Self::MODULUS);
         Self(value)
     }
 
-    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self {
-        let mut value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+    fn random_non_zero<R: Rng>(generator: &mut R) -> Self {
+        let mut value = Uint::<4>::random_mod_vartime(generator, &Self::MODULUS);
         while bool::from(value.is_zero()) {
-            value = Uint::<4>::random_mod(generator, &Self::MODULUS);
+            value = Uint::<4>::random_mod_vartime(generator, &Self::MODULUS);
         }
         Self(value)
     }

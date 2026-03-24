@@ -1,4 +1,4 @@
-use crypto_bigint::rand_core::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
@@ -37,10 +37,10 @@ pub trait Ring:
     fn negate(&self) -> Self;
 
     /// Generates a random finite ring element with a provided pseudo-random generator.
-    fn random<R: RngCore>(generator: &mut R) -> Self;
+    fn random<R: Rng>(generator: &mut R) -> Self;
 
     /// Returns a non-zero element from the ring sampled uniformly at random.
-    fn random_non_zero<R: RngCore>(generator: &mut R) -> Self;
+    fn random_non_zero<R: Rng>(generator: &mut R) -> Self;
 
     /// Computes the power of a ring with an exponent.
     ///

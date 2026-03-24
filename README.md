@@ -1,24 +1,85 @@
 # scl-rs
 
-**scl-rs** is a port of the [Secure Computation Library](https://github.com/anderspkd/secure-computation-library)
-to Rust. **scl-rs** has a set of utilities for prototyping secure multiparty
-computation protocols (MPC).
-
-**scl-rs** provides the following features:
+**scl-rs** is a Rust port of the [Secure Computation Library](https://github.com/anderspkd/secure-computation-library). It provides utilities for prototyping and testing secure multiparty computation (MPC) protocols. **scl-rs** offers the following features:
 
 - Traits for finite field arithmetic.
-- Implementation of Mersenne61 ($\mathbb{Z}_p$ with $p = 2^{61}-1$).
-- Implementation of secp256k1 using affine coordinates, its scalar field and its prime field.
-- Implementation of basic arithmetic for matrices and vectors with coefficients in rings.
-- Implementation of basic arithmetic over polynomials with coefficients in rings.
-- Communication point-to-point using TCP and secured using TLS.
-- Support for Lagrange interpolation over finite fields.
-- Different secret sharing schemes: additive secret-sharing, Feldman verifiable secret-sharing, and Shamir
-  secret-sharing.
+- An implementation of the Mersenne61 field ($\mathbb{Z}_p$ with $p = 2^{61} - 1$).
+- An implementation of secp256k1 using affine coordinates, along with its scalar and prime fields.
+- Basic matrix and vector arithmetic over arbitrary rings.
+- Basic polynomial arithmetic over arbitrary rings.
+- Point-to-point communication over TCP, secured with TLS.
+- Lagrange interpolation over finite fields.
+- Secret sharing schemes: additive, Feldman verifiable, and Shamir.
+
+**scl-rs** also includes a discrete-event simulation framework for MPC protocol execution. Rather than deploying actual distributed nodes across a physical network, users can configure network parameters (e.g., latency, bandwidth) and simulate protocol execution under those conditions. This is particularly useful for researchers and developers who want to test and benchmark protocols across a range of network settings without the overhead of a real deployment.
 
 ## How to run
 
-### Configuration
+To write your own protocol, you need to implement the trait `Protocol` defined as:
+
+```rust
+/// Represents a protocol in this library.
+#[async_trait]
+pub trait Protocol<N: Network>: Send + Sync {
+    /// Behavior of the protocol.
+    async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
+    /// Identifier of the protocol.
+    fn name(&self) -> String;
+}
+
+```
+
+The communication channels send `Packet` instances, which is an encapsulation of bytes. As an example, the packets may contain information of shares, field elements, polynomials, elliptic curve points, or any other serializable type in the library. The interaction between parties are done using the functions `send` and
+`recv` defined in the `Network` implementation.
+
+An example of a simple protocol that exchanges information between two parties can be implemented as follows:
+
+```rust
+pub struct SendRecvProtocol;
+
+#[async_trait::async_trait]
+impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
+    async fn run(
+        &self,
+        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
+    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+        // Creates a packet to store the information that will be sent through
+        // the network.
+        let mut packet = Packet::empty();
+
+        // Stores the information in the packet.
+        packet
+            .write(&environment.network.local_party().as_usize())
+            .unwrap();
+
+        // Sends the packet to the other party.
+        let other = environment.network.other().unwrap();
+        environment.network.send_to(other, &packet).await.unwrap();
+
+        // Waits to receive the packet from the other party.
+        let received_packet = environment.network.recv_from(other).await.unwrap();
+        environment.network.close().await.unwrap();
+
+        // The protocol result will be the received packet.
+        ProtocolResult::with_result_only(received_packet.bytes())
+    }
+
+    fn name(&self) -> String {
+        String::from("SendRecvProtocol")
+    }
+}
+```
+
+The output of the protocol will be something as follows:
+
+```text
+Party 0 output: [0, 0, 0, 0, 0, 0, 0, 0]
+Party 1 output: [0, 0, 0, 0, 0, 0, 0, 1]
+```
+
+### Distributed execution
+
+#### Configuration
 
 To run one node of the protocol, you need to specify the network configuration
 for that node. The configuration is specified using a JSON file. The following
@@ -63,20 +124,6 @@ you can execute the following command:
 bash gen_self_signed_certs.sh <n_parties>
 ```
 
-## Usage
-
-First, you need to load the configuration from your JSON file for the node using the `NetworkConfig`
-struct. To create a network configuration, you provide the path of the JSON
-configuration file to the constructor function of the `NetworkConfig` instance.
-Once the network configuration is loaded, you create a `Network` instance that
-contains the channels to the peers.
-
-The communication channels send `Packet` instances, which is an
-encapsulation of bytes. As an example, the packets may contain information of
-shares, field elements, polynomials, elliptic curve points, or any other serializable type in the
-library. The interaction between parties are done using the functions `send` and
-`recv` defined in the `Network` implementation.
-
 ## Missing features
 
 - [ ] Write missing tests for all the functionalities.
@@ -85,7 +132,6 @@ library. The interaction between parties are done using the functions `send` and
 - [ ] Document the source code.
 - [x] ~Implement Shamir's secret-sharing.~
 - [x] ~Implement a fake network so that the final user can prototype MPC protocols locally.~
-- [ ] Implement polynomials over the prime field of the elliptic curves which is useful for Feldman VSS.
 - [x] ~Improve the serialization and deserialization to optimize the communication.~
 - [ ] Improve the finite field representation to represent any field modulo $p$, for $p$ prime.
 

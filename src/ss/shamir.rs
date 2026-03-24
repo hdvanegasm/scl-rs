@@ -2,13 +2,13 @@ use crate::math::{
     field::FiniteField,
     poly::{interpolate_polynomial_at, Polynomial},
 };
-use crypto_bigint::rand_core::RngCore;
-use serde::Serialize;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 use super::ShareError;
 
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct ShamirSS<const LIMBS: usize, F: FiniteField<LIMBS>> {
+#[derive(Serialize, Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct ShamirSS<const LIMBS: usize, F> {
     share: F,
     degree: usize,
 }
@@ -25,8 +25,8 @@ where
         secret: F,
         degree: usize,
         party_indexes: &[F],
-        rng: &mut impl RngCore,
-    ) -> (Vec<Self>, Polynomial<LIMBS, F>) {
+        rng: &mut impl Rng,
+    ) -> (Vec<Self>, Polynomial<F>) {
         let mut polynomial = Polynomial::random(degree, rng);
         polynomial.set_constant_coeff(secret);
         let shares = party_indexes

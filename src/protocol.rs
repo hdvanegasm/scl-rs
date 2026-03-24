@@ -1,10 +1,8 @@
-use crate::net::{Network, TcpNetwork};
+use crate::net::Network;
 use async_trait::async_trait;
-use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
 
 pub const DEFAULT_PROTOCOL_NAME: &str = "UNNAMED ";
 
@@ -22,9 +20,12 @@ pub enum Error {
     },
 }
 
+/// Represents a protocol in this library.
 #[async_trait]
 pub trait Protocol<N: Network>: Send + Sync {
+    /// Behavior of the protocol.
     async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
+    /// Identifier of the protocol.
     fn name(&self) -> String;
 }
 

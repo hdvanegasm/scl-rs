@@ -68,6 +68,9 @@ pub enum NetworkError {
 
     #[error("party not found: {0:?}")]
     PartyNotFound(PartyId),
+
+    #[error("expected a network with only two nodes, there are {0} nodes in the network")]
+    ExpectedTwoNodeNet(usize),
 }
 
 /// Special type for the network error.
@@ -268,6 +271,7 @@ pub trait Network {
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
     async fn close(&mut self) -> Result<()>;
     fn local_party(&self) -> PartyId;
+    fn other(&self) -> Result<PartyId>;
 }
 
 /// Network that contains all the channels connected to the party. Each channel is
@@ -402,6 +406,14 @@ impl TcpNetwork {
 
 #[async_trait]
 impl Network for TcpNetwork {
+    fn other(&self) -> Result<PartyId> {
+        if self.peer_channels.len() != 2 {
+            return Err(NetworkError::ExpectedTwoNodeNet(self.peer_channels.len()));
+        } else {
+            Ok(PartyId::from(1 - self.local_party_id.as_usize()))
+        }
+    }
+
     /// Sends a packet of information to a given party.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize> {
         let bytes_sent = self.peer_channels[usize::from(party_id)]

@@ -1,11 +1,8 @@
-use scl_rs::net::simulation::channel::{
-    ChannelConfig, ChannelConfigBuilder, ChannelId, NetworkConfig, SimpleNetworkConfig,
-};
-use scl_rs::net::simulation::context::SimulationContext;
+use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::event::{Event, EventType};
 use scl_rs::net::simulation::hook::TriggeredHook;
 use scl_rs::net::simulation::manager::Manager;
-use scl_rs::net::simulation::network::{SimulatedNetwork, Transport};
+use scl_rs::net::simulation::network::SimulatedNetwork;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
@@ -22,18 +19,11 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
         environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
     ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
         let mut packet = Packet::empty();
-        if environment.network.local_party().as_usize() == 0 {
-            packet.write(&1).unwrap();
-        } else {
-            packet.write(&2).unwrap();
-        }
+        packet
+            .write(&environment.network.local_party().as_usize())
+            .unwrap();
 
-        let other: PartyId = if environment.network.local_party().as_usize() == 0 {
-            PartyId::from(1)
-        } else {
-            PartyId::from(0)
-        };
-
+        let other = environment.network.other().unwrap();
         environment.network.send_to(other, &packet).await.unwrap();
 
         let received_packet = environment.network.recv_from(other).await.unwrap();

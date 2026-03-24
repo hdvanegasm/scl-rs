@@ -1,6 +1,6 @@
 use super::{ring::Ring, vector::Vector};
-use crypto_bigint::rand_core::RngCore;
-use serde::Serialize;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 use thiserror::Error;
 
@@ -20,8 +20,8 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Matrix with elements in a ring.
-#[derive(Serialize, Debug, Eq)]
-pub struct Matrix<T: Ring> {
+#[derive(Serialize, Deserialize, Debug, Eq, Clone, PartialEq)]
+pub struct Matrix<T> {
     /// Elements of the matrix.
     elements: Vec<T>,
     /// Columns of the matrix.
@@ -113,7 +113,7 @@ where
     ///
     /// If one or more of the dimensions are zero, the function will return an
     /// error.
-    pub fn random<R: RngCore>(rows: usize, columns: usize, rng: &mut R) -> Result<Self> {
+    pub fn random<R: Rng>(rows: usize, columns: usize, rng: &mut R) -> Result<Self> {
         let mut matrix = Self::allocate(rows, columns)?;
         for _ in 0..rows * columns {
             matrix.elements.push(T::random(rng));
@@ -160,18 +160,6 @@ where
             rows: self.rows,
             columns: self.columns,
         }
-    }
-}
-
-impl<T> PartialEq<Self> for Matrix<T>
-where
-    T: Ring,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if !self.is_compatible_with(other) {
-            return false;
-        }
-        self.elements == other.elements
     }
 }
 
