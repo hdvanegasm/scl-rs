@@ -1,7 +1,7 @@
 use crate::net::simulation::channel::ChannelId;
 use std::time::Duration;
 
-/// Type of the event.
+/// An event recorded during the simulation, carrying its timestamp and any associated data.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Start {

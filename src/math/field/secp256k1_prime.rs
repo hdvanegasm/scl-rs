@@ -10,7 +10,7 @@ use std::ops::{Add, Div, Mul, Sub};
 pub struct Secp256k1PrimeField(Uint<4>);
 
 impl Secp256k1PrimeField {
-    /// Created a new point in the field in which secp256k1 is defined.
+    /// Creates a new element in the field in which secp256k1 is defined.
     pub fn new(value: Uint<4>) -> Self {
         Self(value)
     }

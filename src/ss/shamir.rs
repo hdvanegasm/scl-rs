@@ -13,7 +13,7 @@ pub struct ShamirSS<const LIMBS: usize, F> {
     /// Value of the share in the field. If the shares are computed considering a polynomial `p`,
     /// then, this is the value of `p(i)` for the party `i`-th.
     share: F,
-    /// The degree of the polynomial used to compute this degree.
+    /// The degree of the polynomial used to compute this share.
     degree: usize,
 }
 

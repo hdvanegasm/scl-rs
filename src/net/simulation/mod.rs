@@ -92,7 +92,7 @@ impl SimulationTrace {
         self.0.push(event);
     }
 
-    /// Returns the even types currently stored in the trace.
+    /// Returns the event types currently stored in the trace.
     pub fn event_types(&self) -> Vec<EventType> {
         let mut event_types = Vec::new();
         for event in &self.0 {

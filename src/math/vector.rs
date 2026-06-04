@@ -3,7 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
-/// Errors that may occur during matrix manipulation.
+/// Errors that may occur during vector manipulation.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Incompatible dimension during matrix operations.

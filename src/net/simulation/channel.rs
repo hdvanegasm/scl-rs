@@ -47,7 +47,8 @@ pub trait NetworkConfig: Clone + Send + Sync {
     fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig;
 }
 
-/// Bandwidth used in this channel measured in.
+/// Bandwidth used in this channel.
+// TODO: complete the doc with the measurement unit of the bandwidth (e.g. bytes/s or bits/s).
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Bandwidth(usize);
 

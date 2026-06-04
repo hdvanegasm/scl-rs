@@ -41,7 +41,7 @@ pub enum ShareError<T: Ring> {
         /// Number of shares.
         n_shares: usize,
     },
-    /// The number of shares is different to the number of shares.
+    /// The number of party indexes is different to the number of shares.
     #[error("the number of parties does not match with the number of shares - parties: {parties_idx_len}, shares: {shares_len}")]
     LengthMismatch {
         /// Length of party indexes.

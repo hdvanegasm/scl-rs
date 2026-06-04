@@ -7,12 +7,11 @@ use crate::protocol::Protocol;
 use std::sync::Arc;
 
 /// Manages certain aspects of a simulation like:
-/// - The number of replications in the simulation.
-/// - The protocol to simulate.
+/// - The protocols to simulate.
 /// - What we do with the protocol output.
 /// - What network to use.
-/// - When to terminate the protocol.
-/// - What to do when a protocol finishes.
+/// - The hooks triggered during the simulation.
+/// - What to do at the end of the simulation.
 pub trait Manager<C: NetworkConfig, N: Network>: Send + Sync {
     /// Adds a hook to the simulation conditioned to a trigger event.
     fn add_hook(&mut self, trigger_event: Event, hook: Arc<dyn TriggeredHook<C>>);

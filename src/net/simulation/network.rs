@@ -11,11 +11,11 @@ use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct Transport {
-    /// List of channel queues.
+    /// Per-channel message queues, keyed by [`ChannelId`].
     ///
-    /// In this method, [`Packet`] is behind an [`Arc`] given that we don't copy packets at
-    /// broadcasting. Instead, we have counted references to that packet so that the reality is that
-    /// there is only one packet and the other parties hold references.
+    /// Each [`Packet`] is stored behind an [`Arc`] so that when the same packet is enqueued more
+    /// than once on a channel, the existing reference is shared instead of cloning the packet
+    /// again.
     channel_queues: HashMap<ChannelId, VecDeque<Arc<Packet>>>,
 }
 

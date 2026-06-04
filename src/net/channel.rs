@@ -39,7 +39,7 @@ pub enum ChannelError {
     #[error("channel not found: {0:?}")]
     ChannelNotFound(ChannelId),
     /// An internal error in a simulated network execution.
-    #[error("errir during the execution of the simulation")]
+    #[error("error during the execution of the simulation")]
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
 
