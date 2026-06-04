@@ -125,16 +125,25 @@ impl fmt::Display for Event {
             Event::HasData { channel_id, .. } => ("HAS_DATA", channel(channel_id, "<-")),
             Event::Sleep { duration, .. } => ("SLEEP", format!("for {duration:?}")),
             Event::Output { output, .. } => {
-                // Show small payloads in full; for larger ones show only the first few bytes plus
-                // a count of the remaining ones to keep the trace readable.
-                const HEAD: usize = 8;
-                let details = if output.len() <= HEAD {
+                // Show small payloads in full; for larger ones show the first and last few bytes
+                // along with the total length to keep the trace readable.
+                const HEAD: usize = 4;
+                const TAIL: usize = 4;
+                let details = if output.len() <= HEAD + TAIL {
                     format!("{output:?}")
                 } else {
+                    let join = |bytes: &[u8]| {
+                        bytes
+                            .iter()
+                            .map(|byte| byte.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
                     format!(
-                        "{:?} … (+{} more bytes)",
-                        &output[..HEAD],
-                        output.len() - HEAD
+                        "[{}, …, {}] ({} bytes)",
+                        join(&output[..HEAD]),
+                        join(&output[output.len() - TAIL..]),
+                        output.len()
                     )
                 };
                 ("OUTPUT", details)
@@ -145,9 +154,9 @@ impl fmt::Display for Event {
 
         let timestamp = self.timestamp().as_secs_f64();
         if details.is_empty() {
-            write!(f, "[{timestamp:>13.6}s] {name}")
+            write!(f, "[{timestamp:>10.3}s] {name}")
         } else {
-            write!(f, "[{timestamp:>13.6}s] {name:<14} {details}")
+            write!(f, "[{timestamp:>10.3}s] {name:<14} {details}")
         }
     }
 }

@@ -556,13 +556,12 @@ fn output_event_elides_large_payloads() {
     assert!(small_rendered.contains("[1, 2, 3]"));
     assert!(!small_rendered.contains("more bytes"));
 
-    // Large payloads show only the first bytes plus the count of the remaining ones.
+    // Large payloads show the first and last few bytes plus the total length.
     let large = SimulationTrace::new(vec![Event::Output {
         timestamp: Duration::ZERO,
         output: (0u8..100).collect(),
     }]);
     let large_rendered = large.to_string();
     assert!(large_rendered.contains("OUTPUT"));
-    assert!(large_rendered.contains("[0, 1, 2, 3, 4, 5, 6, 7]"));
-    assert!(large_rendered.contains("(+92 more bytes)"));
+    assert!(large_rendered.contains("[0, 1, 2, 3, …, 96, 97, 98, 99] (100 bytes)"));
 }
