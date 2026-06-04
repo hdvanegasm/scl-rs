@@ -101,3 +101,19 @@ impl SimulationTrace {
         event_types
     }
 }
+
+/// Renders the whole trace with one event per line, in the order in which the events occurred.
+///
+/// This is meant for debugging a protocol's behavior: it can be printed to the console with
+/// `println!("{trace}")` or written to a file with `write!(file, "{trace}")`.
+impl std::fmt::Display for SimulationTrace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (idx, event) in self.0.iter().enumerate() {
+            if idx > 0 {
+                writeln!(f)?;
+            }
+            write!(f, "{event}")?;
+        }
+        Ok(())
+    }
+}

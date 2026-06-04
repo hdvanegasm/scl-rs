@@ -1,4 +1,7 @@
-use scl_rs::net::simulation::channel::SimpleNetworkConfig;
+use scl_rs::net::simulation::channel::{
+    Bandwidth, ChannelConfig, ChannelConfigBuilder, ChannelId, NetworkConfig, NetworkType, Rtt,
+    SimpleNetworkConfig,
+};
 use scl_rs::net::simulation::event::{Event, EventType};
 use scl_rs::net::simulation::hook::TriggeredHook;
 use scl_rs::net::simulation::manager::Manager;
@@ -68,11 +71,8 @@ impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for Sen
     }
 
     fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
-        println!(
-            "Party {} trace: {:?}",
-            party_id.as_usize(),
-            trace.event_types()
-        );
+        // Pretty-print the full event trace for this party (console or, with `write!`, a file).
+        println!("Party {}:\n{}", party_id.as_usize(), trace);
         println!("---");
 
         let event_types = trace
@@ -305,4 +305,264 @@ async fn chained_protocols_pass_state_between_stages() {
         net_config: SimpleNetworkConfig,
     }));
     simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
+}
+
+/// Network configuration with a non-trivial, bandwidth-limited and high-latency cross-party
+/// channel (50_000 bits/s, 500 ms RTT). The loopback channel is kept instantaneous.
+#[derive(Debug, Clone)]
+pub struct SlowNetworkConfig;
+
+impl NetworkConfig for SlowNetworkConfig {
+    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
+        if channel_id.local() == channel_id.remote() {
+            // SAFETY: default builder values are valid, so the build does not fail.
+            return ChannelConfigBuilder::default()
+                .net_type(NetworkType::Instant)
+                .build()
+                .unwrap();
+        }
+        // SAFETY: the values below are valid, so the build does not fail.
+        ChannelConfigBuilder::default()
+            .net_type(NetworkType::Tcp)
+            .bandwidth(Bandwidth::new(50_000))
+            .rtt(Rtt::new(500))
+            .build()
+            .unwrap()
+    }
+}
+
+/// Length in bytes of the payload exchanged in the bulk-transfer protocol. It is large enough that,
+/// at the configured bandwidth, the transmission time dominates over the RTT.
+const BULK_PAYLOAD_LEN: usize = 200_000;
+
+/// Protocol where each party sends a large payload to the other and waits for the other's payload.
+/// Used to observe how bandwidth and latency affect the simulated reception time.
+pub struct BulkTransferProtocol;
+
+#[async_trait::async_trait]
+impl Protocol<SimulatedNetwork<SlowNetworkConfig>> for BulkTransferProtocol {
+    async fn run(
+        &self,
+        environment: &mut Environment<SimulatedNetwork<SlowNetworkConfig>>,
+    ) -> ProtocolResult<SimulatedNetwork<SlowNetworkConfig>> {
+        let other = environment.network.other().unwrap();
+
+        let mut packet = Packet::empty();
+        packet.write(&vec![0u8; BULK_PAYLOAD_LEN]).unwrap();
+        environment.network.send_to(other, &packet).await.unwrap();
+
+        let received = environment.network.recv_from(other).await.unwrap();
+        environment.network.close().await.unwrap();
+
+        ProtocolResult::with_result_only(received.bytes())
+    }
+
+    fn name(&self) -> String {
+        String::from("BulkTransferProtocol")
+    }
+}
+
+pub struct BulkTransferManager {
+    parties: Vec<PartyId>,
+    net_config: SlowNetworkConfig,
+}
+
+impl Manager<SlowNetworkConfig, SimulatedNetwork<SlowNetworkConfig>> for BulkTransferManager {
+    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SlowNetworkConfig>>) {}
+
+    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SlowNetworkConfig>>) {}
+
+    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SlowNetworkConfig>>>> {
+        self.parties
+            .iter()
+            .map(|_| {
+                Box::new(BulkTransferProtocol)
+                    as Box<dyn Protocol<SimulatedNetwork<SlowNetworkConfig>>>
+            })
+            .collect()
+    }
+
+    fn handle_protocol_output(&mut self, _party_id: PartyId, _output: Vec<u8>) {}
+
+    fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
+        println!("Party {}:\n{}\n---", party_id.as_usize(), trace);
+
+        let recv_event = trace
+            .events()
+            .iter()
+            .find(|event| event.event_type() == EventType::ReceiveData)
+            .expect("the trace should contain a ReceiveData event");
+        let recv_secs = recv_event.timestamp().as_secs_f64();
+
+        // The configured latency alone contributes the 500 ms RTT.
+        assert!(
+            recv_secs >= 0.5,
+            "party {}: reception time {recv_secs}s should reflect the 500ms RTT",
+            party_id.as_usize()
+        );
+        // The low bandwidth over a ~20 KB payload adds several extra seconds, so the total is well
+        // above the RTT-only floor. This confirms the bandwidth term is taken into account.
+        assert!(
+            recv_secs > 1.0,
+            "party {}: reception time {recv_secs}s should reflect the bandwidth-limited transfer",
+            party_id.as_usize()
+        );
+    }
+
+    fn network_config(&self) -> &SlowNetworkConfig {
+        &self.net_config
+    }
+
+    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SlowNetworkConfig>>> {
+        vec![]
+    }
+}
+
+#[tokio::test]
+async fn simulation_reflects_bandwidth_and_latency() {
+    let manager = Arc::new(Mutex::new(BulkTransferManager {
+        parties: vec![PartyId::from(0), PartyId::from(1)],
+        net_config: SlowNetworkConfig,
+    }));
+    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
+}
+
+#[test]
+fn simulation_trace_renders_events_nicely() {
+    use scl_rs::net::simulation::channel::ChannelId;
+    use std::time::Duration;
+
+    let channel = ChannelId::new(PartyId::from(0), PartyId::from(1));
+    let trace = SimulationTrace::new(vec![
+        Event::Start {
+            timestamp: Duration::ZERO,
+        },
+        Event::SendData {
+            timestamp: Duration::from_millis(100),
+            channel_id: channel,
+            size: 8,
+        },
+        Event::ReceiveData {
+            timestamp: Duration::from_millis(200),
+            channel_id: channel,
+            size: 16,
+        },
+        Event::Stop {
+            timestamp: Duration::from_millis(200),
+        },
+    ]);
+
+    let rendered = trace.to_string();
+
+    // One line per event, in order.
+    assert_eq!(rendered.lines().count(), 4);
+    // Each event is rendered with its name and the expected channel direction.
+    assert!(rendered.contains("START"));
+    assert!(rendered.contains("SEND"));
+    assert!(rendered.contains("0 -> 1 (8 bytes)"));
+    assert!(rendered.contains("RECV"));
+    assert!(rendered.contains("0 <- 1 (16 bytes)"));
+    assert!(rendered.contains("STOP"));
+}
+
+/// Protocol where party 0 only sends and party 1 only receives, with no message in the reverse
+/// direction. This is a regression test for a latency-bookkeeping bug where a party could not
+/// receive on a channel unless it had previously sent on it.
+pub struct OneWayProtocol;
+
+#[async_trait::async_trait]
+impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for OneWayProtocol {
+    async fn run(
+        &self,
+        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
+    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+        let other = environment.network.other().unwrap();
+        if environment.network.local_party().as_usize() == 0 {
+            let mut packet = Packet::empty();
+            packet.write(&42usize).unwrap();
+            environment.network.send_to(other, &packet).await.unwrap();
+            environment.network.close().await.unwrap();
+            ProtocolResult::empty()
+        } else {
+            // Party 1 receives without ever having sent on this channel.
+            let packet = environment.network.recv_from(other).await.unwrap();
+            environment.network.close().await.unwrap();
+            ProtocolResult::with_result_only(packet.bytes())
+        }
+    }
+
+    fn name(&self) -> String {
+        String::from("OneWayProtocol")
+    }
+}
+
+pub struct OneWayManager {
+    parties: Vec<PartyId>,
+    net_config: SimpleNetworkConfig,
+}
+
+impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for OneWayManager {
+    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
+
+    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
+
+    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
+        self.parties
+            .iter()
+            .map(|_| {
+                Box::new(OneWayProtocol) as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
+            })
+            .collect()
+    }
+
+    fn handle_protocol_output(&mut self, party_id: PartyId, output: Vec<u8>) {
+        // Only party 1 produces an output: the value 42 sent by party 0.
+        assert_eq!(party_id.as_usize(), 1);
+        let mut expected = Packet::empty();
+        expected.write(&42usize).unwrap();
+        assert_eq!(output, expected.bytes());
+    }
+
+    fn handle_simulator_output(&mut self, _: PartyId, _: &SimulationTrace) {}
+
+    fn network_config(&self) -> &SimpleNetworkConfig {
+        &self.net_config
+    }
+
+    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
+        vec![]
+    }
+}
+
+#[tokio::test]
+async fn one_way_communication_does_not_require_prior_send() {
+    let manager = Arc::new(Mutex::new(OneWayManager {
+        parties: vec![PartyId::from(0), PartyId::from(1)],
+        net_config: SimpleNetworkConfig,
+    }));
+    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
+}
+
+#[test]
+fn output_event_elides_large_payloads() {
+    use std::time::Duration;
+
+    // Small payloads are shown in full.
+    let small = SimulationTrace::new(vec![Event::Output {
+        timestamp: Duration::ZERO,
+        output: vec![1, 2, 3],
+    }]);
+    let small_rendered = small.to_string();
+    assert!(small_rendered.contains("[1, 2, 3]"));
+    assert!(!small_rendered.contains("more bytes"));
+
+    // Large payloads show only the first bytes plus the count of the remaining ones.
+    let large = SimulationTrace::new(vec![Event::Output {
+        timestamp: Duration::ZERO,
+        output: (0u8..100).collect(),
+    }]);
+    let large_rendered = large.to_string();
+    assert!(large_rendered.contains("OUTPUT"));
+    assert!(large_rendered.contains("[0, 1, 2, 3, 4, 5, 6, 7]"));
+    assert!(large_rendered.contains("(+92 more bytes)"));
 }

@@ -67,7 +67,9 @@ impl<N: NetworkConfig> SimulationContext<N> {
         num_bytes: usize,
         timestamp: Duration,
     ) -> Result<Duration> {
-        let channel_id = ChannelId::new(receiver, sender);
+        // The send-time was recorded by the sender under `ChannelId::new(sender, receiver)`
+        // (local = sender, remote = receiver), so we must look it up with the same orientation.
+        let channel_id = ChannelId::new(sender, receiver);
         let send_time = self
             .sends
             .get_mut(&channel_id)
@@ -211,7 +213,10 @@ pub async fn record_event<N: NetworkConfig>(
         context_guard
             .hooks
             .iter()
-            .filter(|hook| hook.trigger().is_none() && hook.trigger() == Some(event.event_type()))
+            .filter(|hook| {
+                let trigger = hook.trigger();
+                trigger.is_none() || trigger == Some(event.event_type())
+            })
             .cloned()
             .collect::<Vec<_>>()
     };
