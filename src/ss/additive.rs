@@ -1,7 +1,12 @@
+//! In an additive secret sharing scheme for `n` parties is such that for a secret `x`, the shares of `x` are random
+//! elements `[x_1, x_2, ..., x_n]` such that `x = x_1 + x_2 + ... + x_n`. In this secret sharing scheme,
+//! the party `i` receives the share `x_i`.
+
 use crate::math::ring::Ring;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+/// Represents an additive share.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AdditiveSS<T>(T);
 
@@ -9,14 +14,17 @@ impl<T> AdditiveSS<T>
 where
     T: Ring,
 {
+    /// Creates a new share for a ring element `value`.
     pub fn new(value: T) -> Self {
         Self(value)
     }
 
+    /// Returns the value of the share as a ring element.
     pub fn share(&self) -> &T {
         &self.0
     }
 
+    /// Computes the shares for a `secret` for `n_parties` number of parties using the PRG `rng`.
     pub fn shares_from_secret<R: Rng>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
         let mut shares = Vec::with_capacity(n_parties);
         let mut rand_acc = T::ZERO;
@@ -30,6 +38,7 @@ where
         shares
     }
 
+    /// Computes a secret from an array of shares.
     pub fn secret_from_shares(shares: &[Self]) -> T {
         shares
             .iter()

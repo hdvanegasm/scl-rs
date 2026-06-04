@@ -48,7 +48,7 @@ impl Transport {
     ) -> Result<usize, ChannelError> {
         let channel_buffer = self
             .channel_queues
-            .get_mut(&channel_id)
+            .get_mut(&channel_id.flip_end_points())
             .ok_or(ChannelError::ChannelNotFound(channel_id))?;
         for stored_packet in channel_buffer.iter() {
             if stored_packet == packet {

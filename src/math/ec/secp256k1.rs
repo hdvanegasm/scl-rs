@@ -12,11 +12,32 @@ use super::EllipticCurve;
 
 /// Implementation of secp256k1 using projective coordinates.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq)]
+#[serde(try_from = "(Secp256k1PrimeField, Secp256k1PrimeField, Secp256k1PrimeField)")]
 pub struct Secp256k1(
     Secp256k1PrimeField,
     Secp256k1PrimeField,
     Secp256k1PrimeField,
 );
+
+/// Errors that can occur when validating a `Secp256k1` point.
+#[derive(thiserror::Error, Debug)]
+pub enum Secp256k1Error {
+    /// The coordinates do not satisfy the curve equation `Y^2 Z = X^3 + 7 Z^3`,
+    /// so the point does not lie on secp256k1.
+    #[error("invalid affine point: {x:?}, {y:?}, {z:?}")]
+    InvalidPoint {
+        /// The projective `x`-coordinate of the rejected point.
+        x: Secp256k1PrimeField,
+        /// The projective `y`-coordinate of the rejected point.
+        y: Secp256k1PrimeField,
+        /// The projective `z`-coordinate of the rejected point.
+        z: Secp256k1PrimeField,
+    },
+    /// The `z`-coordinate is zero (the point at infinity), which is not accepted
+    /// by the checked constructor.
+    #[error("z-coordinate is zero")]
+    ZeroZCoordinate,
+}
 
 /// Representation of a secp256k1 point using affine coordinates.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +60,47 @@ impl AffinePoint {
         let lhs = self.y().mul(self.y());
         let rhs = self.x().mul(self.x()).mul(self.x()).add(&b);
         lhs.eq(&rhs)
+    }
+}
+
+impl
+    TryFrom<(
+        Secp256k1PrimeField,
+        Secp256k1PrimeField,
+        Secp256k1PrimeField,
+    )> for Secp256k1
+{
+    type Error = Secp256k1Error;
+    fn try_from(
+        value: (
+            Secp256k1PrimeField,
+            Secp256k1PrimeField,
+            Secp256k1PrimeField,
+        ),
+    ) -> Result<Self, Self::Error> {
+        if value.2.eq(&Secp256k1PrimeField::ZERO) {
+            return Err(Secp256k1Error::ZeroZCoordinate);
+        }
+        let b = Secp256k1PrimeField::from(7);
+
+        // Computes y^2 * z
+        let lhs = value.1.mul(&value.1).mul(&value.2);
+
+        // Computes x^3 + 7 * z^3
+        let rhs = value
+            .0
+            .mul(&value.0)
+            .mul(&value.0)
+            .add(&b.mul(&value.2.mul(&value.2.mul(&value.2))));
+        if lhs.eq(&rhs) {
+            Ok(Self(value.0, value.1, value.2))
+        } else {
+            Err(Secp256k1Error::InvalidPoint {
+                x: value.0,
+                y: value.1,
+                z: value.2,
+            })
+        }
     }
 }
 

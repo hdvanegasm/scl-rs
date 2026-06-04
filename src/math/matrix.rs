@@ -16,7 +16,7 @@ pub enum Error {
     InvalidDimension(usize, usize),
 }
 
-/// Specialized result for the [`Error`] type.
+/// Specialized result for the [`enum@Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Matrix with elements in a ring.

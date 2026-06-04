@@ -1,9 +1,7 @@
-use crate::net;
 use crate::net::simulation::channel::ChannelId;
-use crate::net::simulation::{context, SimulationError};
+use crate::net::simulation::SimulationError;
 use crate::net::Packet;
 use async_trait::async_trait;
-use bincode::config;
 use rustls::pki_types::ServerName;
 use rustls::{
     ClientConfig, ClientConnection, ConnectionCommon, ServerConfig, ServerConnection, SideData,
@@ -25,26 +23,22 @@ pub enum ChannelError {
     /// The party tried to connect to the other party but the timeout was reached.
     #[error("connection timeout")]
     ConnectionTimeout,
-
     /// Trying to read from a channel with no information.
     #[error("channel buffer is empty")]
     EmptyBuffer,
-
+    /// Error during byte serialization.
     #[error("error during serialization")]
-    SerializationError(#[from] bincode::error::EncodeError),
-
-    #[error("error during deserialization")]
-    DeserializationError(#[from] bincode::error::DecodeError),
-
+    SerializationError(#[from] postcard::Error),
+    /// Error in an IO process.
     #[error("error in IO")]
     IoError(#[from] io::Error),
-
+    /// A TLS error wrapper.
     #[error("error in TLS")]
     TlsError(rustls::Error),
-
+    /// The channel was not found in the set of available channels for the current node.
     #[error("channel not found: {0:?}")]
     ChannelNotFound(ChannelId),
-
+    /// An internal error in a simulated network execution.
     #[error("errir during the execution of the simulation")]
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -88,26 +82,13 @@ where
         let packet_size = packet.size();
         const USIZE_LENGTH: usize = (usize::BITS / 8) as usize;
         let mut bytes_size_packet = [0; USIZE_LENGTH];
-        bincode::encode_into_slice(
-            packet_size,
-            &mut bytes_size_packet,
-            config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )
-        .map_err(ChannelError::SerializationError)?;
+        postcard::to_slice(&packet_size, &mut bytes_size_packet)?;
         self.write_all(&bytes_size_packet)
             .map_err(ChannelError::IoError)?;
 
         // Then, we send the actual packet.
         let mut packet_bytes = Vec::new();
-        bincode::serde::encode_into_slice(
-            packet,
-            &mut packet_bytes,
-            config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )?;
+        postcard::to_slice(&packet, &mut packet_bytes)?;
         self.write_all(&packet_bytes)?;
         Ok(packet.size())
     }
@@ -116,23 +97,12 @@ where
         let mut buffer_packet_size = [0; (usize::BITS / 8) as usize];
         self.read_exact(&mut buffer_packet_size)
             .map_err(ChannelError::IoError)?;
-        let (packet_size, _): (usize, usize) = bincode::serde::decode_from_slice(
-            &buffer_packet_size,
-            config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )
-        .map_err(ChannelError::DeserializationError)?;
+        let (packet_size, _): (usize, usize) = postcard::from_bytes(&buffer_packet_size)?;
 
         // Then, we receive the buffer the amount bytes until the end is reached.
         let mut payload_buffer = vec![0; packet_size];
         self.read_exact(&mut payload_buffer)?;
-        let (packet, _) = bincode::serde::decode_from_slice(
-            &payload_buffer,
-            config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )?;
+        let packet: Vec<Vec<u8>> = postcard::from_bytes(&payload_buffer)?;
 
         Ok(Packet::new(packet))
     }
@@ -299,8 +269,11 @@ impl Channel for LoopBackChannel {
 /// - A dummy loopback channel for when a party sends information to itself.
 /// - A TCP stream to send elements to other parties through the network.
 pub enum TcpChannel {
+    /// A channel used for a party to send information to itself.
     LoopBack(LoopBackChannel),
+    /// A channel where this node playing the role of a client in a point-to-point connection.
     StreamClient(StreamOwned<ClientConnection, TcpStream>),
+    /// A channel where this node playing the role of a server in a point-to-point connection.
     StreamServer(StreamOwned<ServerConnection, TcpStream>),
 }
 

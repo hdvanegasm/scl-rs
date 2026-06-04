@@ -3,12 +3,15 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
+/// Errors that may occur during matrix manipulation.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// Incompatible dimension during matrix operations.
     #[error("the operands do not have the same dimension: {0:?} and {1:?}")]
     IncompatibleDimension(usize, usize),
 }
 
+/// Specialized result type for [`enum@Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Vector whose elements belong to a ring.

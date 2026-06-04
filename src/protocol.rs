@@ -4,26 +4,32 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
 
+/// Default name for protocols.
 pub const DEFAULT_PROTOCOL_NAME: &str = "UNNAMED ";
 
+/// Error that may ocurr during a protocol execution.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("The protocol did not return any result.")]
+    /// The protocol did not return a result when result was expected.
+    #[error("the protocol did not return any result")]
     EmptyResult,
+    /// Error sending the protocol output to the [`Sender`].
     #[error(
-        "Error sending the result of the protocol executing protocol {protocol_name}: {source:?},"
+        "error sending the result of the protocol executing protocol {protocol_name}: {source:?}"
     )]
     SendProtocolOutputError {
+        /// Source of the error.
         #[source]
         source: SendError<Vec<u8>>,
+        /// Name of the protocol where the error occurs.
         protocol_name: String,
     },
 }
 
-/// Represents a protocol in this library.
+/// Represents a protocol.
 #[async_trait]
 pub trait Protocol<N: Network>: Send + Sync {
-    /// Behavior of the protocol.
+    /// Behavior of the protocol when run.
     async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
     /// Identifier of the protocol.
     fn name(&self) -> String;
@@ -40,6 +46,7 @@ pub struct ProtocolResult<N: Network> {
 }
 
 impl<N: Network> ProtocolResult<N> {
+    /// Creates a new protocol result with including the next protocol to execute.
     pub fn with_next(next_protocol: Box<dyn Protocol<N>>) -> Self {
         Self {
             result_bytes: None,
@@ -47,6 +54,7 @@ impl<N: Network> ProtocolResult<N> {
         }
     }
 
+    /// Creates a protocol result with a result in bytes and a next protocol to execute.
     pub fn with_next_and_result(next_protocol: Box<dyn Protocol<N>>, result: Vec<u8>) -> Self {
         Self {
             result_bytes: Some(result),
@@ -54,6 +62,7 @@ impl<N: Network> ProtocolResult<N> {
         }
     }
 
+    /// Creates a protoocl with a result but not with a next protocol.
     pub fn with_result_only(result: Vec<u8>) -> Self {
         Self {
             result_bytes: Some(result),
@@ -61,6 +70,7 @@ impl<N: Network> ProtocolResult<N> {
         }
     }
 
+    /// Creates an empty protocol result.
     pub fn empty() -> Self {
         Self {
             result_bytes: None,
@@ -69,15 +79,19 @@ impl<N: Network> ProtocolResult<N> {
     }
 }
 
+/// Clock that counts the elapsed time from a start point.
 pub struct Clock {
+    /// Instant in time in which the protocol starts to count.
     start: std::time::Instant,
 }
 
 impl Clock {
+    /// Elapsed time since the protocol started to run.
     pub fn read(&self) -> std::time::Duration {
         self.start.elapsed()
     }
 
+    /// Creates a new protocol in the current instant.
     pub fn new() -> Self {
         Self {
             start: std::time::Instant::now(),
@@ -85,20 +99,32 @@ impl Clock {
     }
 }
 
+/// Environment in which a protocol is executed.
+///
+/// The environment includes a clock counting the duration since the simulation started, and the
+/// network that is used in the protocol simulation.
 pub struct Environment<N: Network> {
+    /// Network in which the protocol is being executed.
     pub network: N,
-    pub clock: Clock,
+    clock: Clock,
 }
 
 impl<N: Network> Environment<N> {
+    /// Creates a new environment.
     pub fn new(network: N) -> Self {
         Self {
             network,
             clock: Clock::new(),
         }
     }
+
+    /// Returns a reference to the wall clock for the protocol execution.
+    pub fn clock(&self) -> &Clock {
+        &self.clock
+    }
 }
 
+/// Evaluates the protocol sending the results of each protocol execution to a [`Sender`].
 pub async fn evaluate_protocol<N: Network>(
     protocol: Box<dyn Protocol<N>>,
     env: &mut Environment<N>,
@@ -120,6 +146,7 @@ pub async fn evaluate_protocol<N: Network>(
     Ok(())
 }
 
+/// Executes the protocol obtaining a result at the end of the execution.
 pub async fn run_protocol_with_result<N: Network>(
     protocol: Box<dyn Protocol<N>>,
     env: &mut Environment<N>,
@@ -134,6 +161,7 @@ pub async fn run_protocol_with_result<N: Network>(
     current_result
 }
 
+/// Executes the protocol without getting any result from it.
 pub async fn run_protocol_without_result<N: Network>(
     protocol: Box<dyn Protocol<N>>,
     env: &mut Environment<N>,

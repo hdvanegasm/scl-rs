@@ -1,12 +1,17 @@
+/// Implements a channel using for point-to-point communication between two nodes.
 pub mod channel;
+
+/// Implementation of a simulated network.
+///
+/// This simulation uses theoretical formulas to simulate network delays. In this simulation, the
+/// user of the library can tweak the parameters of the network, and the protocol execution will
+/// report a time close to a real execution.
 pub mod simulation;
 
 use crate::net::channel::{Channel, ChannelError, TcpChannel};
-use crate::net::simulation::channel::ChannelId;
-use crate::net::simulation::channel::NetworkType::Tcp;
 use async_trait::async_trait;
 use channel::LoopBackChannel;
-use log::__private_api::loc;
+use postcard::from_bytes;
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore, ServerConfig, StreamOwned,
@@ -27,6 +32,7 @@ use std::{
 };
 use thiserror::Error;
 
+/// Represents a party ID in the protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Eq, Default)]
 pub struct PartyId(usize);
 
@@ -43,6 +49,7 @@ impl From<usize> for PartyId {
 }
 
 impl PartyId {
+    /// Returns the party ID as a [`usize`].
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -54,21 +61,19 @@ pub enum NetworkError {
     /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
     TlsError(#[from] rustls::Error),
-
     /// This error is returned when there is an IO error.
     #[error("IO error: {0:?}")]
     IoError(#[from] io::Error),
-
     /// This error encapsulates a channel error.
     #[error("channel error: {0:?}")]
     ChannelError(#[from] ChannelError),
-
+    /// Encapsulates a serialization error.
     #[error("error during the serialization: {0:?}")]
-    SerializationError(#[from] bincode::error::EncodeError),
-
+    SerializationError(#[from] postcard::Error),
+    /// The party was not found in a collection of [`PartyId`].
     #[error("party not found: {0:?}")]
     PartyNotFound(PartyId),
-
+    /// Error returned when the execution expects a two-party protocol.
     #[error("expected a network with only two nodes, there are {0} nodes in the network")]
     ExpectedTwoNodeNet(usize),
 }
@@ -114,13 +119,7 @@ impl Packet {
         T: DeserializeOwned,
     {
         let bytes = self.0.pop()?;
-        let (object, _) = bincode::serde::decode_from_slice(
-            &bytes,
-            bincode::config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )
-        .ok()?;
+        let object = from_bytes(&bytes).ok()?;
         Some(object)
     }
 
@@ -130,13 +129,7 @@ impl Packet {
         T: DeserializeOwned,
     {
         let bytes = self.0.get(obj_idx)?;
-        let (object, _) = bincode::serde::decode_from_slice(
-            bytes,
-            bincode::config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )
-        .ok()?;
+        let object = postcard::from_bytes(bytes).ok()?;
         Some(object)
     }
 
@@ -145,16 +138,12 @@ impl Packet {
     where
         T: Serialize,
     {
-        let bytes_obj = bincode::serde::encode_to_vec(
-            obj,
-            bincode::config::standard()
-                .with_big_endian()
-                .with_fixed_int_encoding(),
-        )?;
+        let bytes_obj = postcard::to_allocvec(obj)?;
         self.0.push(bytes_obj);
         Ok(())
     }
 
+    /// Returns the bytes of the packet.
     pub fn bytes(&self) -> Vec<u8> {
         self.0.iter().fold(Vec::new(), |mut acc, obj| {
             acc.extend_from_slice(obj);
@@ -163,7 +152,7 @@ impl Packet {
     }
 }
 
-/// Configuration of the network
+/// Configuration of the network.
 pub struct NetworkConfig<'a> {
     /// Port that will be used as a base to define the port of each party. Party `i` will listen at
     /// port `base_port + i`.
@@ -265,32 +254,35 @@ impl NetworkConfig<'_> {
     }
 }
 
+/// Represents a network used to execute a protocol.
 #[async_trait]
 pub trait Network {
+    /// This method sends a `packet` to the party with ID `party_id`.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
+    /// This method receives a `packet` from the party with ID `party_id`.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
+    /// Closes the connection with the network.
     async fn close(&mut self) -> Result<()>;
+    /// Returns the ID of the party executing the current node.
     fn local_party(&self) -> PartyId;
+    /// Method used in a **two-party** protocol to get the other party.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the protocol that is being executed is not a two party protocol.
     fn other(&self) -> Result<PartyId>;
 }
 
 /// Network that contains all the channels connected to the party. Each channel is
 /// a connection to other parties.
 pub struct TcpNetwork {
+    /// ID of the local party.
     local_party_id: PartyId,
     /// Channels for each peer.
     peer_channels: Vec<TcpChannel>,
 }
 
 impl TcpNetwork {
-    /// Creates a new network from its channels.
-    pub fn new(local_party: PartyId, peer_channels: Vec<TcpChannel>) -> Self {
-        Self {
-            local_party_id: local_party,
-            peer_channels,
-        }
-    }
-
     /// Configure the TLS channel according to the provided network configuration.
     ///
     /// # Error

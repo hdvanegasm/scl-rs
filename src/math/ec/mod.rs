@@ -1,6 +1,9 @@
+//! Contains traits to represent elliptic curves over finite fields.
+
 use super::field::FiniteField;
 use serde::{Deserialize, Serialize};
 
+/// Implementation of the elliptic curve secp256k1.
 pub mod secp256k1;
 
 /// Trait that defines an elliptic curve point using certain number of limbs for the scalar and

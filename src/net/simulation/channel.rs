@@ -1,34 +1,53 @@
-use crate::net::channel::{Channel, ChannelError};
+use crate::net::channel::Channel;
 use crate::net::simulation::context::{record_event, SimulationContext};
 use crate::net::simulation::event::Event;
 use crate::net::simulation::network::Transport;
 use crate::net::simulation::{Result, SimulationError};
-use crate::net::{Network, Packet, PartyId};
+use crate::net::{Packet, PartyId};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
+/// An ID for a channel connecting two parties.
+///
+/// The ID of the channel consists of the pair of the two parties connected through the channel: the
+/// local party, and the remote party.
 #[derive(Hash, PartialEq, PartialOrd, Debug, Eq, Copy, Clone)]
 pub struct ChannelId {
-    pub local: PartyId,
-    pub remote: PartyId,
+    local: PartyId,
+    remote: PartyId,
 }
 
 impl ChannelId {
+    /// Creates a new channel.
     pub fn new(local: PartyId, remote: PartyId) -> Self {
         ChannelId { local, remote }
     }
 
+    /// Returns the channel ID consisting of the end-points of the channel flipped.
     pub fn flip_end_points(&self) -> Self {
         Self::new(self.remote.clone(), self.local.clone())
     }
+
+    /// Returns the ID of the local node in the channel ID.
+    pub fn local(&self) -> PartyId {
+        self.local
+    }
+
+    /// Returns the ID of the remote node in the channel ID.
+    pub fn remote(&self) -> PartyId {
+        self.remote
+    }
 }
 
+/// Configuration of a network.
 pub trait NetworkConfig: Clone + Send + Sync {
+    /// Returns the configuration for a specific channel.
     fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig;
 }
 
+/// Bandwidth used in this channel measured in.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Bandwidth(usize);
 
@@ -37,6 +56,7 @@ pub struct Bandwidth(usize);
 pub struct Rtt(usize);
 
 impl Rtt {
+    /// Transform the RTT into seconds.
     pub fn to_secs(&self) -> f64 {
         self.0 as f64 / 1000.0
     }
@@ -45,6 +65,9 @@ impl Rtt {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Mss(usize);
 
+/// Fraction of packages loss.
+///
+/// This is a number betewen 0 and 1.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct PackageLoss(f64);
 
@@ -79,6 +102,7 @@ inner_value_manipulations!(Mss, usize);
 inner_value_manipulations!(PackageLoss, f64);
 inner_value_manipulations!(WindowSize, usize);
 
+/// Type of the network that will be used in the execution.
 #[derive(Debug, PartialEq, Clone)]
 pub enum NetworkType {
     /// A network where the channels are TCP channels.
@@ -87,19 +111,28 @@ pub enum NetworkType {
     Instant,
 }
 
+/// Configuration for a channel.
 #[derive(Debug, Clone)]
 pub struct ChannelConfig {
+    /// The network type for this channel.
     pub net_type: NetworkType,
+    /// The bandwidth of the channel.
     pub bandwidth: Bandwidth,
+    /// The RTT of the channel.
     pub rtt: Rtt,
+    /// The MSS of the channel.
     pub mss: Mss,
+    /// The fraction of package loss for this channel.
     pub package_loss: PackageLoss,
+    /// The window size of the channel.
     pub window_size: WindowSize,
 }
 
 impl ChannelConfig {
+    /// Size of the TCP header in bytes.
     const TCP_IP_HEADER_SIZE: usize = 40;
 
+    /// Creates a new configuration for a channel with the provided configuration.
     pub fn new(
         net_type: NetworkType,
         bandwidth: Bandwidth,
@@ -118,7 +151,7 @@ impl ChannelConfig {
         }
     }
 
-    pub fn lossless_throughput(&self) -> f64 {
+    fn lossless_throughput(&self) -> f64 {
         let rtt = self.rtt.to_secs();
         let wind_size = 8.0 * self.window_size.value() as f64;
         let max_throughput = wind_size / rtt;
@@ -128,14 +161,14 @@ impl ChannelConfig {
         actual_throughput
     }
 
-    pub fn lossy_throughput(&self) -> f64 {
+    fn lossy_throughput(&self) -> f64 {
         let mss = self.mss.value() as f64;
         let loss_term = f64::sqrt(3.0 / (2.0 * self.package_loss.value()));
         let rtt = self.rtt.to_secs();
         loss_term * (8.0 * mss / rtt)
     }
 
-    pub fn recv_time_tcp(&self, n: usize) -> Duration {
+    fn recv_time_tcp(&self, n: usize) -> Duration {
         let total_size_bits = self.size_with_header_bits(n);
         let mut actual_throughput = self.lossless_throughput();
         if self.package_loss.value() > 0.0 {
@@ -146,12 +179,12 @@ impl ChannelConfig {
         Duration::from_secs_f64(t)
     }
 
-    pub fn size_with_header_bits(&self, n_bytes: usize) -> f64 {
+    fn size_with_header_bits(&self, n_bytes: usize) -> f64 {
         let num_packets = f64::ceil(n_bytes as f64 / self.mss.value() as f64);
         8.0 * (n_bytes as f64 + num_packets * Self::TCP_IP_HEADER_SIZE as f64)
     }
 
-    pub fn adjust_send_time(&self, send_time: Duration, n: usize) -> Duration {
+    pub(crate) fn adjust_send_time(&self, send_time: Duration, n: usize) -> Duration {
         match self.net_type {
             NetworkType::Tcp => send_time + self.recv_time_tcp(n),
             NetworkType::Instant => send_time,
@@ -159,13 +192,20 @@ impl ChannelConfig {
     }
 }
 
+/// A builder for a channel configuration.
 #[derive(Debug)]
 pub struct ChannelConfigBuilder {
+    /// The network type of this channel.
     pub net_type: NetworkType,
+    /// The bandwidth for this channel.
     pub bandwidth: Bandwidth,
+    /// The RTT for this channel.
     pub rtt: Rtt,
+    /// The maximum segment size between two channels.
     pub mss: Mss,
+    /// The proportion of lost packages during a connection.
     pub package_loss: PackageLoss,
+    /// The window size.
     pub window_size: WindowSize,
 }
 
@@ -177,10 +217,12 @@ impl ChannelConfigBuilder {
     const DEFAULT_PACKAGE_LOSS: PackageLoss = PackageLoss(0.0);
     const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize(65536);
 
+    /// Sets the network type to the provided for the configuration.
     pub fn net_type(self, net_type: NetworkType) -> Self {
         Self { net_type, ..self }
     }
 
+    /// Sets the bandwidth to the given value.
     pub fn bandwidth(self, bandwidth: Bandwidth) -> Self {
         Self { bandwidth, ..self }
     }

@@ -1,6 +1,6 @@
 use scl_rs::math::{
     ec::{secp256k1::Secp256k1, EllipticCurve},
-    field::secp256k1_scalar::Secp256k1ScalarField,
+    field::{secp256k1_prime::Secp256k1PrimeField, secp256k1_scalar::Secp256k1ScalarField},
     ring::Ring,
 };
 
@@ -109,4 +109,21 @@ fn elliptic_curve_identity() {
     let curv_elem = Secp256k1::gen().scalar_mul(&coeff);
 
     assert!(curv_elem.add(&Secp256k1::POINT_AT_INFINITY).eq(&curv_elem));
+}
+
+#[test]
+fn on_curve_point_passes_validation() {
+    // The generator is on the curve, so the deserialization check must accept it.
+    let g = Secp256k1::gen();
+    let coords = (*g.x(), *g.y(), *g.z());
+    assert!(Secp256k1::try_from(coords).is_ok());
+}
+
+#[test]
+fn off_curve_point_is_rejected() {
+    // Tamper with the y-coordinate of the generator so it no longer satisfies
+    // y^2 = x^3 + 7; the deserialization check must reject it.
+    let g = Secp256k1::gen();
+    let bad = (*g.x(), Secp256k1PrimeField::from(123u64), *g.z());
+    assert!(Secp256k1::try_from(bad).is_err());
 }

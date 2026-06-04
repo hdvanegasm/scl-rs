@@ -1,3 +1,5 @@
+//! Implementation of polynomials over rings. These polynomials have serialization and deserialization compatible with the [`serde`] crate.
+
 use super::ring::Ring;
 use crate::math::field::FiniteField;
 use rand::Rng;
@@ -16,11 +18,12 @@ pub enum Error<T> {
     #[error("error in the interpolation, not all the elements in the list are different: {0:?}")]
     NotAllDifferentInterpolation(Vec<T>),
 
+    /// The polynomial has no coefficients.
     #[error("the polynomial has no coefficients")]
     EmptyCoefficients,
 }
 
-/// Specialized type for the [`Error`] type.
+/// Specialized type for the [`enum@Error`] type.
 pub type Result<T, R> = std::result::Result<T, Error<R>>;
 
 /// Represents a polynomial whose coefficients are elements in a finite field.
@@ -146,7 +149,7 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
 ///
 /// # Error
 ///
-/// If the lagrange basis is not computed correctly, the function returns an [`Error`].
+/// If the lagrange basis is not computed correctly, the function returns an [`enum@Error`].
 pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     evaluations: &[T],
     alphas: &[T],
