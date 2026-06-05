@@ -543,6 +543,125 @@ async fn one_way_communication_does_not_require_prior_send() {
     simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
 }
 
+/// Number of parties in the broadcast simulation.
+const BROADCAST_N_PARTIES: usize = 5;
+
+/// Value that party 0 broadcasts to every party.
+const BROADCAST_VALUE: usize = 7;
+
+/// Protocol where party 0 sends the same message to every party (itself included) and every party
+/// receives its copy from party 0, after which the protocol finishes. Used to exercise a
+/// multi-party (5 parties) simulation with a single sender fanning out to all receivers.
+pub struct BroadcastProtocol;
+
+#[async_trait::async_trait]
+impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for BroadcastProtocol {
+    async fn run(
+        &self,
+        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
+    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+        let me = environment.network.local_party();
+
+        if me.as_usize() == 0 {
+            // Party 0 sends the same message to every party, including itself.
+            let mut packet = Packet::empty();
+            packet.write(&BROADCAST_VALUE).unwrap();
+            for receiver in 0..BROADCAST_N_PARTIES {
+                environment
+                    .network
+                    .send_to(PartyId::from(receiver), &packet)
+                    .await
+                    .unwrap();
+            }
+        }
+
+        // Every party (party 0 included) receives its copy from party 0.
+        let received = environment
+            .network
+            .recv_from(PartyId::from(0))
+            .await
+            .unwrap();
+        environment.network.close().await.unwrap();
+
+        ProtocolResult::with_result_only(received.bytes())
+    }
+
+    fn name(&self) -> String {
+        String::from("BroadcastProtocol")
+    }
+}
+
+pub struct BroadcastManager {
+    parties: Vec<PartyId>,
+    net_config: SimpleNetworkConfig,
+}
+
+impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for BroadcastManager {
+    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
+
+    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
+
+    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
+        self.parties
+            .iter()
+            .map(|_| {
+                Box::new(BroadcastProtocol)
+                    as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
+            })
+            .collect()
+    }
+
+    fn handle_protocol_output(&mut self, _party_id: PartyId, output: Vec<u8>) {
+        // Every party outputs the value broadcast by party 0.
+        let mut expected = Packet::empty();
+        expected.write(&BROADCAST_VALUE).unwrap();
+        assert_eq!(output, expected.bytes());
+    }
+
+    fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
+        println!("Party {}:\n{}\n---", party_id.as_usize(), trace);
+
+        let sends = trace
+            .events()
+            .iter()
+            .filter(|event| event.event_type() == EventType::SendData)
+            .count();
+        let recvs = trace
+            .events()
+            .iter()
+            .filter(|event| event.event_type() == EventType::ReceiveData)
+            .count();
+
+        if party_id.as_usize() == 0 {
+            // Party 0 sends one message to each of the parties (itself included).
+            assert_eq!(sends, BROADCAST_N_PARTIES);
+        } else {
+            // The other parties only receive; they never send.
+            assert_eq!(sends, 0);
+        }
+        // Every party receives exactly one message from party 0.
+        assert_eq!(recvs, 1);
+    }
+
+    fn network_config(&self) -> &SimpleNetworkConfig {
+        &self.net_config
+    }
+
+    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
+        vec![]
+    }
+}
+
+#[tokio::test]
+async fn broadcast_from_party_zero_reaches_all_parties() {
+    let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
+    let manager = Arc::new(Mutex::new(BroadcastManager {
+        parties: parties.clone(),
+        net_config: SimpleNetworkConfig,
+    }));
+    simulate(parties, manager.clone()).await;
+}
+
 #[test]
 fn output_event_elides_large_payloads() {
     use std::time::Duration;
