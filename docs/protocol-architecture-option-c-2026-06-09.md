@@ -3,7 +3,9 @@
 **Date:** 2026-06-09
 **Status:** In progress — Steps 1–5b implemented: the deterministic core has full output / trace /
 hook parity, the test suite is migrated, and the **legacy tokio simulator has been deleted** (the
-new core is the only simulator). Steps 6–7 and remaining follow-ons pending.
+new core is the only simulator). **Step 6 implemented:** the real network path now uses genuinely
+async `tokio-rustls` streams (no more blocking I/O behind `async fn`). Step 7 and remaining
+follow-ons pending.
 **Scope:** Redesign of how MPC protocols are modeled, composed, and simulated in
 `scl-rs`, moving from a tokio-driven simulator to a single-threaded deterministic
 executor that drives `async` protocols written once and run unchanged on both the
@@ -164,7 +166,7 @@ exactly what a deterministic simulator must forbid. So it's a guardrail, not a c
 | 4 | Virtual-clock event loop | Deletes `has_data` guessing; deterministic timing | ✅ done |
 | 5 | `Delay` over `ChannelConfig`; `SimNetwork: Network`; `simulate` driver | Real protocols run on the core | ✅ done |
 | 5b | Trace + hook parity (`SimulationTrace`, `TriggeredHook`); suite migration; **legacy simulator deleted** | New core is canonical; old `simulator`/`context`/`manager`/`hook` modules and `Transport`/`SimulatedNetwork`/`SimulatedChannel` removed | ✅ done |
-| 6 | Real async `TcpChannel` (`tokio-rustls`) | Same protocol over real TLS | ⏳ planned |
+| 6 | Real async network (`tokio-rustls`): blanket `Channel` over async streams, async handshake, async `create`, `Box<dyn Channel>` peers | Same protocol over real TLS, genuinely concurrent I/O | ✅ done |
 | 7 | Typed sub-protocol composition | Call-and-return nesting (the original goal) | ⏳ planned |
 
 Steps 1–5b were built **additively** (old and new simulators coexisting); once the new core reached
@@ -449,23 +451,39 @@ only simulator.
 
 ---
 
-## 10. Step 6 — Real async TCP/TLS (planned)
+## 10. Step 6 — Real async TCP/TLS (done)
 
-**Goal:** the same protocols run over real sockets. The current `TcpChannel`
-(`src/net/channel.rs`) is `async fn` on the surface but does **blocking** `write_all`/`read_exact`
-on a blocking `StreamOwned`. That works today only because each party is a sequential task; the
-moment a protocol awaits several peers concurrently (any broadcast round), blocking reads will
-serialize or deadlock.
+**Goal:** the same protocols run over real sockets. The previous `TcpChannel`
+(`src/net/channel.rs`) was `async fn` on the surface but did **blocking** `write_all`/`read_exact`
+on a blocking `StreamOwned`. That worked only because each party was a sequential task; the moment a
+protocol awaits several peers concurrently (any broadcast round), the blocking reads would park the
+whole thread and serialize or deadlock.
 
-Plan:
-- Replace the blocking rustls `StreamOwned` with **`tokio-rustls`** over a non-blocking
-  `TcpStream`, so `send`/`recv` are genuinely async.
-- Confirm the unchanged `SendRecv` (and richer protocols) run over real TLS, driven by tokio.
-- Because Option X kept the `Network` trait `#[async_trait]` (Send), `TcpNetwork` can run on a
+What was built:
+- The blocking rustls `StreamOwned` is gone. `Channel` is now a **blanket impl over any
+  `T: AsyncReadExt + AsyncWriteExt + Unpin + Send`**, so `tokio_rustls::TlsStream<TcpStream>` is a
+  `Channel` for free. `send`/`recv` use length-prefixed framing (`u64` LE length + `postcard`
+  payload) and are genuinely async — a blocked read parks the *task*, not the thread. `send` must
+  `flush()` after its writes: `tokio-rustls` buffers ciphertext at the rustls layer, so without the
+  flush the trailing TLS records can stall under backpressure and deadlock a request→response round.
+- The TLS handshake is async: `TlsAcceptor::accept().await` (server) and
+  `TlsConnector::connect().await` (client) replace the hand-cranked `complete_io`/`read_tls`/
+  `process_new_packets` pump. The connect-retry loop uses `tokio::time::timeout` +
+  `tokio::time::sleep` (never `std::thread::sleep`). The party-id exchange uses a fixed `u64` width
+  so client and server agree across architectures.
+- `TcpNetwork::create` is now `async` (`TcpListener::bind().await`, awaited accepts/connects).
+  Peers are held as `Box<dyn Channel + Send>` — the old `TcpChannel` enum and its hand-written
+  dispatch are deleted; loopback and TLS streams unify through the trait object (D16).
+- Because Option X (D8) kept the `Network` trait `#[async_trait]` (Send), `TcpNetwork` runs on a
   multi-thread runtime; a single party also runs fine on a current-thread runtime.
 
-Acceptance: a protocol binary with two processes completes a real TLS exchange, and the *same*
-protocol type passes the simulator test.
+Channels are kept indexed by peer ID and stay correct for **any** number of parties: client
+connections and the loop-back channel land at a known index, and each server accept is placed at the
+`remote_id` the handshake reports (not loop order). `create` fails if any slot is left unfilled.
+
+Open follow-ons (tracked, not blocking):
+- No integration test yet exercises the real path (the simulator suite never touches `TcpNetwork`);
+  a two-task localhost `#[tokio::test]` would cover handshake + framing + flush end-to-end.
 
 ---
 
@@ -544,6 +562,7 @@ branches. Wanting to put network logic there would signal a layering leak.
 | D13 | Port hooks as a non-generic `TriggeredHook` on the `Switchboard` | The new core isn't generic over `NetworkConfig`, so the trait drops the `<N>` param; `run(party, &Event, &mut Switchboard)` gives curated access — external hooks see only `Switchboard`'s pub API (`send`, `clock_of`), so they can't corrupt the event queue or recurse into `record_event`. Fired from `record_event`; registered via `simulate`'s `hooks` arg. `Manager` is subsumed by `SimulationOutcome { outputs, traces }`. |
 | D14 | Drop `CloseChannel` and `HasData`; record `Output` after `ProtocolEnd` | Both events are artifacts of the old per-connection / polling design — the event-loop model has no persistent channels to close and no `has_data` polling. Output-after-End is just the order `drive` produces; both orderings are arbitrary, kept for simplicity. |
 | D15 | Protocols are `Protocol<SimNetwork>`, not `Protocol<SimulatedNetwork<N>>` | `SimNetwork` isn't generic over the config; the config is an argument to `simulate`, not baked into the protocol type. One protocol bound works across all network configs (simplification surfaced by the migration). |
+| D16 | Blanket `Channel` over async streams + `Box<dyn Channel>` peers (Step 6) | A blanket `impl<T: AsyncReadExt + AsyncWriteExt + Unpin + Send> Channel for T` makes `tokio_rustls::TlsStream<TcpStream>` a `Channel` with no wrapper; loopback keeps its own impl (no overlap — it isn't async-read/write). `TcpNetwork` holds `Vec<Box<dyn Channel + Send>>`, deleting the `TcpChannel` enum and its hand-written dispatch — consistent with the codebase's other trait objects (`Box<dyn Delay>`, `Box<dyn Protocol>`). One heap alloc + vtable hop per channel is negligible against a TLS round-trip. `send` flushes after writing because `tokio-rustls` buffers ciphertext and won't otherwise drain under backpressure. |
 
 ---
 

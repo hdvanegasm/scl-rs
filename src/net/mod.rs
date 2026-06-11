@@ -8,20 +8,16 @@ pub mod channel;
 /// report a time close to a real execution.
 pub mod simulation;
 
-use crate::net::channel::{Channel, ChannelError, TcpChannel};
+use crate::net::channel::{Channel, ChannelError};
 use async_trait::async_trait;
 use channel::LoopBackChannel;
 use postcard::from_bytes;
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-    ClientConfig, RootCertStore, ServerConfig, StreamOwned,
-};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use std::{
     cmp::Ordering,
-    net::{Ipv4Addr, SocketAddr, TcpListener},
+    net::{Ipv4Addr, SocketAddr},
     path::Path,
     str::FromStr,
     time::Duration,
@@ -31,6 +27,10 @@ use std::{
     io::{self, Error, ErrorKind},
 };
 use thiserror::Error;
+use tokio::net::TcpListener;
+use tokio_rustls::rustls::pki_types::pem::PemObject;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 
 /// Represents a party ID in the protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Eq, Default)]
@@ -60,7 +60,7 @@ impl PartyId {
 pub enum NetworkError {
     /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
-    TlsError(#[from] rustls::Error),
+    TlsError(#[from] tokio_rustls::rustls::Error),
     /// This error is returned when there is an IO error.
     #[error("IO error: {0:?}")]
     IoError(#[from] io::Error),
@@ -279,7 +279,7 @@ pub struct TcpNetwork {
     /// ID of the local party.
     local_party_id: PartyId,
     /// Channels for each peer.
-    peer_channels: Vec<TcpChannel>,
+    peer_channels: Vec<Box<dyn Channel + Send>>,
 }
 
 impl TcpNetwork {
@@ -314,18 +314,22 @@ impl TcpNetwork {
     /// - When the TLS configuration is not done correctly.
     /// - When the node is trying to connect as a server but is unable to accept the provided
     ///   client.
-    pub fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
+    pub async fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
         log::info!("creating network");
         let n_parties = config.peer_ips.len();
         let server_port = config.base_port + id as u16;
         let server_address =
             SocketAddr::new(std::net::IpAddr::V4(config.peer_ips[id]), server_port);
-        let server_listener = TcpListener::bind(server_address).map_err(NetworkError::IoError)?;
+        let server_listener = TcpListener::bind(server_address).await?;
         log::info!("listening on {:?}", server_address);
 
         let (client_conf, server_conf) = Self::configure_tls(&config)?;
 
-        let mut peers = Vec::new();
+        // Channels are kept indexed by peer ID. Client connections and the loop-back channel land
+        // at a known index, but a server accept resolves the peer only after the handshake, so each
+        // slot is filled by the `remote_id` the accept reports rather than by loop order.
+        let mut peers: Vec<Option<Box<dyn Channel + Send>>> =
+            (0..n_parties).map(|_| None).collect();
 
         for i in 0..n_parties {
             match i.cmp(&id) {
@@ -334,32 +338,41 @@ impl TcpNetwork {
                     let remote_port = config.base_port + i as u16;
                     let remote_address =
                         SocketAddr::new(std::net::IpAddr::V4(config.peer_ips[i]), remote_port);
-                    let (client_conn, tcp_stream) = channel::connect_as_client(
+                    let stream = channel::connect_as_client(
                         id,
                         remote_address,
                         config.timeout,
                         config.sleep_time,
                         &client_conf,
-                    )?;
-                    let stream = StreamOwned::new(client_conn, tcp_stream);
-                    peers.push(TcpChannel::StreamClient(stream));
+                    )
+                    .await?;
+                    peers[i] = Some(Box::new(stream));
                 }
                 Ordering::Greater => {
-                    log::info!("acting as a server for peer ID {i}");
-                    let (server_conn, tcp_stream, _) =
-                        channel::accept_connection(&server_listener, &server_conf)?;
-                    let stream = StreamOwned::new(server_conn, tcp_stream);
-                    peers.push(TcpChannel::StreamServer(stream));
+                    log::info!("acting as a server, waiting for a peer to connect");
+                    let (stream, remote_id) =
+                        channel::accept_connection(&server_listener, &server_conf).await?;
+                    log::info!("accepted connection from peer ID {remote_id}");
+                    peers[remote_id] = Some(Box::new(stream));
                 }
                 Ordering::Equal => {
                     log::info!("adding the loop-back channel");
-                    peers.push(TcpChannel::LoopBack(LoopBackChannel::default()));
+                    peers[id] = Some(Box::new(LoopBackChannel::default()));
                 }
             }
         }
+
+        // Every slot must have been filled: peers with a lower ID connected to us, peers with a
+        // higher ID we connected to, and our own slot is the loop-back channel.
+        let peer_channels = peers
+            .into_iter()
+            .enumerate()
+            .map(|(i, channel)| channel.ok_or(NetworkError::PartyNotFound(PartyId(i))))
+            .collect::<Result<Vec<_>>>()?;
+
         Ok(Self {
             local_party_id: PartyId(id),
-            peer_channels: peers,
+            peer_channels,
         })
     }
 

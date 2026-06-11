@@ -18,31 +18,35 @@
 To write your own protocol, you need to implement the trait `Protocol` defined as:
 
 ```rust
-/// Represents a protocol in this library.
+/// Represents a protocol.
 #[async_trait]
 pub trait Protocol<N: Network>: Send + Sync {
-    /// Behavior of the protocol.
+    /// Behavior of the protocol when run.
     async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
     /// Identifier of the protocol.
-    fn name(&self) -> String;
+    fn name(&self) -> &'static str;
 }
 
 ```
 
-The communication channels send `Packet` instances, which is an encapsulation of bytes. As an example, the packets may contain information of shares, field elements, polynomials, elliptic curve points, or any other serializable type in the library. The interaction between parties are done using the functions `send` and
-`recv` defined in the `Network` implementation.
+The communication channels send `Packet` instances, which is an encapsulation of bytes. As an example, the packets may contain information of shares, field elements, polynomials, elliptic curve points, or any other serializable type in the library. The interaction between parties is done using the functions `send_to` and
+`recv_from` defined in the `Network` implementation.
 
 An example of a simple protocol that exchanges information between two parties can be implemented as follows:
 
 ```rust
+use scl_rs::net::simulation::network::SimNetwork;
+use scl_rs::net::{Network, Packet};
+use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
+
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
+impl Protocol<SimNetwork> for SendRecvProtocol {
     async fn run(
         &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+        environment: &mut Environment<SimNetwork>,
+    ) -> ProtocolResult<SimNetwork> {
         // Creates a packet to store the information that will be sent through
         // the network.
         let mut packet = Packet::empty();
@@ -64,17 +68,47 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
         ProtocolResult::with_result_only(received_packet.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("SendRecvProtocol")
+    fn name(&self) -> &'static str {
+        "SendRecvProtocol"
     }
 }
 ```
 
-The output of the protocol will be something as follows:
+### Simulated execution
+
+To run the protocol under the deterministic simulator, pair each party with an
+instance of the protocol and hand them to `simulate`, along with a network
+configuration and an (optionally empty) list of hooks. The simulator returns a
+`SimulationOutcome` holding every party's output and its event trace.
+
+```rust
+use scl_rs::net::simulation::channel::SimpleNetworkConfig;
+use scl_rs::net::simulation::runtime::simulate;
+use scl_rs::net::PartyId;
+
+let p0 = PartyId::from(0_usize);
+let p1 = PartyId::from(1_usize);
+
+let outcome = simulate(
+    SimpleNetworkConfig,
+    vec![
+        (p0, Box::new(SendRecvProtocol)),
+        (p1, Box::new(SendRecvProtocol)),
+    ],
+    vec![],
+);
+
+for party in [p0, p1] {
+    println!("Party {party:?} output: {:?}", outcome.outputs[&party]);
+}
+```
+
+The output of the protocol will be something as follows. Each party receives the
+other party's id, so party 0 outputs the id of party 1 and vice versa:
 
 ```text
-Party 0 output: [0, 0, 0, 0, 0, 0, 0, 0]
-Party 1 output: [0, 0, 0, 0, 0, 0, 0, 1]
+Party 0 output: Some([0, 0, 0, 0, 0, 0, 0, 1])
+Party 1 output: Some([0, 0, 0, 0, 0, 0, 0, 0])
 ```
 
 ### Distributed execution
@@ -129,7 +163,7 @@ bash gen_self_signed_certs.sh <n_parties>
 - [ ] Write missing tests for all the functionalities.
 - [x] ~Implement secp256k1~.
 - [x] ~Implement Feldman VSS~.
-- [ ] Document the source code.
+- [x] ~Document the source code.~
 - [x] ~Implement Shamir's secret-sharing.~
 - [x] ~Implement a fake network so that the final user can prototype MPC protocols locally.~
 - [x] ~Improve the serialization and deserialization to optimize the communication.~

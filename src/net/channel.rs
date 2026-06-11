@@ -2,27 +2,24 @@ use crate::net::simulation::channel::ChannelId;
 use crate::net::simulation::SimulationError;
 use crate::net::Packet;
 use async_trait::async_trait;
-use rustls::pki_types::ServerName;
-use rustls::{
-    ClientConfig, ClientConnection, ConnectionCommon, ServerConfig, ServerConnection, SideData,
-    StreamOwned,
-};
 use std::collections::VecDeque;
-use std::io::{self, Read, Write};
-use std::ops::{Deref, DerefMut};
+use std::io::{self};
 use std::sync::Arc;
-use std::{
-    net::{SocketAddr, TcpListener, TcpStream},
-    time::{Duration, Instant},
-};
+use std::{net::SocketAddr, time::Duration};
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::time::error::Elapsed;
+use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::{ClientConfig, ServerConfig};
+use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
 /// Possible errors that may appear in a channel.
 #[derive(Debug, Error)]
 pub enum ChannelError {
     /// The party tried to connect to the other party but the timeout was reached.
     #[error("connection timeout")]
-    ConnectionTimeout,
+    Timeout(#[from] Elapsed),
     /// Trying to read from a channel with no information.
     #[error("channel buffer is empty")]
     EmptyBuffer,
@@ -34,7 +31,7 @@ pub enum ChannelError {
     IoError(#[from] io::Error),
     /// A TLS error wrapper.
     #[error("error in TLS")]
-    TlsError(rustls::Error),
+    TlsError(#[from] tokio_rustls::rustls::Error),
     /// The channel was not found in the set of available channels for the current node.
     #[error("channel not found: {0:?}")]
     ChannelNotFound(ChannelId),
@@ -64,176 +61,96 @@ pub trait Channel {
 }
 
 #[async_trait]
-impl<C, T, S> Channel for StreamOwned<C, T>
+impl<T> Channel for T
 where
-    C: Sized + DerefMut + Deref<Target = ConnectionCommon<S>> + Send + Sync,
-    T: Sized + Read + Write + Send + Sync,
-    S: SideData,
+    T: AsyncReadExt + AsyncWriteExt + Unpin + Send,
 {
     async fn close(&mut self) -> Result<()> {
-        self.conn.send_close_notify();
+        self.shutdown().await?;
         log::info!("channel successfully closed");
         Ok(())
     }
 
     async fn send(&mut self, packet: &Packet) -> Result<usize> {
-        // First, we need to send the size of the packet to be able to know the amout
-        // of bits that are being sent.
-        let packet_size = packet.size();
-        const USIZE_LENGTH: usize = (usize::BITS / 8) as usize;
-        let mut bytes_size_packet = [0; USIZE_LENGTH];
-        postcard::to_slice(&packet_size, &mut bytes_size_packet)?;
-        self.write_all(&bytes_size_packet)
-            .map_err(ChannelError::IoError)?;
-
-        // Then, we send the actual packet.
-        let mut packet_bytes = Vec::new();
-        postcard::to_slice(&packet, &mut packet_bytes)?;
-        self.write_all(&packet_bytes)?;
+        let bytes = postcard::to_allocvec(packet)?;
+        let len = (bytes.len() as u64).to_le_bytes();
+        self.write_all(&len).await?;
+        self.write_all(&bytes).await?;
         Ok(packet.size())
     }
 
     async fn recv(&mut self) -> Result<Packet> {
-        let mut buffer_packet_size = [0; (usize::BITS / 8) as usize];
-        self.read_exact(&mut buffer_packet_size)
-            .map_err(ChannelError::IoError)?;
-        let (packet_size, _): (usize, usize) = postcard::from_bytes(&buffer_packet_size)?;
+        let mut len_buff = [0u8; 8];
+        self.read_exact(&mut len_buff).await?;
+        let len = u64::from_le_bytes(len_buff) as usize;
 
         // Then, we receive the buffer the amount bytes until the end is reached.
-        let mut payload_buffer = vec![0; packet_size];
-        self.read_exact(&mut payload_buffer)?;
-        let packet: Vec<Vec<u8>> = postcard::from_bytes(&payload_buffer)?;
+        let mut payload_buffer = vec![0; len];
+        self.read_exact(&mut payload_buffer).await?;
+        let inner: Vec<Vec<u8>> = postcard::from_bytes(&payload_buffer)?;
 
-        Ok(Packet::new(packet))
+        Ok(Packet::new(inner))
     }
 }
 
 /// Accepts a connection in the corresponding listener.
-pub(crate) fn accept_connection(
+pub(crate) async fn accept_connection(
     listener: &TcpListener,
     server_conf: &ServerConfig,
-) -> Result<(ServerConnection, TcpStream, usize)> {
-    let (mut stream, socket) = listener.accept().map_err(ChannelError::IoError)?;
-    stream
-        .set_nonblocking(false)
-        .map_err(ChannelError::IoError)?;
+) -> Result<(TlsStream<TcpStream>, usize)> {
+    let acceptor = TlsAcceptor::from(Arc::new(server_conf.clone()));
+    let (tcp_stream, socket) = listener.accept().await?;
+    let mut tls_stream = acceptor.accept(tcp_stream).await?;
 
-    let mut tls_conn =
-        ServerConnection::new(Arc::new(server_conf.clone())).map_err(ChannelError::TlsError)?;
-    let (read_bytes, write_bytes) = tls_conn
-        .complete_io(&mut stream)
-        .map_err(ChannelError::IoError)?;
-    log::debug!("Created TLS connection: read {read_bytes} bytes, write {write_bytes} bytes");
+    let mut id_buffer = [0u8; 8];
+    tls_stream.read_exact(&mut id_buffer).await?;
+    let id_remote = u64::from_le_bytes(id_buffer) as usize;
 
-    // Once the client is connected, we receive his ID from the current established channel.
-    let mut id_buffer = [0; (usize::BITS / 8) as usize];
-    loop {
-        if tls_conn.wants_read() {
-            tls_conn
-                .read_tls(&mut stream)
-                .map_err(ChannelError::IoError)?;
-            tls_conn
-                .process_new_packets()
-                .map_err(ChannelError::TlsError)?;
-
-            match tls_conn.reader().read_exact(&mut id_buffer) {
-                Ok(()) => break Ok(()),
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(err) => break Err(ChannelError::IoError(err)),
-            }
-        }
-    }?;
-
-    let remote_id = usize::from_le_bytes(id_buffer);
     log::info!(
-        "accepted connection request acting like a server from {:?} with ID {}",
+        "accepted connection from {:?} with ID {}",
         socket,
-        remote_id,
+        id_remote,
     );
 
-    Ok((tls_conn, stream, remote_id))
+    Ok((TlsStream::from(tls_stream), id_remote))
 }
 
 /// Connect to the remote address as a client using the corresponding timeout. The party
 /// tries to connect to the "server" (the other node) multiple times using a sleep time between calls.
 /// If the "server" party does not answer within the timeout, then the function returns
 /// an error.
-pub(crate) fn connect_as_client(
+pub(crate) async fn connect_as_client(
     local_id: usize,
     remote_addr: SocketAddr,
     timeout: Duration,
     sleep_time: Duration,
     client_conf: &ClientConfig,
-) -> Result<(ClientConnection, TcpStream)> {
-    let start_time = Instant::now();
-
+) -> Result<TlsStream<TcpStream>> {
     // Repeatedly tries to connect to the server during the timeout.
     log::info!("trying to connect as a client to {:?}", remote_addr);
-    loop {
-        match TcpStream::connect(remote_addr) {
-            Ok(mut stream) => {
-                // We want the stream to actually block.
-                stream
-                    .set_nonblocking(false)
-                    .map_err(ChannelError::IoError)?;
-
-                // Create the client connection.
-                let mut client_conn = ClientConnection::new(
-                    Arc::new(client_conf.clone()),
-                    ServerName::from(remote_addr.ip()),
-                )
-                .map_err(ChannelError::TlsError)?;
-                let (read_bytes, write_bytes) = client_conn
-                    .complete_io(&mut stream)
-                    .map_err(ChannelError::IoError)?;
-                log::debug!(
-                    "TLS connection with {:?}: write {write_bytes} bytes, read {read_bytes} bytes",
-                    remote_addr
-                );
-
-                // Send the id of the party that is connecting to the
-                // server once the connection is successfull.
-                client_conn
-                    .writer()
-                    .write_all(&local_id.to_le_bytes())
-                    .map_err(ChannelError::IoError)?;
-                let bytes = loop {
-                    if client_conn.wants_write() {
-                        match client_conn.write_tls(&mut stream) {
-                            Ok(bytes) => break Ok(bytes),
-                            Err(err) => break Err(ChannelError::IoError(err)),
-                        }
-                    }
-                }?;
-                log::debug!("sending ID to {:?}: {bytes} bytes", remote_addr);
-
-                log::info!(
-                    "connected successfully with {:?} using the local port {:?}",
-                    remote_addr,
-                    stream.local_addr().map_err(ChannelError::IoError)?
-                );
-
-                break Ok((client_conn, stream));
-            }
-            Err(_) => {
-                let elapsed = start_time.elapsed();
-                if elapsed > timeout {
-                    // At this moment the enlapsed time passed the timeout. Hence we return an
-                    // error. Tired of waiting for the "server" to be ready.
-                    log::error!(
-                        "timeout reached, server not listening from ID {local_id} to server {:?}",
-                        remote_addr
-                    );
-                    return Err(ChannelError::ConnectionTimeout);
+    let connector = TlsConnector::from(Arc::new(client_conf.clone()));
+    let server_name = ServerName::from(remote_addr.ip());
+    let stream = tokio::time::timeout(timeout, async {
+        loop {
+            match TcpStream::connect(remote_addr).await {
+                Ok(stream) => {
+                    break stream;
                 }
-                // The connection was not successfull. Hence, we try to connect again with the
-                // "server" party.
-                std::thread::sleep(sleep_time)
+                Err(_) => {
+                    tokio::time::sleep(sleep_time).await;
+                }
             }
         }
-    }
+    })
+    .await?;
+
+    // TLS handshake.
+    let mut tls_stream = connector.connect(server_name, stream).await?;
+    tls_stream
+        .write_all(&(local_id as u64).to_le_bytes())
+        .await?;
+    tls_stream.flush().await?;
+    Ok(TlsStream::from(tls_stream))
 }
 
 /// This is a channel used when a party wants to connect with himself.
@@ -260,47 +177,5 @@ impl Channel for LoopBackChannel {
     async fn recv(&mut self) -> Result<Packet> {
         log::info!("received packet from myself");
         self.buffer.pop_front().ok_or(ChannelError::EmptyBuffer)
-    }
-}
-
-/// Channel for a TCP network.
-///
-/// A TCP channel can be:
-/// - A dummy loopback channel for when a party sends information to itself.
-/// - A TCP stream to send elements to other parties through the network.
-pub enum TcpChannel {
-    /// A channel used for a party to send information to itself.
-    LoopBack(LoopBackChannel),
-    /// A channel where this node playing the role of a client in a point-to-point connection.
-    StreamClient(StreamOwned<ClientConnection, TcpStream>),
-    /// A channel where this node playing the role of a server in a point-to-point connection.
-    StreamServer(StreamOwned<ServerConnection, TcpStream>),
-}
-
-// Here, we basically are performing trait dispatching.
-#[async_trait]
-impl Channel for TcpChannel {
-    async fn close(&mut self) -> Result<()> {
-        match self {
-            TcpChannel::LoopBack(b) => b.close().await,
-            TcpChannel::StreamClient(s) => s.close().await,
-            TcpChannel::StreamServer(s) => s.close().await,
-        }
-    }
-
-    async fn send(&mut self, packet: &Packet) -> Result<usize> {
-        match self {
-            TcpChannel::LoopBack(b) => b.send(packet).await,
-            TcpChannel::StreamClient(s) => s.send(packet).await,
-            TcpChannel::StreamServer(s) => s.send(packet).await,
-        }
-    }
-
-    async fn recv(&mut self) -> Result<Packet> {
-        match self {
-            TcpChannel::LoopBack(b) => b.recv().await,
-            TcpChannel::StreamClient(s) => s.recv().await,
-            TcpChannel::StreamServer(s) => s.recv().await,
-        }
     }
 }

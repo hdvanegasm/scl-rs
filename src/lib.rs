@@ -126,19 +126,24 @@
 //! Once you generated the JSON configuration file, you can implement the node as follows:
 //!
 //! ```ignore
-//! use scl_rs::net::{NetworkConfig, NetworkError};
+//! use scl_rs::net::{NetworkConfig, TcpNetwork};
+//! use scl_rs::protocol::{Environment, Protocol};
+//! use std::path::Path;
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>>  {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let current_id = 0;
-//!     let network_config = NetworkConfig::new("file_paty_net_config.json");
-//!     let network = TcpNetwork::create(current_id, network_config)?;
+//!     let network_config = NetworkConfig::new(Path::new("net_config_p0.json"))?;
 //!
+//!     // `create` opens a TLS-secured channel to every peer (the handshake runs
+//!     // over `tokio-rustls`), so it is asynchronous and must be awaited.
+//!     let network = TcpNetwork::create(current_id, network_config).await?;
 //!     let mut env = Environment::new(network);
 //!
 //!     let protocol = SendRecvProtocol;
 //!     let result = protocol.run(&mut env).await;
-//!     println("Result of the protocol for party {current_id}: {:?}", result);
+//!     println!("Result of the protocol for party {current_id}: {:?}", result);
+//!     Ok(())
 //! }
 //! ```
 //!
