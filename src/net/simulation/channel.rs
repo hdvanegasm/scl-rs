@@ -1,13 +1,6 @@
-use crate::net::channel::Channel;
-use crate::net::simulation::context::{record_event, SimulationContext};
-use crate::net::simulation::event::Event;
-use crate::net::simulation::network::Transport;
 use crate::net::simulation::{Result, SimulationError};
-use crate::net::{Packet, PartyId};
-use async_trait::async_trait;
-use std::sync::Arc;
+use crate::net::PartyId;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 /// An ID for a channel connecting two parties.
 ///
@@ -63,6 +56,7 @@ impl Rtt {
     }
 }
 
+/// Maximum segment size (MSS) of the channel, in bytes.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Mss(usize);
 
@@ -72,6 +66,7 @@ pub struct Mss(usize);
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct PackageLoss(f64);
 
+/// TCP window size of the channel, in bytes.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct WindowSize(usize);
 
@@ -185,10 +180,11 @@ impl ChannelConfig {
         8.0 * (n_bytes as f64 + num_packets * Self::TCP_IP_HEADER_SIZE as f64)
     }
 
-    pub(crate) fn adjust_send_time(&self, send_time: Duration, n: usize) -> Duration {
+    /// Network delay to send a message of `n_bytes` bytes.
+    pub fn message_delay(&self, n_bytes: usize) -> Duration {
         match self.net_type {
-            NetworkType::Tcp => send_time + self.recv_time_tcp(n),
-            NetworkType::Instant => send_time,
+            NetworkType::Tcp => self.recv_time_tcp(n_bytes),
+            NetworkType::Instant => Duration::ZERO,
         }
     }
 }
@@ -228,14 +224,17 @@ impl ChannelConfigBuilder {
         Self { bandwidth, ..self }
     }
 
+    /// Sets the RTT to the given value.
     pub fn rtt(self, rtt: Rtt) -> Self {
         Self { rtt, ..self }
     }
 
+    /// Sets the maximum segment size (MSS) to the given value.
     pub fn mss(self, mss: Mss) -> Self {
         Self { mss, ..self }
     }
 
+    /// Sets the fraction of lost packages to the given value.
     pub fn package_loss(self, package_loss: PackageLoss) -> Self {
         Self {
             package_loss,
@@ -243,6 +242,7 @@ impl ChannelConfigBuilder {
         }
     }
 
+    /// Sets the TCP window size to the given value.
     pub fn window_size(self, window_size: WindowSize) -> Self {
         Self {
             window_size,
@@ -250,6 +250,12 @@ impl ChannelConfigBuilder {
         }
     }
 
+    /// Builds the [`ChannelConfig`] from the configured values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SimulationError::InvalidConfig`] if the configured values are not valid (see
+    /// [`is_valid`](Self::is_valid)).
     pub fn build(self) -> Result<ChannelConfig> {
         if self.is_valid() {
             Ok(ChannelConfig::new(
@@ -265,6 +271,10 @@ impl ChannelConfigBuilder {
         }
     }
 
+    /// Returns whether the configured values form a valid channel configuration.
+    ///
+    /// A configuration is valid when the bandwidth, MSS, and window size are all non-zero and the
+    /// package loss is a fraction in `[0, 1]`.
     pub fn is_valid(&self) -> bool {
         if self.bandwidth.value() == 0 {
             return false;
@@ -294,180 +304,9 @@ impl Default for ChannelConfigBuilder {
     }
 }
 
-pub struct SimulatedChannel<N: NetworkConfig> {
-    id: ChannelId,
-    context: Arc<Mutex<SimulationContext<N>>>,
-    transport: Arc<Mutex<Transport>>,
-}
-
-impl<N> SimulatedChannel<N>
-where
-    N: NetworkConfig,
-{
-    pub fn new(
-        end_point_a: PartyId,
-        end_point_b: PartyId,
-        transport: Arc<Mutex<Transport>>,
-        context: Arc<Mutex<SimulationContext<N>>>,
-    ) -> Self {
-        let channel_id = ChannelId::new(end_point_a, end_point_b);
-        Self {
-            id: channel_id,
-            transport,
-            context,
-        }
-    }
-
-    pub async fn has_data(&self) -> Result<bool> {
-        // Save the event and update execute the command in the transport.
-        let now = {
-            let elapsed_time = {
-                let ctxt_guard = self.context.lock().await;
-                ctxt_guard.elapsed_time_for_party(self.id.local)?
-            };
-            record_event(
-                self.id.local,
-                Event::HasData {
-                    timestamp: elapsed_time,
-                    channel_id: self.id,
-                },
-                self.context.clone(),
-            )
-            .await;
-            elapsed_time
-        };
-        let has_data = {
-            let transport_guard = self.transport.lock().await;
-            transport_guard.has_data(self.id)
-        };
-
-        if !has_data {
-            // Text taken from secure-computation-library.
-            //
-            // Here we have multiple cases:
-            // 1. If the remote party is ahead of us in the execution, then the data it sends will
-            //    first arrive at some point in the future.
-            // 2. If the remote party is dead, we will not receive any data anymore.
-            // 3. If the remote party is trying to receive data from us, we will not receive data
-            //    until we send data to it first. Sending data to the remote party is not possible
-            //    earlier than "now". Hence, we will not receive data from the remote party until
-            //    some point after from "now".
-            loop {
-                // We encapsulate the context mutex in a scope to avoid deadlocks. If we don't do
-                // this, the mutex will be locked when yield_now() is called. So other tasks will
-                // not be able to acquire the lock.
-                let ready = {
-                    let ctxt_guard = self.context.lock().await;
-                    let remote_ahead = now < ctxt_guard.current_time_of_party(self.id.remote)?;
-                    let remote_dead = ctxt_guard.is_dead(self.id.remote)?;
-                    let remote_receiving = ctxt_guard.is_receiving(self.id.remote, self.id.local);
-                    remote_dead || remote_receiving || remote_ahead
-                };
-                if ready {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        }
-        let mut ctxt_guard = self.context.lock().await;
-        ctxt_guard.start_clock(self.id.local);
-        Ok(true)
-    }
-}
-
-#[async_trait]
-impl<N> Channel for SimulatedChannel<N>
-where
-    N: NetworkConfig,
-{
-    async fn close(&mut self) -> crate::net::channel::Result<()> {
-        let elapsed_time = {
-            let context_guard = self.context.lock().await;
-            context_guard.elapsed_time_for_party(self.id.local)?
-        };
-
-        record_event(
-            self.id.local,
-            Event::CloseChannel {
-                timestamp: elapsed_time,
-                channel_id: self.id,
-            },
-            self.context.clone(),
-        )
-        .await;
-        Ok(())
-    }
-
-    async fn send(&mut self, packet: &Packet) -> crate::net::channel::Result<usize> {
-        let elapsed_time = {
-            let mut context_guard = self.context.lock().await;
-            let elapsed_time = context_guard.elapsed_time_for_party(self.id.local)?;
-            context_guard.send(self.id.local, self.id.remote, elapsed_time)?;
-            elapsed_time
-        };
-
-        record_event(
-            self.id.local,
-            Event::SendData {
-                timestamp: elapsed_time,
-                channel_id: self.id,
-                size: packet.size(),
-            },
-            self.context.clone(),
-        )
-        .await;
-
-        {
-            let mut transport_guard = self.transport.lock().await;
-            transport_guard.send_to(self.id, packet)?;
-        };
-        Ok(packet.size())
-    }
-
-    async fn recv(&mut self) -> crate::net::channel::Result<Packet> {
-        let elapsed = {
-            let mut ctxt_guard = self.context.lock().await;
-            ctxt_guard.recv_start(self.id.local, self.id.remote);
-            ctxt_guard.elapsed_time_for_party(self.id.local)?
-        };
-
-        // Wait until there is a packet on the transport.
-        loop {
-            let transport_guard = self.transport.lock().await;
-            if transport_guard.has_data(self.id) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-
-        let packet = {
-            let mut transport_guard = self.transport.lock().await;
-            transport_guard.recv(self.id)?
-        };
-
-        let pck_size = packet.size() + usize::BITS as usize / 8;
-        let elapsed = {
-            let mut ctxt_guard = self.context.lock().await;
-            ctxt_guard.recv_done(self.id.local, self.id.remote);
-            ctxt_guard.start_clock(self.id.local);
-            ctxt_guard.recv(self.id.local, self.id.remote, pck_size, elapsed)?
-        };
-
-        record_event(
-            self.id.local,
-            Event::ReceiveData {
-                timestamp: elapsed,
-                channel_id: self.id,
-                size: pck_size,
-            },
-            self.context.clone(),
-        )
-        .await;
-
-        Ok(packet)
-    }
-}
-
+/// A default [`NetworkConfig`] that gives every inter-party channel the
+/// [`ChannelConfigBuilder`] defaults, and makes a party's channel to itself
+/// [`Instant`](NetworkType::Instant) (zero delay).
 #[derive(Debug, Clone)]
 pub struct SimpleNetworkConfig;
 

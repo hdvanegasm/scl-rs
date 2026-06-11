@@ -3,24 +3,17 @@ use scl_rs::net::simulation::channel::{
     SimpleNetworkConfig,
 };
 use scl_rs::net::simulation::event::{Event, EventType};
-use scl_rs::net::simulation::hook::TriggeredHook;
-use scl_rs::net::simulation::manager::Manager;
-use scl_rs::net::simulation::network::SimulatedNetwork;
-use scl_rs::net::simulation::simulator::simulate;
+use scl_rs::net::simulation::network::SimNetwork;
+use scl_rs::net::simulation::runtime::simulate;
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
 use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for SendRecvProtocol {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let mut packet = Packet::empty();
         packet
             .write(&environment.network.local_party().as_usize())
@@ -35,83 +28,45 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
         ProtocolResult::with_result_only(received_packet.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("SendRecvProtocol")
+    fn name(&self) -> &'static str {
+        "SendRecvProtocol"
     }
 }
 
-pub struct SendRecvManager {
-    parties: Vec<PartyId>,
-    send_recv_net_config: SimpleNetworkConfig,
-}
+#[test]
+fn send_recv_simulation() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![
+            (p0, Box::new(SendRecvProtocol)),
+            (p1, Box::new(SendRecvProtocol)),
+        ],
+        vec![],
+    );
 
-impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for SendRecvManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
-        let mut protocols = Vec::new();
-        for _ in self.parties.iter() {
-            let protocol = SendRecvProtocol;
-            protocols.push(
-                Box::new(protocol) as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
-            );
-        }
-        protocols
-    }
-
-    fn handle_protocol_output(&mut self, party_id: PartyId, output: Vec<u8>) {
-        println!("Party {} output: {:?}", party_id.as_usize(), output);
-
-        // Each party should receive the other party's id.
+    // Each party receives the other party's id.
+    for party in [p0, p1] {
         let mut expected = Packet::empty();
-        expected.write(&(1 - party_id.as_usize())).unwrap();
-        assert_eq!(output, expected.bytes());
+        expected.write(&(1 - party.as_usize())).unwrap();
+        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
     }
 
-    fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
-        // Pretty-print the full event trace for this party (console or, with `write!`, a file).
-        println!("Party {}:\n{}", party_id.as_usize(), trace);
-        println!("---");
-
-        let event_types = trace
-            .events()
-            .iter()
-            .map(|e| e.event_type())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            event_types,
-            [
-                EventType::Start,
-                EventType::ProtocolBegin,
-                EventType::SendData,
-                EventType::ReceiveData,
-                EventType::CloseChannel,
-                EventType::CloseChannel,
-                EventType::Output,
-                EventType::ProtocolEnd,
-                EventType::Stop,
-            ]
-        )
-    }
-
-    fn network_config(&self) -> &SimpleNetworkConfig {
-        &self.send_recv_net_config
-    }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn send_recv_simulation() {
-    let manager = Arc::new(Mutex::new(SendRecvManager {
-        parties: vec![PartyId::from(0), PartyId::from(1)],
-        send_recv_net_config: SimpleNetworkConfig,
-    }));
-    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
+    // The event-loop model has no per-connection channels to close, so there are no
+    // `CloseChannel` events (the old transport recorded two).
+    assert_eq!(
+        outcome.traces[&p0].event_types(),
+        vec![
+            EventType::Start,
+            EventType::ProtocolBegin,
+            EventType::SendData,
+            EventType::ReceiveData,
+            EventType::ProtocolEnd,
+            EventType::Output,
+            EventType::Stop,
+        ]
+    );
 }
 
 /// Protocol where each party sends two ordered messages (`me*10`, then `me*10 + 1`) to the other
@@ -120,11 +75,8 @@ async fn send_recv_simulation() {
 pub struct PingPongProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for PingPongProtocol {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for PingPongProtocol {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let other = environment.network.other().unwrap();
         let me = environment.network.local_party().as_usize();
 
@@ -147,58 +99,32 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for PingPongProtocol {
         ProtocolResult::with_result_only(received.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("PingPongProtocol")
+    fn name(&self) -> &'static str {
+        "PingPongProtocol"
     }
 }
 
-pub struct PingPongManager {
-    parties: Vec<PartyId>,
-    net_config: SimpleNetworkConfig,
-}
+#[test]
+fn ping_pong_preserves_message_order() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![
+            (p0, Box::new(PingPongProtocol)),
+            (p1, Box::new(PingPongProtocol)),
+        ],
+        vec![],
+    );
 
-impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for PingPongManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
-        self.parties
-            .iter()
-            .map(|_| {
-                Box::new(PingPongProtocol)
-                    as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
-            })
-            .collect()
-    }
-
-    fn handle_protocol_output(&mut self, party_id: PartyId, output: Vec<u8>) {
-        // The other party sends `other*10` then `other*10 + 1`, in that order.
-        let other = 1 - party_id.as_usize();
+    // The other party sends `other*10` then `other*10 + 1`, in that order.
+    for party in [p0, p1] {
+        let other = 1 - party.as_usize();
         let mut expected = Packet::empty();
         expected.write(&(other * 10)).unwrap();
         expected.write(&(other * 10 + 1)).unwrap();
-        assert_eq!(output, expected.bytes());
+        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
     }
-
-    fn handle_simulator_output(&mut self, _: PartyId, _: &SimulationTrace) {}
-
-    fn network_config(&self) -> &SimpleNetworkConfig {
-        &self.net_config
-    }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn ping_pong_preserves_message_order() {
-    let manager = Arc::new(Mutex::new(PingPongManager {
-        parties: vec![PartyId::from(0), PartyId::from(1)],
-        net_config: SimpleNetworkConfig,
-    }));
-    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
 }
 
 /// First stage of a chained protocol. It exchanges party ids over the network and then hands off
@@ -207,11 +133,8 @@ async fn ping_pong_preserves_message_order() {
 pub struct ChainedFirstStage;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for ChainedFirstStage {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for ChainedFirstStage {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let other = environment.network.other().unwrap();
         let me = environment.network.local_party().as_usize();
 
@@ -232,8 +155,8 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for ChainedFirstStage {
         ProtocolResult::with_next(Box::new(ChainedSecondStage { received }))
     }
 
-    fn name(&self) -> String {
-        String::from("ChainedFirstStage")
+    fn name(&self) -> &'static str {
+        "ChainedFirstStage"
     }
 }
 
@@ -244,67 +167,38 @@ pub struct ChainedSecondStage {
 }
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for ChainedSecondStage {
-    async fn run(
-        &self,
-        _environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for ChainedSecondStage {
+    async fn run(&self, _environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let mut packet = Packet::empty();
         packet.write(&(self.received + 100)).unwrap();
         ProtocolResult::with_result_only(packet.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("ChainedSecondStage")
+    fn name(&self) -> &'static str {
+        "ChainedSecondStage"
     }
 }
 
-pub struct ChainedManager {
-    parties: Vec<PartyId>,
-    net_config: SimpleNetworkConfig,
-}
+#[test]
+fn chained_protocols_pass_state_between_stages() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![
+            (p0, Box::new(ChainedFirstStage)),
+            (p1, Box::new(ChainedFirstStage)),
+        ],
+        vec![],
+    );
 
-impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for ChainedManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
-        self.parties
-            .iter()
-            .map(|_| {
-                Box::new(ChainedFirstStage)
-                    as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
-            })
-            .collect()
-    }
-
-    fn handle_protocol_output(&mut self, party_id: PartyId, output: Vec<u8>) {
-        // Each party receives the other party's id in stage one, then outputs `received + 100`.
-        let other = 1 - party_id.as_usize();
+    // Each party receives the other party's id in stage one, then outputs `received + 100`.
+    for party in [p0, p1] {
+        let other = 1 - party.as_usize();
         let mut expected = Packet::empty();
         expected.write(&(other + 100)).unwrap();
-        assert_eq!(output, expected.bytes());
+        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
     }
-
-    fn handle_simulator_output(&mut self, _: PartyId, _: &SimulationTrace) {}
-
-    fn network_config(&self) -> &SimpleNetworkConfig {
-        &self.net_config
-    }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn chained_protocols_pass_state_between_stages() {
-    let manager = Arc::new(Mutex::new(ChainedManager {
-        parties: vec![PartyId::from(0), PartyId::from(1)],
-        net_config: SimpleNetworkConfig,
-    }));
-    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
 }
 
 /// Network configuration with a non-trivial, bandwidth-limited and high-latency cross-party
@@ -340,11 +234,8 @@ const BULK_PAYLOAD_LEN: usize = 200_000;
 pub struct BulkTransferProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SlowNetworkConfig>> for BulkTransferProtocol {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SlowNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SlowNetworkConfig>> {
+impl Protocol<SimNetwork> for BulkTransferProtocol {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let other = environment.network.other().unwrap();
 
         let mut packet = Packet::empty();
@@ -357,37 +248,26 @@ impl Protocol<SimulatedNetwork<SlowNetworkConfig>> for BulkTransferProtocol {
         ProtocolResult::with_result_only(received.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("BulkTransferProtocol")
+    fn name(&self) -> &'static str {
+        "BulkTransferProtocol"
     }
 }
 
-pub struct BulkTransferManager {
-    parties: Vec<PartyId>,
-    net_config: SlowNetworkConfig,
-}
+#[test]
+fn simulation_reflects_bandwidth_and_latency() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SlowNetworkConfig,
+        vec![
+            (p0, Box::new(BulkTransferProtocol)),
+            (p1, Box::new(BulkTransferProtocol)),
+        ],
+        vec![],
+    );
 
-impl Manager<SlowNetworkConfig, SimulatedNetwork<SlowNetworkConfig>> for BulkTransferManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SlowNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SlowNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SlowNetworkConfig>>>> {
-        self.parties
-            .iter()
-            .map(|_| {
-                Box::new(BulkTransferProtocol)
-                    as Box<dyn Protocol<SimulatedNetwork<SlowNetworkConfig>>>
-            })
-            .collect()
-    }
-
-    fn handle_protocol_output(&mut self, _party_id: PartyId, _output: Vec<u8>) {}
-
-    fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
-        println!("Party {}:\n{}\n---", party_id.as_usize(), trace);
-
-        let recv_event = trace
+    for party in [p0, p1] {
+        let recv_event = outcome.traces[&party]
             .events()
             .iter()
             .find(|event| event.event_type() == EventType::ReceiveData)
@@ -398,38 +278,25 @@ impl Manager<SlowNetworkConfig, SimulatedNetwork<SlowNetworkConfig>> for BulkTra
         assert!(
             recv_secs >= 0.5,
             "party {}: reception time {recv_secs}s should reflect the 500ms RTT",
-            party_id.as_usize()
+            party.as_usize()
         );
-        // The low bandwidth over a ~20 KB payload adds several extra seconds, so the total is well
+        // The low bandwidth over a large payload adds several extra seconds, so the total is well
         // above the RTT-only floor. This confirms the bandwidth term is taken into account.
         assert!(
             recv_secs > 1.0,
             "party {}: reception time {recv_secs}s should reflect the bandwidth-limited transfer",
-            party_id.as_usize()
+            party.as_usize()
+        );
+        println!(
+            "---- Party {}:\n{}",
+            party.as_usize(),
+            outcome.traces[&party]
         );
     }
-
-    fn network_config(&self) -> &SlowNetworkConfig {
-        &self.net_config
-    }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SlowNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn simulation_reflects_bandwidth_and_latency() {
-    let manager = Arc::new(Mutex::new(BulkTransferManager {
-        parties: vec![PartyId::from(0), PartyId::from(1)],
-        net_config: SlowNetworkConfig,
-    }));
-    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
 }
 
 #[test]
 fn simulation_trace_renders_events_nicely() {
-    use scl_rs::net::simulation::channel::ChannelId;
     use std::time::Duration;
 
     let channel = ChannelId::new(PartyId::from(0), PartyId::from(1));
@@ -471,11 +338,8 @@ fn simulation_trace_renders_events_nicely() {
 pub struct OneWayProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for OneWayProtocol {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for OneWayProtocol {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let other = environment.network.other().unwrap();
         if environment.network.local_party().as_usize() == 0 {
             let mut packet = Packet::empty();
@@ -491,56 +355,29 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for OneWayProtocol {
         }
     }
 
-    fn name(&self) -> String {
-        String::from("OneWayProtocol")
+    fn name(&self) -> &'static str {
+        "OneWayProtocol"
     }
 }
 
-pub struct OneWayManager {
-    parties: Vec<PartyId>,
-    net_config: SimpleNetworkConfig,
-}
+#[test]
+fn one_way_communication_does_not_require_prior_send() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![
+            (p0, Box::new(OneWayProtocol)),
+            (p1, Box::new(OneWayProtocol)),
+        ],
+        vec![],
+    );
 
-impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for OneWayManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
-        self.parties
-            .iter()
-            .map(|_| {
-                Box::new(OneWayProtocol) as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
-            })
-            .collect()
-    }
-
-    fn handle_protocol_output(&mut self, party_id: PartyId, output: Vec<u8>) {
-        // Only party 1 produces an output: the value 42 sent by party 0.
-        assert_eq!(party_id.as_usize(), 1);
-        let mut expected = Packet::empty();
-        expected.write(&42usize).unwrap();
-        assert_eq!(output, expected.bytes());
-    }
-
-    fn handle_simulator_output(&mut self, _: PartyId, _: &SimulationTrace) {}
-
-    fn network_config(&self) -> &SimpleNetworkConfig {
-        &self.net_config
-    }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn one_way_communication_does_not_require_prior_send() {
-    let manager = Arc::new(Mutex::new(OneWayManager {
-        parties: vec![PartyId::from(0), PartyId::from(1)],
-        net_config: SimpleNetworkConfig,
-    }));
-    simulate(vec![PartyId::from(0), PartyId::from(1)], manager.clone()).await;
+    // Party 0 produces no output; party 1 outputs the value 42 sent by party 0.
+    assert!(outcome.outputs[&p0].is_none());
+    let mut expected = Packet::empty();
+    expected.write(&42usize).unwrap();
+    assert_eq!(outcome.outputs[&p1], Some(expected.bytes()));
 }
 
 /// Number of parties in the broadcast simulation.
@@ -555,11 +392,8 @@ const BROADCAST_VALUE: usize = 7;
 pub struct BroadcastProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for BroadcastProtocol {
-    async fn run(
-        &self,
-        environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-    ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+impl Protocol<SimNetwork> for BroadcastProtocol {
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
         let me = environment.network.local_party();
 
         if me.as_usize() == 0 {
@@ -578,7 +412,7 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for BroadcastProtocol {
         // Every party (party 0 included) receives its copy from party 0.
         let received = environment
             .network
-            .recv_from(PartyId::from(0))
+            .recv_from(PartyId::from(0_usize))
             .await
             .unwrap();
         environment.network.close().await.unwrap();
@@ -586,41 +420,32 @@ impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for BroadcastProtocol {
         ProtocolResult::with_result_only(received.bytes())
     }
 
-    fn name(&self) -> String {
-        String::from("BroadcastProtocol")
+    fn name(&self) -> &'static str {
+        "BroadcastProtocol"
     }
 }
 
-pub struct BroadcastManager {
-    parties: Vec<PartyId>,
-    net_config: SimpleNetworkConfig,
-}
+#[test]
+fn broadcast_from_party_zero_reaches_all_parties() {
+    let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
+    let protocols: Vec<(PartyId, Box<dyn Protocol<SimNetwork>>)> = parties
+        .iter()
+        .map(|&party| {
+            (
+                party,
+                Box::new(BroadcastProtocol) as Box<dyn Protocol<SimNetwork>>,
+            )
+        })
+        .collect();
+    let outcome = simulate(SimpleNetworkConfig, protocols, vec![]);
 
-impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for BroadcastManager {
-    fn add_hook(&mut self, _: Event, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn add_unconditional_hook(&mut self, _: Arc<dyn TriggeredHook<SimpleNetworkConfig>>) {}
-
-    fn protocol(&self) -> Vec<Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>> {
-        self.parties
-            .iter()
-            .map(|_| {
-                Box::new(BroadcastProtocol)
-                    as Box<dyn Protocol<SimulatedNetwork<SimpleNetworkConfig>>>
-            })
-            .collect()
-    }
-
-    fn handle_protocol_output(&mut self, _party_id: PartyId, output: Vec<u8>) {
+    for party in &parties {
         // Every party outputs the value broadcast by party 0.
         let mut expected = Packet::empty();
         expected.write(&BROADCAST_VALUE).unwrap();
-        assert_eq!(output, expected.bytes());
-    }
+        assert_eq!(outcome.outputs[party], Some(expected.bytes()));
 
-    fn handle_simulator_output(&mut self, party_id: PartyId, trace: &SimulationTrace) {
-        println!("Party {}:\n{}\n---", party_id.as_usize(), trace);
-
+        let trace = &outcome.traces[party];
         let sends = trace
             .events()
             .iter()
@@ -632,7 +457,7 @@ impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for Bro
             .filter(|event| event.event_type() == EventType::ReceiveData)
             .count();
 
-        if party_id.as_usize() == 0 {
+        if party.as_usize() == 0 {
             // Party 0 sends one message to each of the parties (itself included).
             assert_eq!(sends, BROADCAST_N_PARTIES);
         } else {
@@ -641,25 +466,13 @@ impl Manager<SimpleNetworkConfig, SimulatedNetwork<SimpleNetworkConfig>> for Bro
         }
         // Every party receives exactly one message from party 0.
         assert_eq!(recvs, 1);
-    }
 
-    fn network_config(&self) -> &SimpleNetworkConfig {
-        &self.net_config
+        println!(
+            "---- Party {}:\n{}",
+            party.as_usize(),
+            outcome.traces[&party]
+        );
     }
-
-    fn hooks(&self) -> Vec<Arc<dyn TriggeredHook<SimpleNetworkConfig>>> {
-        vec![]
-    }
-}
-
-#[tokio::test]
-async fn broadcast_from_party_zero_reaches_all_parties() {
-    let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
-    let manager = Arc::new(Mutex::new(BroadcastManager {
-        parties: parties.clone(),
-        net_config: SimpleNetworkConfig,
-    }));
-    simulate(parties, manager.clone()).await;
 }
 
 #[test]

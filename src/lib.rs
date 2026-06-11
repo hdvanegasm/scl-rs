@@ -31,8 +31,7 @@
 //! the identifier from the other party:
 //!
 //! ```ignore
-//! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
-//! use scl_rs::net::simulation::network::SimulatedNetwork;
+//! use scl_rs::net::simulation::network::SimNetwork;
 //! use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
 //! use scl_rs::net::Packet;
 //!
@@ -40,12 +39,12 @@
 //! pub struct SendRecvProtocol;
 //!
 //! #[async_trait::async_trait]
-//! impl Protocol<SimulatedNetwork<SimpleNetworkConfig>> for SendRecvProtocol {
+//! impl Protocol<SimNetwork> for SendRecvProtocol {
 //!     // The run method specifies the behavior of the protocol.
 //!     async fn run(
 //!         &self,
-//!         environment: &mut Environment<SimulatedNetwork<SimpleNetworkConfig>>,
-//!     ) -> ProtocolResult<SimulatedNetwork<SimpleNetworkConfig>> {
+//!         environment: &mut Environment<SimNetwork>,
+//!     ) -> ProtocolResult<SimNetwork> {
 //!         // Create a new packet to send information. All the information must be sent using
 //!         // packets. Packet can store multiple elements with different types as long as the
 //!         // elements are serializable.
@@ -68,8 +67,8 @@
 //!         ProtocolResult::with_result_only(received_packet.bytes())
 //!     }
 //!
-//!     fn name(&self) -> String {
-//!         String::from("SendRecvProtocol")
+//!     fn name(&self) -> &'static str {
+//!         "SendRecvProtocol"
 //!    }
 //! }
 //! ```

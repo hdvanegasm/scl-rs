@@ -1,137 +1,73 @@
 use crate::net;
-use crate::net::channel::ChannelError::EmptyBuffer;
-use crate::net::channel::{Channel, ChannelError};
-use crate::net::simulation::channel::{ChannelId, NetworkConfig, SimulatedChannel};
-use crate::net::simulation::context::SimulationContext;
+use crate::net::simulation::switchboard::{Recv, Switchboard};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use async_trait::async_trait;
-use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-#[derive(Default)]
-pub struct Transport {
-    /// Per-channel message queues, keyed by [`ChannelId`].
-    ///
-    /// Each [`Packet`] is stored behind an [`Arc`] so that when the same packet is enqueued more
-    /// than once on a channel, the existing reference is shared instead of cloning the packet
-    /// again.
-    channel_queues: HashMap<ChannelId, VecDeque<Arc<Packet>>>,
+/// The [`Network`] implementation backed by the deterministic simulator.
+///
+/// Every party runs the *same* protocol code it would run in a real deployment; the only
+/// difference is that `send_to`/`recv_from` route through a shared [`Switchboard`] instead of a
+/// TCP socket. A `recv_from` whose message has not arrived yet suspends the party (returns
+/// `Poll::Pending`), letting the executor advance virtual time to the next deliverable event.
+///
+/// One `SimNetwork` is created per party by [`simulate`](crate::net::simulation::runtime::simulate);
+/// all parties share the same `Switchboard`. The `Mutex` is uncontended (the core is
+/// single-threaded) and exists only to satisfy the `Send` bound on the [`Network`] trait.
+pub struct SimNetwork {
+    /// ID of the local party.
+    local: PartyId,
+    /// IDs of all parties participating in the simulation.
+    parties: Vec<PartyId>,
+    /// The shared in-memory router all parties communicate through.
+    switchboard: Arc<std::sync::Mutex<Switchboard>>,
 }
 
-impl Transport {
-    pub fn new(n_parties: usize) -> Self {
-        let mut channels = HashMap::new();
-        for i in 0..n_parties {
-            for j in 0..n_parties {
-                let channel_id = ChannelId::new(PartyId(i), PartyId(j));
-                channels.insert(channel_id, VecDeque::new());
-            }
-        }
-        Self {
-            channel_queues: channels,
-        }
-    }
-
-    pub fn has_data(&self, channel_id: ChannelId) -> bool {
-        if self.channel_queues.contains_key(&channel_id) {
-            !self.channel_queues[&channel_id].is_empty()
-        } else {
-            false
-        }
-    }
-
-    pub fn send_to(
-        &mut self,
-        channel_id: ChannelId,
-        packet: &Packet,
-    ) -> Result<usize, ChannelError> {
-        let channel_buffer = self
-            .channel_queues
-            .get_mut(&channel_id.flip_end_points())
-            .ok_or(ChannelError::ChannelNotFound(channel_id))?;
-        for stored_packet in channel_buffer.iter() {
-            if stored_packet == packet {
-                channel_buffer.push_back(stored_packet.clone());
-                return Ok(packet.size());
-            }
-        }
-        channel_buffer.push_back(Arc::new(packet.clone()));
-        Ok(packet.size())
-    }
-
-    pub fn recv(&mut self, channel_id: ChannelId) -> Result<Packet, ChannelError> {
-        let packet = self
-            .channel_queues
-            .get_mut(&channel_id)
-            .ok_or(ChannelError::ChannelNotFound(channel_id))?
-            .pop_front()
-            .ok_or(EmptyBuffer)?;
-        Ok(packet.as_ref().clone())
-    }
-}
-
-pub struct SimulatedNetwork<N: NetworkConfig> {
-    local_party_id: PartyId,
-    channels: HashMap<PartyId, SimulatedChannel<N>>,
-}
-
-impl<N: NetworkConfig> SimulatedNetwork<N> {
+impl SimNetwork {
+    /// Creates a `SimNetwork` for the `local` party, knowing the full `parties` set and sharing the
+    /// given `switchboard` with every other party in the simulation.
     pub fn new(
-        party_id: PartyId,
-        other_parties: Vec<PartyId>,
-        transport: Arc<Mutex<Transport>>,
-        context: Arc<Mutex<SimulationContext<N>>>,
+        local: PartyId,
+        parties: Vec<PartyId>,
+        switchboard: Arc<std::sync::Mutex<Switchboard>>,
     ) -> Self {
-        let mut channels = HashMap::new();
-        for other_id in other_parties {
-            let channel =
-                SimulatedChannel::new(party_id, other_id, transport.clone(), context.clone());
-            channels.insert(other_id, channel);
-        }
         Self {
-            local_party_id: party_id,
-            channels,
+            local,
+            parties,
+            switchboard,
         }
     }
 }
 
 #[async_trait]
-impl<N: NetworkConfig> Network for SimulatedNetwork<N> {
-    fn other(&self) -> net::Result<PartyId> {
-        if self.channels.len() != 2 {
-            return Err(NetworkError::ExpectedTwoNodeNet(self.channels.len()));
-        } else {
-            Ok(PartyId::from(1 - self.local_party_id.as_usize()))
-        }
+impl Network for SimNetwork {
+    fn local_party(&self) -> PartyId {
+        self.local
     }
 
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> net::Result<usize> {
-        let channel = self
-            .channels
-            .get_mut(&party_id)
-            .ok_or(NetworkError::PartyNotFound(party_id))?;
-        channel.send(packet).await?;
+        self.switchboard.lock().expect("lock must be free").send(
+            self.local,
+            party_id,
+            packet.clone(),
+        );
         Ok(packet.size())
     }
 
     async fn recv_from(&mut self, party_id: PartyId) -> net::Result<Packet> {
-        let channel = self
-            .channels
-            .get_mut(&party_id)
-            .ok_or(NetworkError::PartyNotFound(party_id))?;
-        let packet = channel.recv().await?;
+        let packet = Recv::new(self.switchboard.clone(), party_id, self.local).await;
         Ok(packet)
     }
 
-    async fn close(&mut self) -> net::Result<()> {
-        for channel in self.channels.values_mut() {
-            channel.close().await?;
+    fn other(&self) -> net::Result<PartyId> {
+        if self.parties.len() != 2 {
+            Err(NetworkError::ExpectedTwoNodeNet(self.parties.len()))
+        } else {
+            Ok(PartyId::from(1 - self.local.as_usize()))
         }
-        Ok(())
     }
 
-    fn local_party(&self) -> PartyId {
-        self.local_party_id
+    async fn close(&mut self) -> net::Result<()> {
+        Ok(())
     }
 }

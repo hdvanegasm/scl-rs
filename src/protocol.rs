@@ -22,7 +22,7 @@ pub enum Error {
         #[source]
         source: SendError<Vec<u8>>,
         /// Name of the protocol where the error occurs.
-        protocol_name: String,
+        protocol_name: &'static str,
     },
 }
 
@@ -32,7 +32,7 @@ pub trait Protocol<N: Network>: Send + Sync {
     /// Behavior of the protocol when run.
     async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
     /// Identifier of the protocol.
-    fn name(&self) -> String;
+    fn name(&self) -> &'static str;
 }
 
 /// The result of a protocol.
