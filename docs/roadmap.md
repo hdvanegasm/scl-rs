@@ -1,7 +1,9 @@
 # scl-rs Roadmap to v1.0
 
 **Date:** 2026-06-11
+
 **Current version:** 0.1.0 (unpublished)
+
 **Goal:** ship a first crates.io release that external users can depend on, then reach a
 semver-stable **v1.0**.
 
@@ -39,6 +41,33 @@ name — traits (`Ring`, `FiniteField`, `Network`, `Protocol`), types (`Packet`,
 becomes a contract. The expensive-to-change items (§5: API stabilization) must therefore land
 **before** 1.0, while breaking them is still free. Anything we're unsure about should ship in a
 `0.x` first and bake.
+
+### Recommendation: stay on `0.x` deliberately (1.0 is a finish line, not a near-term move)
+
+Publish early on `0.x`, but **do not reach for 1.0 yet**:
+
+1. **In Cargo, `0.y` _is_ the "I reserve the right to break" signal** — and this roadmap holds a
+   concrete list of breaks we already intend (§5: `Packet` reads → `Result`, the error/`#[non_exhaustive]`
+   sweep, the `Protocol` receiver, the prelude). Don't promise "no breaks until 2.0" while holding a
+   to-do list of breaks; you'd either break the 1.0 promise immediately (erodes the trust 1.0 buys)
+   or freeze today's warts until a 2.0.
+2. **1.0 is a promise you make when you can keep it, not a milestone you award yourself.** The honest
+   precondition is "the API has been used by someone and survived." This crate is unpublished — zero
+   downstream feedback yet.
+3. **It's unaudited crypto.** A 1.0 carries an implicit "ready to depend on" that contradicts
+   "research / prototyping, not audited." `0.x` sets honest expectations for free.
+4. **The cost of waiting is low.** Cargo still gives patch/minor compatibility _within_ a `0.y` line,
+   and serious crates live on `0.x` for years.
+
+**But don't drift into permanent `0.x`** ("0ver" is its own anti-pattern). 1.0 is a _defined_ finish
+line: flip to it when the §12 Definition of Done is met — specifically, the §5 API work is done and
+has **baked** through a couple of `0.x` releases with nothing further queued, the §3 license + security
+posture are decided, and ideally at least one real external user has hit the API without bouncing off.
+
+**One fork to decide on purpose:** for crypto, "API-stable" and "production-ready / audited" are
+_different_ claims. Either (a) treat 1.0 as purely an **API-stability** statement and lean on the
+security disclaimer for the rest (pragmatic), or (b) gate 1.0 on an actual **audit** (conservative).
+Both are defensible — pick one so "1.0" means something specific to users.
 
 ---
 
