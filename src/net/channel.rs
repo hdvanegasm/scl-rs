@@ -76,6 +76,7 @@ where
         let len = (bytes.len() as u64).to_le_bytes();
         self.write_all(&len).await?;
         self.write_all(&bytes).await?;
+        self.flush().await?;
         Ok(packet.size())
     }
 
