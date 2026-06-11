@@ -7,25 +7,28 @@ use scl_rs::net::simulation::network::SimNetwork;
 use scl_rs::net::simulation::runtime::simulate;
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
+use scl_rs::protocol::{Environment, Error, Protocol};
 
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for SendRecvProtocol {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
+    type Output = usize;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let mut packet = Packet::empty();
         packet
             .write(&environment.network.local_party().as_usize())
             .unwrap();
 
-        let other = environment.network.other().unwrap();
-        environment.network.send_to(other, &packet).await.unwrap();
+        let other = environment.network.other()?;
+        environment.network.send_to(other, &packet).await?;
 
-        let received_packet = environment.network.recv_from(other).await.unwrap();
-        environment.network.close().await.unwrap();
+        let received_packet = environment.network.recv_from(other).await?;
+        environment.network.close().await?;
 
-        ProtocolResult::with_result_only(received_packet.bytes())
+        let their_id: usize = received_packet.read(0).unwrap();
+        Ok(their_id)
     }
 
     fn name(&self) -> &'static str {
@@ -39,18 +42,13 @@ fn send_recv_simulation() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![
-            (p0, Box::new(SendRecvProtocol)),
-            (p1, Box::new(SendRecvProtocol)),
-        ],
+        vec![(p0, SendRecvProtocol), (p1, SendRecvProtocol)],
         vec![],
     );
 
     // Each party receives the other party's id.
     for party in [p0, p1] {
-        let mut expected = Packet::empty();
-        expected.write(&(1 - party.as_usize())).unwrap();
-        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
+        assert_eq!(outcome.outputs[&party], 1 - party.as_usize());
     }
 
     // The event-loop model has no per-connection channels to close, so there are no
@@ -76,27 +74,29 @@ pub struct PingPongProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for PingPongProtocol {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let other = environment.network.other().unwrap();
+    type Output = Vec<usize>;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+        let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
         // Send two messages in order.
         for i in 0..2 {
             let mut packet = Packet::empty();
             packet.write(&(me * 10 + i)).unwrap();
-            environment.network.send_to(other, &packet).await.unwrap();
+            environment.network.send_to(other, &packet).await?;
         }
 
         // Receive both, preserving arrival order.
-        let mut received = Packet::empty();
+        let mut received = Vec::new();
         for _ in 0..2 {
-            let packet = environment.network.recv_from(other).await.unwrap();
+            let packet = environment.network.recv_from(other).await?;
             let value: usize = packet.read(0).unwrap();
-            received.write(&value).unwrap();
+            received.push(value);
         }
-        environment.network.close().await.unwrap();
+        environment.network.close().await?;
 
-        ProtocolResult::with_result_only(received.bytes())
+        Ok(received)
     }
 
     fn name(&self) -> &'static str {
@@ -110,49 +110,45 @@ fn ping_pong_preserves_message_order() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![
-            (p0, Box::new(PingPongProtocol)),
-            (p1, Box::new(PingPongProtocol)),
-        ],
+        vec![(p0, PingPongProtocol), (p1, PingPongProtocol)],
         vec![],
     );
 
     // The other party sends `other*10` then `other*10 + 1`, in that order.
     for party in [p0, p1] {
         let other = 1 - party.as_usize();
-        let mut expected = Packet::empty();
-        expected.write(&(other * 10)).unwrap();
-        expected.write(&(other * 10 + 1)).unwrap();
-        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
+        assert_eq!(outcome.outputs[&party], vec![other * 10, other * 10 + 1]);
     }
 }
 
-/// First stage of a chained protocol. It exchanges party ids over the network and then hands off
-/// to a second stage, carrying the received value inside the next protocol. Used to check that
-/// `ProtocolResult::next_protocol` chaining runs and that state flows between stages.
+/// First stage of a chained protocol. It exchanges party ids over the network and then calls a
+/// second-stage protocol inline, using its typed result as its own output. Used to check that a
+/// protocol can call another protocol and consume its typed return directly.
 pub struct ChainedFirstStage;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for ChainedFirstStage {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let other = environment.network.other().unwrap();
+    type Output = usize;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+        let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
         let mut packet = Packet::empty();
         packet.write(&me).unwrap();
-        environment.network.send_to(other, &packet).await.unwrap();
+        environment.network.send_to(other, &packet).await?;
 
         let received: usize = environment
             .network
             .recv_from(other)
-            .await
-            .unwrap()
+            .await?
             .read(0)
             .unwrap();
-        environment.network.close().await.unwrap();
+        environment.network.close().await?;
 
-        // No result here: the chain continues with the value baked into the next stage.
-        ProtocolResult::with_next(Box::new(ChainedSecondStage { received }))
+        // Composition: call the next stage inline and use its typed result.
+        let output = ChainedSecondStage { received }.run(environment).await?;
+        Ok(output)
     }
 
     fn name(&self) -> &'static str {
@@ -161,17 +157,17 @@ impl Protocol<SimNetwork> for ChainedFirstStage {
 }
 
 /// Second stage of the chained protocol. It carries the value received in the first stage and
-/// emits `received + 100` as the final protocol result, without using the network.
+/// returns `received + 100`, without using the network.
 pub struct ChainedSecondStage {
     received: usize,
 }
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for ChainedSecondStage {
-    async fn run(&self, _environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let mut packet = Packet::empty();
-        packet.write(&(self.received + 100)).unwrap();
-        ProtocolResult::with_result_only(packet.bytes())
+    type Output = usize;
+
+    async fn run(&self, _environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+        Ok(self.received + 100)
     }
 
     fn name(&self) -> &'static str {
@@ -185,19 +181,14 @@ fn chained_protocols_pass_state_between_stages() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![
-            (p0, Box::new(ChainedFirstStage)),
-            (p1, Box::new(ChainedFirstStage)),
-        ],
+        vec![(p0, ChainedFirstStage), (p1, ChainedFirstStage)],
         vec![],
     );
 
     // Each party receives the other party's id in stage one, then outputs `received + 100`.
     for party in [p0, p1] {
         let other = 1 - party.as_usize();
-        let mut expected = Packet::empty();
-        expected.write(&(other + 100)).unwrap();
-        assert_eq!(outcome.outputs[&party], Some(expected.bytes()));
+        assert_eq!(outcome.outputs[&party], other + 100);
     }
 }
 
@@ -235,17 +226,20 @@ pub struct BulkTransferProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for BulkTransferProtocol {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let other = environment.network.other().unwrap();
+    type Output = Vec<u8>;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Vec<u8>, Error> {
+        let other = environment.network.other()?;
 
         let mut packet = Packet::empty();
         packet.write(&vec![0u8; BULK_PAYLOAD_LEN]).unwrap();
-        environment.network.send_to(other, &packet).await.unwrap();
+        environment.network.send_to(other, &packet).await?;
 
-        let received = environment.network.recv_from(other).await.unwrap();
-        environment.network.close().await.unwrap();
+        let received = environment.network.recv_from(other).await?;
+        environment.network.close().await?;
 
-        ProtocolResult::with_result_only(received.bytes())
+        let payload: Vec<u8> = received.read(0).unwrap();
+        Ok(payload)
     }
 
     fn name(&self) -> &'static str {
@@ -259,10 +253,7 @@ fn simulation_reflects_bandwidth_and_latency() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SlowNetworkConfig,
-        vec![
-            (p0, Box::new(BulkTransferProtocol)),
-            (p1, Box::new(BulkTransferProtocol)),
-        ],
+        vec![(p0, BulkTransferProtocol), (p1, BulkTransferProtocol)],
         vec![],
     );
 
@@ -339,19 +330,22 @@ pub struct OneWayProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for OneWayProtocol {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let other = environment.network.other().unwrap();
+    type Output = Option<usize>;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Option<usize>, Error> {
+        let other = environment.network.other()?;
         if environment.network.local_party().as_usize() == 0 {
             let mut packet = Packet::empty();
             packet.write(&42usize).unwrap();
-            environment.network.send_to(other, &packet).await.unwrap();
-            environment.network.close().await.unwrap();
-            ProtocolResult::empty()
+            environment.network.send_to(other, &packet).await?;
+            environment.network.close().await?;
+            Ok(None)
         } else {
             // Party 1 receives without ever having sent on this channel.
-            let packet = environment.network.recv_from(other).await.unwrap();
-            environment.network.close().await.unwrap();
-            ProtocolResult::with_result_only(packet.bytes())
+            let packet = environment.network.recv_from(other).await?;
+            environment.network.close().await?;
+            let value: usize = packet.read(0).unwrap();
+            Ok(Some(value))
         }
     }
 
@@ -366,18 +360,13 @@ fn one_way_communication_does_not_require_prior_send() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![
-            (p0, Box::new(OneWayProtocol)),
-            (p1, Box::new(OneWayProtocol)),
-        ],
+        vec![(p0, OneWayProtocol), (p1, OneWayProtocol)],
         vec![],
     );
 
     // Party 0 produces no output; party 1 outputs the value 42 sent by party 0.
-    assert!(outcome.outputs[&p0].is_none());
-    let mut expected = Packet::empty();
-    expected.write(&42usize).unwrap();
-    assert_eq!(outcome.outputs[&p1], Some(expected.bytes()));
+    assert_eq!(outcome.outputs[&p0], None);
+    assert_eq!(outcome.outputs[&p1], Some(42usize));
 }
 
 /// Number of parties in the broadcast simulation.
@@ -393,7 +382,9 @@ pub struct BroadcastProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for BroadcastProtocol {
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
+    type Output = usize;
+
+    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let me = environment.network.local_party();
 
         if me.as_usize() == 0 {
@@ -404,8 +395,7 @@ impl Protocol<SimNetwork> for BroadcastProtocol {
                 environment
                     .network
                     .send_to(PartyId::from(receiver), &packet)
-                    .await
-                    .unwrap();
+                    .await?;
             }
         }
 
@@ -413,11 +403,11 @@ impl Protocol<SimNetwork> for BroadcastProtocol {
         let received = environment
             .network
             .recv_from(PartyId::from(0_usize))
-            .await
-            .unwrap();
-        environment.network.close().await.unwrap();
+            .await?;
+        environment.network.close().await?;
 
-        ProtocolResult::with_result_only(received.bytes())
+        let value: usize = received.read(0).unwrap();
+        Ok(value)
     }
 
     fn name(&self) -> &'static str {
@@ -428,22 +418,15 @@ impl Protocol<SimNetwork> for BroadcastProtocol {
 #[test]
 fn broadcast_from_party_zero_reaches_all_parties() {
     let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
-    let protocols: Vec<(PartyId, Box<dyn Protocol<SimNetwork>>)> = parties
+    let protocols: Vec<(PartyId, BroadcastProtocol)> = parties
         .iter()
-        .map(|&party| {
-            (
-                party,
-                Box::new(BroadcastProtocol) as Box<dyn Protocol<SimNetwork>>,
-            )
-        })
+        .map(|&party| (party, BroadcastProtocol))
         .collect();
     let outcome = simulate(SimpleNetworkConfig, protocols, vec![]);
 
     for party in &parties {
         // Every party outputs the value broadcast by party 0.
-        let mut expected = Packet::empty();
-        expected.write(&BROADCAST_VALUE).unwrap();
-        assert_eq!(outcome.outputs[party], Some(expected.bytes()));
+        assert_eq!(outcome.outputs[party], BROADCAST_VALUE);
 
         let trace = &outcome.traces[party];
         let sends = trace

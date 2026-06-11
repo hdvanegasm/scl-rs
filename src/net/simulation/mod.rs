@@ -59,8 +59,8 @@
 //! use scl_rs::net::PartyId;
 //!
 //! let protocols = vec![
-//!     (PartyId::from(0), Box::new(SendRecvProtocol) as _),
-//!     (PartyId::from(1), Box::new(SendRecvProtocol) as _),
+//!     (PartyId::from(0), SendRecvProtocol),
+//!     (PartyId::from(1), SendRecvProtocol),
 //! ];
 //! let outcome = simulate(SimpleNetworkConfig, protocols, vec![]);
 //! let output_p0 = &outcome.outputs[&PartyId::from(0)];

@@ -3,7 +3,7 @@
 //! **scl-rs** is a set of tools to quickly implement MPC protocols in a
 //! distributed way. The main features of *scl-rs* are:
 //!
-//! - A functional network library that uses TLS (implemented with [`rustls`]) for communication between parties.
+//! - A functional network library that uses TLS (implemented with [`tokio-rustls`](https://docs.rs/tokio-rustls)) for communication between parties.
 //! - A set of mathematical tools that are common to MPC protocols:
 //!     - Finite fields.
 //!     - Finite rings.
@@ -32,19 +32,23 @@
 //!
 //! ```ignore
 //! use scl_rs::net::simulation::network::SimNetwork;
-//! use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
-//! use scl_rs::net::Packet;
+//! use scl_rs::protocol::{Environment, Error, Protocol};
+//! use scl_rs::net::{Network, Packet};
 //!
 //! // Defines a new struct for the protocol.
 //! pub struct SendRecvProtocol;
 //!
 //! #[async_trait::async_trait]
 //! impl Protocol<SimNetwork> for SendRecvProtocol {
+//!     // Each protocol declares the typed value it produces. Protocols compose by calling
+//!     // another protocol's `run` and using this typed result directly.
+//!     type Output = usize;
+//!
 //!     // The run method specifies the behavior of the protocol.
 //!     async fn run(
 //!         &self,
 //!         environment: &mut Environment<SimNetwork>,
-//!     ) -> ProtocolResult<SimNetwork> {
+//!     ) -> Result<Self::Output, Error> {
 //!         // Create a new packet to send information. All the information must be sent using
 //!         // packets. Packet can store multiple elements with different types as long as the
 //!         // elements are serializable.
@@ -52,19 +56,20 @@
 //!         packet
 //!             .write(&environment.network.local_party().as_usize())
 //!             .unwrap();
-//!         
+//!
 //!         // Obtains the ID of the other party and send the packet through the network. The
 //!         // network can be accessed through the environment. Also, the network contains all other
-//!         // parties in the case of a multiparty protocol.
-//!         let other = environment.network.other().unwrap();
-//!         environment.network.send_to(other, &packet).await.unwrap();
+//!         // parties in the case of a multiparty protocol. Network errors propagate with `?`.
+//!         let other = environment.network.other()?;
+//!         environment.network.send_to(other, &packet).await?;
 //!
 //!         // Waits to receive the packet from the other party.
-//!         let received_packet = environment.network.recv_from(other).await.unwrap();
-//!         environment.network.close().await.unwrap();
+//!         let received_packet = environment.network.recv_from(other).await?;
+//!         environment.network.close().await?;
 //!
-//!         // Returns the result of the protocol.
-//!         ProtocolResult::with_result_only(received_packet.bytes())
+//!         // Returns the other party's id as the typed output of the protocol.
+//!         let their_id: usize = received_packet.read(0).unwrap();
+//!         Ok(their_id)
 //!     }
 //!
 //!     fn name(&self) -> &'static str {

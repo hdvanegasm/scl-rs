@@ -6,6 +6,8 @@ use std::{
     time::Duration,
 };
 
+use serde::Serialize;
+
 use crate::{
     net::{
         simulation::{
@@ -23,10 +25,10 @@ use crate::{
 };
 
 /// The result of a [`simulate`] run: every party's output and its event trace.
-pub struct SimulationOutcome {
-    /// The output bytes produced by each party's protocol chain, keyed by [`PartyId`]. The value
-    /// is `None` when the party's protocol finished without emitting any result bytes.
-    pub outputs: HashMap<PartyId, Option<Vec<u8>>>,
+pub struct SimulationOutcome<O> {
+    /// The typed output produced by each party's protocol, keyed by [`PartyId`]. `O` is the
+    /// protocol's [`Output`](crate::protocol::Protocol::Output) type.
+    pub outputs: HashMap<PartyId, O>,
     /// The time-ordered [`SimulationTrace`] recorded for each party, keyed by [`PartyId`].
     pub traces: HashMap<PartyId, SimulationTrace>,
 }
@@ -42,15 +44,21 @@ fn record_event(
     sb_guard.record_event(party, event_constructor(timestamp));
 }
 
-/// Runs every party's protocol on the deterministic core, returning each party's output and event
-/// trace (keyed by [`PartyId`]) in a [`SimulationOutcome`].
+/// Runs every party's protocol on the deterministic core, returning each party's typed output and
+/// event trace (keyed by [`PartyId`]) in a [`SimulationOutcome`].
 ///
-/// `protocols` pairs each party with its protocol; `hooks` fire as events are recorded.
-pub fn simulate(
+/// `protocols` pairs each party with its protocol; `hooks` fire as events are recorded. All parties
+/// run the same protocol type `P` — role differences are expressed inside the protocol (for example
+/// by branching on [`local_party`](crate::net::Network::local_party)).
+pub fn simulate<P>(
     config: impl NetworkConfig + 'static,
-    protocols: Vec<(PartyId, Box<dyn Protocol<SimNetwork>>)>,
+    protocols: Vec<(PartyId, P)>,
     hooks: Vec<Arc<dyn TriggeredHook>>,
-) -> SimulationOutcome {
+) -> SimulationOutcome<P::Output>
+where
+    P: Protocol<SimNetwork> + 'static,
+    P::Output: Serialize + Send + Clone + 'static,
+{
     let parties: Vec<PartyId> = protocols.iter().map(|(party, _)| *party).collect();
     let switchboard = Arc::new(Mutex::new(Switchboard::new(ConfigDelay(config), hooks)));
     let outputs = Arc::new(Mutex::new(HashMap::new()));
@@ -77,41 +85,42 @@ pub fn simulate(
     SimulationOutcome { outputs, traces }
 }
 
-/// Drives a protocol chain to the end of its execution for a party.
-async fn drive(
+/// Runs a party's protocol to completion, recording its lifecycle events and returning its output.
+async fn drive<P>(
     party: PartyId,
-    protocol: Box<dyn Protocol<SimNetwork>>,
+    protocol: P,
     switchboard: Arc<Mutex<Switchboard>>,
     env: &mut Environment<SimNetwork>,
-) -> Option<Vec<u8>> {
+) -> P::Output
+where
+    P: Protocol<SimNetwork>,
+    P::Output: Serialize,
+{
     record_event(&switchboard, party, move |t| Event::Start { timestamp: t });
-    let mut next_protocol = Some(protocol);
-    let mut last_output = None;
-    while let Some(protocol) = next_protocol {
-        let name = protocol.name();
-        record_event(&switchboard, party, move |t| Event::ProtocolBegin {
-            timestamp: t,
-            protocol_name: name,
-        });
-        let result = protocol.run(env).await;
-        record_event(&switchboard, party, move |t| Event::ProtocolEnd {
-            timestamp: t,
-            protocol_name: name,
-        });
+    let name = protocol.name();
+    record_event(&switchboard, party, move |t| Event::ProtocolBegin {
+        timestamp: t,
+        protocol_name: name,
+    });
+    let result = protocol
+        .run(env)
+        .await
+        .expect("the protocol should reach an end");
 
-        // Take the next protocol.
-        if let Some(bytes) = &result.result_bytes {
-            let output = bytes.clone();
-            record_event(&switchboard, party, move |t| Event::Output {
-                timestamp: t,
-                output: output,
-            });
-        }
-        last_output = result.result_bytes;
-        next_protocol = result.next_protocol;
-    }
+    record_event(&switchboard, party, move |t| Event::ProtocolEnd {
+        timestamp: t,
+        protocol_name: name,
+    });
+
+    let output =
+        postcard::to_allocvec(&result).expect("the protocol result must serialize correctly");
+    record_event(&switchboard, party, move |t| Event::Output {
+        timestamp: t,
+        output: output,
+    });
     record_event(&switchboard, party, |t| Event::Stop { timestamp: t });
-    last_output
+
+    result
 }
 
 /// Drives the party tasks to completion, delivering scheduled network events in

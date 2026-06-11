@@ -19,7 +19,7 @@ pub enum Event {
         /// Virtual time at which the party started.
         timestamp: Duration,
     },
-    /// The party finished its execution, after its protocol chain completed.
+    /// The party finished its execution, after its protocol completed.
     Stop {
         /// Virtual time at which the party stopped.
         timestamp: Duration,
@@ -80,11 +80,11 @@ pub enum Event {
         /// How long the party slept.
         duration: Duration,
     },
-    /// The party emitted an output (the result bytes of a protocol).
+    /// The party emitted an output (its protocol's typed output, serialized to bytes for the trace).
     Output {
         /// Virtual time at which the output was produced.
         timestamp: Duration,
-        /// The output bytes.
+        /// The serialized output bytes.
         output: Vec<u8>,
     },
     /// A protocol began running.

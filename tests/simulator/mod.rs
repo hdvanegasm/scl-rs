@@ -12,7 +12,7 @@ use scl_rs::{
         },
         Network, Packet, PartyId,
     },
-    protocol::{Environment, ProtocolResult},
+    protocol::{Environment, Error},
     Protocol,
 };
 
@@ -23,18 +23,20 @@ struct SendRecv;
 
 #[async_trait]
 impl Protocol<SimNetwork> for SendRecv {
-    async fn run(&self, env: &mut Environment<SimNetwork>) -> ProtocolResult<SimNetwork> {
-        let other = env.network.other().unwrap();
+    type Output = usize;
+
+    async fn run(&self, env: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+        let other = env.network.other()?;
         let me = env.network.local_party();
 
         let mut packet = Packet::empty();
         packet.write(&me.as_usize()).unwrap();
-        env.network.send_to(other, &packet).await.unwrap();
+        env.network.send_to(other, &packet).await?;
 
-        let received = env.network.recv_from(other).await.unwrap();
+        let received = env.network.recv_from(other).await?;
         let their_id_received: usize = received.read(0).unwrap();
 
-        ProtocolResult::with_result_only(their_id_received.to_le_bytes().to_vec())
+        Ok(their_id_received)
     }
 
     fn name(&self) -> &'static str {
@@ -48,11 +50,11 @@ fn real_protocol_runs_on_deterministic_core() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![(p0, Box::new(SendRecv)), (p1, Box::new(SendRecv))],
+        vec![(p0, SendRecv), (p1, SendRecv)],
         vec![],
     );
-    assert_eq!(outcome.outputs[&p0], Some(1_usize.to_le_bytes().to_vec()));
-    assert_eq!(outcome.outputs[&p1], Some(0_usize.to_le_bytes().to_vec()));
+    assert_eq!(outcome.outputs[&p0], 1_usize);
+    assert_eq!(outcome.outputs[&p1], 0_usize);
 
     assert_eq!(
         outcome.traces[&p0].event_types(),
@@ -92,7 +94,7 @@ fn hook_fires_on_matching_event() {
 
     simulate(
         SimpleNetworkConfig,
-        vec![(p0, Box::new(SendRecv)), (p1, Box::new(SendRecv))],
+        vec![(p0, SendRecv), (p1, SendRecv)],
         vec![hook],
     );
 

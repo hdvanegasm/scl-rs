@@ -21,13 +21,20 @@ To write your own protocol, you need to implement the trait `Protocol` defined a
 /// Represents a protocol.
 #[async_trait]
 pub trait Protocol<N: Network>: Send + Sync {
+    /// The typed value this protocol produces.
+    type Output;
     /// Behavior of the protocol when run.
-    async fn run(&self, environment: &mut Environment<N>) -> ProtocolResult<N>;
+    async fn run(&self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
     fn name(&self) -> &'static str;
 }
 
 ```
+
+A protocol declares the typed `Output` it produces, and protocols compose by calling each other:
+a protocol's `run` body can call another protocol's `run` and use its typed result directly
+(no serialization, fully type-checked). Network operations return a `Result`, so errors propagate
+with `?`.
 
 The communication channels send `Packet` instances, which is an encapsulation of bytes. As an example, the packets may contain information of shares, field elements, polynomials, elliptic curve points, or any other serializable type in the library. The interaction between parties is done using the functions `send_to` and
 `recv_from` defined in the `Network` implementation.
@@ -37,16 +44,19 @@ An example of a simple protocol that exchanges information between two parties c
 ```rust
 use scl_rs::net::simulation::network::SimNetwork;
 use scl_rs::net::{Network, Packet};
-use scl_rs::protocol::{Environment, Protocol, ProtocolResult};
+use scl_rs::protocol::{Environment, Error, Protocol};
 
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
 impl Protocol<SimNetwork> for SendRecvProtocol {
+    // The typed value this protocol produces.
+    type Output = usize;
+
     async fn run(
         &self,
         environment: &mut Environment<SimNetwork>,
-    ) -> ProtocolResult<SimNetwork> {
+    ) -> Result<usize, Error> {
         // Creates a packet to store the information that will be sent through
         // the network.
         let mut packet = Packet::empty();
@@ -57,15 +67,16 @@ impl Protocol<SimNetwork> for SendRecvProtocol {
             .unwrap();
 
         // Sends the packet to the other party.
-        let other = environment.network.other().unwrap();
-        environment.network.send_to(other, &packet).await.unwrap();
+        let other = environment.network.other()?;
+        environment.network.send_to(other, &packet).await?;
 
         // Waits to receive the packet from the other party.
-        let received_packet = environment.network.recv_from(other).await.unwrap();
-        environment.network.close().await.unwrap();
+        let received_packet = environment.network.recv_from(other).await?;
+        environment.network.close().await?;
 
-        // The protocol result will be the received packet.
-        ProtocolResult::with_result_only(received_packet.bytes())
+        // The output is the other party's id, returned as a typed value.
+        let their_id: usize = received_packet.read(0).unwrap();
+        Ok(their_id)
     }
 
     fn name(&self) -> &'static str {
@@ -91,10 +102,7 @@ let p1 = PartyId::from(1_usize);
 
 let outcome = simulate(
     SimpleNetworkConfig,
-    vec![
-        (p0, Box::new(SendRecvProtocol)),
-        (p1, Box::new(SendRecvProtocol)),
-    ],
+    vec![(p0, SendRecvProtocol), (p1, SendRecvProtocol)],
     vec![],
 );
 
@@ -107,8 +115,8 @@ The output of the protocol will be something as follows. Each party receives the
 other party's id, so party 0 outputs the id of party 1 and vice versa:
 
 ```text
-Party 0 output: Some([0, 0, 0, 0, 0, 0, 0, 1])
-Party 1 output: Some([0, 0, 0, 0, 0, 0, 0, 0])
+Party 0 output: 1
+Party 1 output: 0
 ```
 
 ### Distributed execution
