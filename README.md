@@ -3,7 +3,7 @@
 **scl-rs** is a Rust toolkit for prototyping and testing secure multiparty computation (MPC)
 protocols. It bundles the mathematical building blocks, secret-sharing schemes, and networking that
 MPC protocols need — and, distinctively, a **deterministic simulator** that lets you develop and
-debug a protocol locally and then run the *same* code over a real TLS network, unchanged.
+debug a protocol locally and then run the _same_ code over a real TLS network, unchanged.
 
 It offers:
 
@@ -15,7 +15,7 @@ It offers:
 - **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing.
 - **Networking** — point-to-point channels over TCP, secured with TLS (`tokio-rustls`).
 - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols
-  compose by calling one another and using each other's *typed* return values.
+  compose by calling one another and using each other's _typed_ return values.
 - **A deterministic, discrete-event simulator** — run protocols on a virtual clock with configurable
   latency and bandwidth, get reproducible results and per-party event traces, with no sockets or
   threads. The simulator and a real deployment share one `Network` trait, so a protocol written for
@@ -25,7 +25,7 @@ scl-rs began as a Rust port of Anders Dalskov's
 [Secure Computation Library](https://github.com/anderspkd/secure-computation-library) (SCL) and has
 since grown its own architecture — most notably the single-threaded deterministic executor behind
 the simulator and the typed `async` protocol composition — so it is now better described as
-*SCL-inspired* than a faithful port.
+_SCL-inspired_ than a faithful port.
 
 > **Status:** research / prototyping tool. It is **pre-1.0** (the API may change between `0.x`
 > releases) and **not security-audited** — not intended for production use. See
@@ -38,28 +38,6 @@ scl-rs is not yet published on crates.io. Depend on it from git:
 ```toml
 [dependencies]
 scl-rs = { git = "https://github.com/hdvanegasm/scl-rs" }
-```
-
-## A first example: secret sharing
-
-The library is usable on its own as a cryptographic toolbox. This splits a secret in the
-Mersenne-61 field into additive shares and reconstructs it — no network required:
-
-```rust
-use scl_rs::math::field::mersenne61::Mersenne61;
-use scl_rs::ss::additive::AdditiveSS;
-
-let mut rng = rand::rng();
-
-// A secret field element.
-let secret = Mersenne61::from(42_u64);
-
-// Split it into additive shares for 3 parties. Any proper subset of shares reveals nothing.
-let shares = AdditiveSS::shares_from_secret(secret, 3, &mut rng);
-
-// Bringing all the shares together reconstructs the secret.
-let recovered = AdditiveSS::secret_from_shares(&shares);
-assert_eq!(recovered, secret);
 ```
 
 ## Writing a protocol
