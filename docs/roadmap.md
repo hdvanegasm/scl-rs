@@ -104,11 +104,9 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
       error instead of leaking `std::io::Result`.
 - [ ] **`Protocol` receiver decision.** Settle `&self` vs consuming `self` (the latter lets a protocol
       move non-`Clone` inputs into `run`). Changing the receiver is breaking — decide before 1.0.
-      (See D17 in the architecture doc.)
 - [ ] **`Environment::clock()` is a vestigial wall clock** — it reports real elapsed time, which is
       meaningless under the deterministic simulator. Either wire it to virtual time
-      (`Switchboard::clock_of`) or remove it before it becomes a 1.0 commitment. (`src/protocol.rs`,
-      §15 of the architecture doc.)
+      (`Switchboard::clock_of`) or remove it before it becomes a 1.0 commitment. (`src/protocol.rs`.)
 - [ ] **`simulate<P>` ergonomics.** All parties must share one concrete `P`; confirm that's the
       intended public contract (role asymmetry via branching on the local party) and document it.
 - [ ] **Re-exports / prelude.** Only `Protocol` is re-exported at the crate root. Add a small
@@ -217,7 +215,7 @@ Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
 - Nested-call trace visibility (§7) if not done by 1.0.
 - Adversarial/reordering simulation harness (delay/drop/reorder deliveries) — a payoff of the
-  explicit-blocking-state design (architecture doc §15).
+  explicit-blocking-state design (`Poll::Pending` = "party blocked on recv").
 - Packet loss / retransmission modeling in the event loop.
 - Compute-time / sender-side cost modeling in the virtual clock.
 - Broader MPC protocol library on top of the typed-composition core.
