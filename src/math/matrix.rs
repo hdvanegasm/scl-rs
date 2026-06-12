@@ -245,7 +245,7 @@ where
     }
 }
 
-impl<T> Mul<&Vector<T>> for Matrix<T>
+impl<T> Mul<&Vector<T>> for &Matrix<T>
 where
     T: Ring,
 {
@@ -264,5 +264,38 @@ where
             elements.push(sum);
         }
         Ok(Vector::from(elements))
+    }
+}
+
+impl<T> Mul<&Vector<T>> for Matrix<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn mul(self, rhs: &Vector<T>) -> Self::Output {
+        (&self).mul(rhs)
+    }
+}
+
+impl<T> Mul<Vector<T>> for Matrix<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn mul(self, rhs: Vector<T>) -> Self::Output {
+        self.mul(&rhs)
+    }
+}
+
+impl<T> Mul<Vector<T>> for &Matrix<T>
+where
+    T: Ring,
+{
+    type Output = Result<Vector<T>>;
+
+    fn mul(self, rhs: Vector<T>) -> Self::Output {
+        self.mul(&rhs)
     }
 }

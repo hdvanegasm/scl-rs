@@ -2,11 +2,15 @@
 name = "scl-rs"
 version = "0.1.0"
 edition = "2021"
-authors = ["hdvanegasm"]
+authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
+
 repository = "https://github.com/hdvanegasm/scl-rs"
 readme = "README.md"
 keywords = ["mpc", "secret-sharing", "cryptography"]
 categories = ["cryptography"]
+description = "Rust toolkit for prototyping and testing secure multiparty computation (MPC) protocols inspired in Secure Computation Library."
+license = "AGPL-3.0-or-later"
+exclude = ["certs/", "gen_self_signed_certs.sh"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,5 +23,5 @@ postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["net", "io-util", "time", "rt"] }
 tokio-rustls = "0.26"
