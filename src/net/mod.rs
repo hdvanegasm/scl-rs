@@ -153,9 +153,9 @@ pub struct NetworkConfig<'a> {
     /// Port that will be used as a base to define the port of each party. Party `i` will listen at
     /// port `base_port + i`.
     base_port: u16,
-    /// Timeout for receiving a message after calling the `recv()` function.
+    /// Time a party keeps retrying to connect to a peer before giving up with an error.
     timeout: Duration,
-    /// Sleep time before trying to connect again with other party.
+    /// Time a party waits between connection retries.
     sleep_time: Duration,
     /// IPs of each peer.
     pub peer_ips: Vec<Ipv4Addr>,

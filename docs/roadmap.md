@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-11
 
-**Current version:** 0.1.0 (unpublished)
+**Current version:** 0.2.0 (unpublished — **release-ready**; see §11)
 
 **Goal:** ship a first crates.io release that external users can depend on, then reach a
 semver-stable **v1.0**.
@@ -32,8 +32,9 @@ explicit **v1.0 Definition of Done**.
 are excluded; `cargo publish --dry-run` passes; and the TLS `send` flush (§7) is fixed. A first `0.x`
 release can go out now.
 
-**What remains for v1.0** is mostly _productization_, not core features: a security disclaimer +
-`SECURITY.md`, MSRV declaration, API stabilization, and hardening. Those are the body of this roadmap.
+**What remains for v1.0** is mostly _productization_, not core features: MSRV declaration, API
+stabilization, and hardening. (The security disclaimer and `SECURITY.md` are now in place.) Those are
+the body of this roadmap.
 
 ---
 
@@ -192,15 +193,14 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
 
 ## 8. Workstream — Quality gates & CI
 
-Today CI only runs `check` / `build` / `test`. Harden it so releases are mechanical:
+CI now runs separate fmt / clippy / test / doc jobs (the `module_inception` and `needless_borrow`
+lints were cleared; `tests/simulator/` was flattened to a single `tests/simulator.rs`):
 
-- [ ] `cargo fmt --check`.
-- [ ] `cargo clippy --all-targets -- -D warnings` (clears the remaining pre-existing style lints:
-      `module_inception` on `tests/simulator/mod.rs`, `needless_borrow`, … — the `Clock` `Default`
-      lint is already gone after the §5 clock removal).
-- [ ] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
-- [ ] `cargo test` across the MSRV and stable; consider a matrix (Linux at minimum).
-- [ ] `cargo publish --dry-run` on tags.
+- [x] `cargo fmt --all --check`.
+- [x] `cargo clippy --all-targets -- -D warnings` (green; pre-existing style lints cleared).
+- [x] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
+- [x] `cargo test` on stable. _(MSRV matrix still pending — needs `rust-version` first; see §4/0.3.0.)_
+- [ ] `cargo publish --dry-run` on tags. _(Local dry-run passes; not yet wired as a tag-triggered job.)_
 - [ ] Optional: coverage reporting; `cargo-audit`/`deny` (see §6).
 
 ## 9. Workstream — Docs, examples & ecosystem
@@ -209,7 +209,10 @@ Today CI only runs `check` / `build` / `test`. Harden it so releases are mechani
       TLS deployment (the binary sketched in the crate docs), (c) a secret-sharing round-trip.
       Runnable examples are the fastest on-ramp for new users.
 - [ ] **`CHANGELOG.md`** (Keep a Changelog format) from 0.1.0 onward.
-- [ ] **`CONTRIBUTING.md`** and **`SECURITY.md`** (disclosure policy + the §3 disclaimer).
+- [x] **`SECURITY.md`** added (status/posture + threat model & known limitations: variable-time
+      sampling, non-CSPRNG `Rng` inputs, unaudited). Reporting channel is public GitHub issues for now
+      (acceptable for a research tool); a private channel can be added if the posture changes.
+- [ ] **`CONTRIBUTING.md`**.
 - [ ] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
       at the top.
 - [ ] Optional rename `runtime.rs` → `simulator.rs` (cosmetic; do before 1.0 if at all — module paths
@@ -234,8 +237,8 @@ Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
 | Version         | Theme                      | Contents                                                                                                                                                |
 | --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.1.0**       | _Publishable & honest_     | §4 metadata/license/tokio features **(done)** and the §7 `flush` fix **(done)**. Add a `SECURITY.md` (the README disclaimer already exists) and it can be the first crates.io release, clearly pre-1.0. |
-| **0.3.0**       | _Correct & clean_          | Remaining §7 loose ends (real-TLS test, `channel_id` bug), §8 CI hardening (clippy/fmt/doc gates green).                                                |
+| **0.2.0**       | _Publishable & honest_ ✅ **release-ready** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, and §8 CI (fmt/clippy/test/doc gates green) are all **done**. All gates pass and `cargo publish --dry-run` is clean. Remaining before tagging: commit the working tree, then `git tag v0.2.0` + `cargo publish`. First crates.io release, clearly pre-1.0. |
+| **0.3.0**       | _Correct & clean_          | Remaining §7 loose ends (real-TLS test, `channel_id` bug); MSRV declaration + MSRV CI job. (§8 CI fmt/clippy/test/doc gates already landed in 0.2.0.)    |
 | **0.4.0 → 0.x** | _API stabilization_        | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.  |
 | **0.x**         | _Hardening & completeness_ | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                           |
 | **1.0.0**       | _Stabilize & release_      | Freeze the API, finalize docs/examples, lock the license + threat-model statements, `cargo publish --dry-run` clean, tag and publish.                   |

@@ -143,8 +143,9 @@ those conditions.
 
 ### Running on a real network
 
-The same `SendRecvProtocol` runs unchanged over real TLS. Each node runs the same binary with a
-different party id and its own configuration file:
+The same `SendRecvProtocol` runs unchanged over real TLS. Every party runs the same binary, passing
+its own party id and configuration file (hard-coded to party 0 below; in practice you would read them
+from command-line arguments):
 
 ```rust
 use scl_rs::net::{NetworkConfig, TcpNetwork};
@@ -170,40 +171,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+`SendRecvProtocol` is a two-party protocol, so launch **two** processes: party 0 with `my_id = 0` and
+`net_config_p0.json`, and party 1 with `my_id = 1` and `net_config_p1.json`. `create` blocks until
+every peer has connected, so both processes must be started.
+
 #### Network configuration
 
-Each node reads a JSON configuration describing the parties and its TLS material:
+Each node reads a JSON configuration describing the parties and its own TLS material. Party 0's
+`net_config_p0.json` for the two-party run above is:
 
 ```json
 {
   "base_port": 5000,
   "timeout": 5000,
   "sleep_time": 500,
-  "peer_ips": ["127.0.0.1", "127.0.0.1", "127.0.0.1"],
+  "peer_ips": ["127.0.0.1", "127.0.0.1"],
   "server_cert": "./certs/server_cert_p0.crt",
   "priv_key": "./certs/priv_key_p0.pem",
   "trusted_certs": ["./certs/rootCA.crt"]
 }
 ```
 
+Party 1's `net_config_p1.json` is identical except for `server_cert` (`server_cert_p1.crt`) and
+`priv_key` (`priv_key_p1.pem`). Both parties run on `127.0.0.1`, distinguished by port
+(`base_port + i`).
+
 - `base_port` — the base listening port. The party with index `i` listens on `base_port + i`.
 - `timeout` — milliseconds a party keeps retrying to connect to a peer before giving up with an error.
 - `sleep_time` — milliseconds a party waits between connection retries.
-- `peer_ips` — the IP of every peer; the party with index `i` has IP `peer_ips[i]`.
+- `peer_ips` — the IP of every party **including this node**, indexed by party id: party `i` has IP
+  `peer_ips[i]`, and the number of entries is the number of parties. Party `i` binds its own listener
+  on `peer_ips[i]`.
 - `server_cert` — this node's certificate, used when it acts as a TLS server.
 - `priv_key` — the private key associated with `server_cert`.
 - `trusted_certs` — trusted CA certificates (useful when certificates are self-signed).
 
 #### Generating certificates
 
-For a local run you can generate self-signed certificates and keys for `n` parties with the bundled
-script:
+For a local run you can generate a self-signed root CA plus one certificate and key per party with the
+bundled script:
 
 ```text
 bash gen_self_signed_certs.sh <n_parties>
 ```
 
-The certificates are written to the `certs/` directory referenced by the configuration above.
+It writes `rootCA.crt` and, for each party `i`, `server_cert_p{i}.crt` and `priv_key_p{i}.pem`, into
+the `certs/` directory referenced by the configuration above. The generated certificates are valid for
+`127.0.0.1` only, so a multi-host deployment needs certificates whose subject alternative name matches
+each host's address.
 
 ## Status and roadmap
 
