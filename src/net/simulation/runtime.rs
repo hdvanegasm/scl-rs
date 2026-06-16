@@ -47,27 +47,30 @@ fn record_event(
 /// Runs every party's protocol on the deterministic core, returning each party's typed output and
 /// event trace (keyed by [`PartyId`]) in a [`SimulationOutcome`].
 ///
-/// `protocols` pairs each party with its protocol; `hooks` fire as events are recorded. All parties
+/// `make_protocol` is a protocol factory closure for each party, so each party with `pid` will execute the
+/// protocol `make_protocol(pid)`; `hooks` fire as events are recorded. All parties
 /// run the same protocol type `P` — role differences are expressed inside the protocol (for example
 /// by branching on [`local_party`](crate::net::Network::local_party)).
 pub fn simulate<P>(
     config: impl NetworkConfig + 'static,
-    protocols: Vec<(PartyId, P)>,
+    parties: Vec<PartyId>,
+    make_protocol: impl Fn(PartyId) -> P,
     hooks: Vec<Arc<dyn TriggeredHook>>,
 ) -> SimulationOutcome<P::Output>
 where
     P: Protocol<SimNetwork> + 'static,
     P::Output: Serialize + Send + Clone + 'static,
 {
-    let parties: Vec<PartyId> = protocols.iter().map(|(party, _)| *party).collect();
     let switchboard = Arc::new(Mutex::new(Switchboard::new(ConfigDelay(config), hooks)));
     let outputs = Arc::new(Mutex::new(HashMap::new()));
 
     let mut tasks: Vec<Pin<Box<dyn Future<Output = ()>>>> = Vec::new();
-    for (party, protocol) in protocols {
-        let network = SimNetwork::new(party, parties.clone(), switchboard.clone());
+    for party in &parties {
+        let network = SimNetwork::new(*party, parties.clone(), switchboard.clone());
         let outputs = outputs.clone();
         let switchboard = switchboard.clone();
+        let protocol = make_protocol(*party);
+        let party = *party;
         tasks.push(Box::pin(async move {
             let mut env = Environment::new(network);
             let result = drive(party, protocol, switchboard, &mut env).await;
@@ -116,7 +119,7 @@ where
         postcard::to_allocvec(&result).expect("the protocol result must serialize correctly");
     record_event(&switchboard, party, move |t| Event::Output {
         timestamp: t,
-        output: output,
+        output,
     });
     record_event(&switchboard, party, |t| Event::Stop { timestamp: t });
 

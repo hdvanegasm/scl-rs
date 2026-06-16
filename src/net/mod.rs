@@ -89,10 +89,6 @@ impl PartialEq<Packet> for Arc<Packet> {
     fn eq(&self, other: &Packet) -> bool {
         self.0 == other.0
     }
-
-    fn ne(&self, other: &Packet) -> bool {
-        self.0 != other.0
-    }
 }
 
 impl Packet {
@@ -114,7 +110,7 @@ impl Packet {
     }
 
     /// Extract the last element added into the [`Packet`].
-    pub fn pop<'de, T>(&mut self) -> Option<T>
+    pub fn pop<T>(&mut self) -> Option<T>
     where
         T: DeserializeOwned,
     {
@@ -124,7 +120,7 @@ impl Packet {
     }
 
     /// Read the element at the given index inside the [`Packet`].
-    pub fn read<'de, T>(&self, obj_idx: usize) -> Option<T>
+    pub fn read<T>(&self, obj_idx: usize) -> Option<T>
     where
         T: DeserializeOwned,
     {
@@ -255,8 +251,12 @@ impl NetworkConfig<'_> {
 }
 
 /// Represents a network used to execute a protocol.
+///
+/// `Network` requires [`Send`] so that protocols generic over `N: Network` can be implemented with
+/// the `#[async_trait]` `Protocol` trait (whose `run` future is `Send`). Both `SimNetwork` and
+/// `TcpNetwork` already satisfy this.
 #[async_trait]
-pub trait Network {
+pub trait Network: Send {
     /// This method sends a `packet` to the party with ID `party_id`.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
     /// This method receives a `packet` from the party with ID `party_id`.
@@ -413,7 +413,7 @@ impl TcpNetwork {
 impl Network for TcpNetwork {
     fn other(&self) -> Result<PartyId> {
         if self.peer_channels.len() != 2 {
-            return Err(NetworkError::ExpectedTwoNodeNet(self.peer_channels.len()));
+            Err(NetworkError::ExpectedTwoNodeNet(self.peer_channels.len()))
         } else {
             Ok(PartyId::from(1 - self.local_party_id.as_usize()))
         }

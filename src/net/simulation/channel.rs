@@ -20,7 +20,7 @@ impl ChannelId {
 
     /// Returns the channel ID consisting of the end-points of the channel flipped.
     pub fn flip_end_points(&self) -> Self {
-        Self::new(self.remote.clone(), self.local.clone())
+        Self::new(self.remote, self.local)
     }
 
     /// Returns the ID of the local node in the channel ID.
@@ -40,8 +40,7 @@ pub trait NetworkConfig: Clone + Send + Sync {
     fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig;
 }
 
-/// Bandwidth used in this channel.
-// TODO: complete the doc with the measurement unit of the bandwidth (e.g. bytes/s or bits/s).
+/// Bandwidth used in this channel measured in bits per second.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Bandwidth(usize);
 
@@ -153,8 +152,7 @@ impl ChannelConfig {
         let max_throughput = wind_size / rtt;
 
         let bandwidth = self.bandwidth.value() as f64;
-        let actual_throughput = f64::min(bandwidth, max_throughput);
-        actual_throughput
+        f64::min(bandwidth, max_throughput)
     }
 
     fn lossy_throughput(&self) -> f64 {
@@ -276,15 +274,12 @@ impl ChannelConfigBuilder {
     /// A configuration is valid when the bandwidth, MSS, and window size are all non-zero and the
     /// package loss is a fraction in `[0, 1]`.
     pub fn is_valid(&self) -> bool {
-        if self.bandwidth.value() == 0 {
-            return false;
-        } else if self.mss.value() == 0 {
-            return false;
-        } else if self.package_loss.value() < 0.0 {
-            return false;
-        } else if self.package_loss.value() > 1.0 {
-            return false;
-        } else if self.window_size.value() == 0 {
+        if self.bandwidth.value() == 0
+            || self.mss.value() == 0
+            || self.package_loss.value() < 0.0
+            || self.package_loss.value() > 1.0
+            || self.window_size.value() == 0
+        {
             return false;
         }
         true

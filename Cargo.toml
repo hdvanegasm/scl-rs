@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 
@@ -25,3 +25,7 @@ async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "rt"] }
 tokio-rustls = "0.26"
+
+[dev-dependencies]
+# Needed so the compiled crate-doc examples can implement the `#[async_trait]` `Protocol` trait.
+async-trait = "0.1"

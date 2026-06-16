@@ -120,7 +120,8 @@ let p1 = PartyId::from(1_usize);
 
 let outcome = simulate(
     SimpleNetworkConfig,
-    vec![(p0, SendRecvProtocol), (p1, SendRecvProtocol)],
+    vec![p0, p1],
+    |_| SendRecvProtocol,
     vec![],
 );
 

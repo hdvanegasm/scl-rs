@@ -42,7 +42,8 @@ fn send_recv_simulation() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![(p0, SendRecvProtocol), (p1, SendRecvProtocol)],
+        vec![p0, p1],
+        |_| SendRecvProtocol,
         vec![],
     );
 
@@ -110,7 +111,8 @@ fn ping_pong_preserves_message_order() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![(p0, PingPongProtocol), (p1, PingPongProtocol)],
+        vec![p0, p1],
+        |_| PingPongProtocol,
         vec![],
     );
 
@@ -138,12 +140,7 @@ impl Protocol<SimNetwork> for ChainedFirstStage {
         packet.write(&me).unwrap();
         environment.network.send_to(other, &packet).await?;
 
-        let received: usize = environment
-            .network
-            .recv_from(other)
-            .await?
-            .read(0)
-            .unwrap();
+        let received: usize = environment.network.recv_from(other).await?.read(0).unwrap();
         environment.network.close().await?;
 
         // Composition: call the next stage inline and use its typed result.
@@ -181,7 +178,8 @@ fn chained_protocols_pass_state_between_stages() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![(p0, ChainedFirstStage), (p1, ChainedFirstStage)],
+        vec![p0, p1],
+        |_| ChainedFirstStage,
         vec![],
     );
 
@@ -253,7 +251,8 @@ fn simulation_reflects_bandwidth_and_latency() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SlowNetworkConfig,
-        vec![(p0, BulkTransferProtocol), (p1, BulkTransferProtocol)],
+        vec![p0, p1],
+        |_| BulkTransferProtocol,
         vec![],
     );
 
@@ -360,7 +359,8 @@ fn one_way_communication_does_not_require_prior_send() {
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
         SimpleNetworkConfig,
-        vec![(p0, OneWayProtocol), (p1, OneWayProtocol)],
+        vec![p0, p1],
+        |_| OneWayProtocol,
         vec![],
     );
 
@@ -418,11 +418,12 @@ impl Protocol<SimNetwork> for BroadcastProtocol {
 #[test]
 fn broadcast_from_party_zero_reaches_all_parties() {
     let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
-    let protocols: Vec<(PartyId, BroadcastProtocol)> = parties
-        .iter()
-        .map(|&party| (party, BroadcastProtocol))
-        .collect();
-    let outcome = simulate(SimpleNetworkConfig, protocols, vec![]);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        parties.clone(),
+        |_| BroadcastProtocol,
+        vec![],
+    );
 
     for party in &parties {
         // Every party outputs the value broadcast by party 0.

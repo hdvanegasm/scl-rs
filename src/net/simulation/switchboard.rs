@@ -116,7 +116,7 @@ impl Switchboard {
         let triggered: Vec<Arc<dyn TriggeredHook>> = self
             .hooks
             .iter()
-            .filter(|hook| hook.trigger().map_or(true, |t| t == event.event_type()))
+            .filter(|hook| hook.trigger().is_none_or(|t| t == event.event_type()))
             .cloned()
             .collect();
         for hook in triggered {

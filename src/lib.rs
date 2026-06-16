@@ -41,6 +41,7 @@
 //! [dependencies]
 //! scl-rs = { git = "https://github.com/hdvanegasm/scl-rs" }
 //! ```
+//!
 //! ## Writing a protocol
 //!
 //! A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`) and
@@ -63,13 +64,14 @@
 //! methods of the `Network`. Because the protocol is written **generic over `N: Network`**, the very
 //! same code runs on the simulator and over a real TLS network:
 //!
-//! ```ignore
+//! ```rust
+//! use async_trait::async_trait;
 //! use scl_rs::net::{Network, Packet};
 //! use scl_rs::protocol::{Environment, Error, Protocol};
 //!
 //! pub struct SendRecvProtocol;
 //!
-//! #[async_trait::async_trait]
+//! #[async_trait]
 //! impl<N: Network> Protocol<N> for SendRecvProtocol {
 //!     // This protocol returns the other party's id.
 //!     type Output = usize;
@@ -94,6 +96,8 @@
 //!         "SendRecvProtocol"
 //!     }
 //! }
+//! #
+//! # let _ = SendRecvProtocol;
 //! ```
 //!
 //! A protocol can also **call another protocol** inline and use its typed result directly (no
@@ -111,7 +115,27 @@
 //! configuration and an (optionally empty) list of hooks. The simulator drives every party on a virtual
 //! clock and returns a `SimulationOutcome` with each party's typed output and its event trace:
 //!
-//! ```ignore
+//! ```rust
+//! # use async_trait::async_trait;
+//! # use scl_rs::net::{Network, Packet};
+//! # use scl_rs::protocol::{Environment, Error, Protocol};
+//! # pub struct SendRecvProtocol;
+//!
+//! # #[async_trait]
+//! # impl<N: Network> Protocol<N> for SendRecvProtocol {
+//! #     type Output = usize;
+//! #     async fn run(&self, env: &mut Environment<N>) -> Result<usize, Error> {
+//! #         let mut packet = Packet::empty();
+//! #         packet.write(&env.network.local_party().as_usize()).unwrap();
+//! #         let other = env.network.other()?;
+//! #         env.network.send_to(other, &packet).await?;
+//! #         let received = env.network.recv_from(other).await?;
+//! #         env.network.close().await?;
+//! #         Ok(received.read(0).unwrap())
+//! #     }
+//! #     fn name(&self) -> &'static str { "SendRecvProtocol" }
+//! # }
+//!
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 //! use scl_rs::net::simulation::runtime::simulate;
 //! use scl_rs::net::PartyId;
@@ -121,9 +145,14 @@
 //!
 //! let outcome = simulate(
 //!     SimpleNetworkConfig,
-//!     vec![(p0, SendRecvProtocol), (p1, SendRecvProtocol)],
+//!     vec![p0, p1],
+//!     |_| SendRecvProtocol,
 //!     vec![],
 //! );
+//!
+//! // Each party receives the *other* party's id.
+//! assert_eq!(outcome.outputs[&p0], 1);
+//! assert_eq!(outcome.outputs[&p1], 0);
 //!
 //! for party in [p0, p1] {
 //!     println!("Party {} output: {:?}", party.as_usize(), outcome.outputs[&party]);

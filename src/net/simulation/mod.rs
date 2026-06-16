@@ -148,6 +148,11 @@ impl SimulationTrace {
         self.0.len()
     }
 
+    /// Checks if the trace is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Returns a slice of the events in the trace.
     pub fn events(&self) -> &[Event] {
         &self.0

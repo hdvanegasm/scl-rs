@@ -27,9 +27,13 @@ explicit **v1.0 Definition of Done**.
 - **`protocol`** — one `Protocol<N>` trait with a typed `Output`; protocols compose by direct
   `.await`; `simulate<P>` runs them deterministically and returns typed outputs + event traces.
 
-**What's missing for a release** is mostly _productization_, not core features: crates.io metadata,
-a deliberate license posture, a security disclaimer, API stabilization, and hardening. Those are the
-body of this roadmap.
+**Publishability is now cleared** (see §4): `Cargo.toml` has `license`, `description`, `keywords`,
+`categories`, `repository`, `readme`; tokio features are narrowed; `certs/` and the generator script
+are excluded; `cargo publish --dry-run` passes; and the TLS `send` flush (§7) is fixed. A first `0.x`
+release can go out now.
+
+**What remains for v1.0** is mostly _productization_, not core features: a security disclaimer +
+`SECURITY.md`, MSRV declaration, API stabilization, and hardening. Those are the body of this roadmap.
 
 ---
 
@@ -73,21 +77,17 @@ Both are defensible — pick one so "1.0" means something specific to users.
 
 ## 3. Two gating decisions (resolve first — they color everything else)
 
-### D-A. License posture
+### D-A. License posture — **DECIDED: AGPL‑3.0-or-later**
 
-The repo ships **AGPL‑3.0** (`LICENSE`), but `Cargo.toml` has **no `license` field at all** — which
-is a hard crates.io publish blocker. Beyond the mechanical fix, AGPL is the most restrictive common
-OSS license: it obliges anyone who _uses the library over a network_ to release their source. For a
-library whose entire purpose is to be _consumed by others_, that will deter most downstream adoption
-(companies routinely ban AGPL dependencies).
+**Resolved.** `Cargo.toml` now declares `license = "AGPL-3.0-or-later"` (valid SPDX; the deprecated
+plain `AGPL-3.0` form is avoided), matching the `LICENSE` file. The publish blocker is cleared.
 
-**Action:** make a deliberate choice and record it.
-
-- If broad adoption is the goal, the Rust-ecosystem norm is **dual `MIT OR Apache‑2.0`**.
-- If copyleft is intentional, keep AGPL but understand and document the consequence.
-- Either way, set `license = "<SPDX>"` in `Cargo.toml` to match the `LICENSE` file(s).
-
-This is the author's call; the roadmap only flags that it must be _decided_, not defaulted.
+The trade-off was made deliberately: AGPL is the most restrictive common OSS license — it obliges
+anyone who _uses the library over a network_ to release their source — and companies routinely ban
+AGPL dependencies, so this will deter most downstream commercial adoption. That copyleft posture is
+intentional. If broad adoption later becomes the goal, the Rust-ecosystem norm is dual
+`MIT OR Apache‑2.0`; as sole copyright holder the author can relicense _future_ versions freely,
+though any already-published version stays under the license it shipped with.
 
 ### D-B. Security posture & audit status
 
@@ -104,19 +104,21 @@ This is cryptography / MPC code. Going public without a clear posture is itself 
 
 ## 4. Workstream — Publishability (make `cargo publish` succeed)
 
-Mechanical, do first; unblocks an early `0.2` on crates.io.
+Mechanical, do first; unblocks an early `0.x` on crates.io. **Essentially complete** — the dry-run
+passes and the package is clean. Only MSRV and the docs.rs verification remain.
 
-- [ ] Add `license` (or `license-file`) to `Cargo.toml` — **publish blocker** (see D-A).
-- [ ] Add `description` — required-quality metadata; crates.io surfaces it.
-- [ ] Add `documentation = "https://docs.rs/scl-rs"`, `homepage`, confirm `repository`, `readme`,
-      `keywords`, `categories`.
-- [ ] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI.
-- [ ] Narrow tokio features: `tokio = { features = ["full"] }` pulls everything into every downstream
-      build. Scope to what's used (likely `rt`, `rt-multi-thread`, `net`, `io-util`, `time`, `sync`,
-      `macros`).
-- [ ] `cargo publish --dry-run` clean; verify the packaged file list (`exclude`/`include` for
-      `certs/`, scratch files, large docs if desired).
-- [ ] Verify docs.rs build (it builds all features on a fixed toolchain).
+- [x] Add `license` to `Cargo.toml` — `license = "AGPL-3.0-or-later"` (see D-A).
+- [x] Add `description` — present.
+- [x] `repository`, `readme`, `keywords`, `categories` — present. (`documentation`/`homepage` are
+      optional niceties; docs.rs is inferred from the crate name.)
+- [x] Narrow tokio features: now `tokio = { features = ["net", "io-util", "time", "rt"] }` (down from
+      `"full"`); `cargo build`/`cargo test` green. `rt` is needed only by the unused
+      `JoinHandleError` variant — drop that variant and `rt` can go too.
+- [x] `cargo publish --dry-run` clean; `exclude = ["certs/", "gen_self_signed_certs.sh"]` keeps the
+      private keys and generator script out of the tarball (`cargo package --list` confirms no
+      `.pem`/`.key`/`.crt` ship).
+- [ ] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI. _(still absent)_
+- [ ] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
 
 ## 5. Workstream — API stabilization (the heart of v1.0; breaking now, frozen later)
 
@@ -133,11 +135,25 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
       error instead of leaking `std::io::Result`.
 - [ ] **`Protocol` receiver decision.** Settle `&self` vs consuming `self` (the latter lets a protocol
       move non-`Clone` inputs into `run`). Changing the receiver is breaking — decide before 1.0.
-- [ ] **`Environment::clock()` is a vestigial wall clock** — it reports real elapsed time, which is
-      meaningless under the deterministic simulator. Either wire it to virtual time
-      (`Switchboard::clock_of`) or remove it before it becomes a 1.0 commitment. (`src/protocol.rs`.)
-- [ ] **`simulate<P>` ergonomics.** All parties must share one concrete `P`; confirm that's the
-      intended public contract (role asymmetry via branching on the local party) and document it.
+- [x] **`Network: Send` supertrait added.** `#[async_trait]` makes `Protocol::run`'s future `Send`,
+      which needs `Environment<N>: Send` → `N: Send`. Without the bound, generic `impl<N: Network>
+      Protocol<N>` did not compile (the crate-doc examples were `ignore`, hiding it). `Network` now
+      requires `Send`, so generic protocols are written as `impl<N: Network> Protocol<N>` with no extra
+      bound; both `SimNetwork` and `TcpNetwork` already satisfy it. (`src/net/mod.rs`.) The crate-doc
+      protocol + simulator examples are now **compiled** doctests (the simulator one runs and asserts),
+      so this class of rot is caught going forward; `async-trait` was added to `[dev-dependencies]`.
+- [x] **`Environment::clock()` removed.** The vestigial wall-clock `Clock` (it reported real elapsed
+      time, meaningless under the deterministic simulator) and its accessor are gone; `Environment<N>`
+      is now just `{ pub network: N }` — kept deliberately as the ambient-context seam so future
+      execution-wide resources (e.g. a CSPRNG handle, §6) can be added without changing the `Protocol`
+      signature. If protocols ever need simulated time, expose it via `Network::now()`
+      (`Switchboard::clock_of`) rather than reviving the wall clock. (`src/protocol.rs`.)
+- [x] **`simulate<P>` ergonomics — settled.** Signature is now
+      `simulate(config, parties: Vec<PartyId>, make_protocol: impl Fn(PartyId) -> P, hooks)`: a
+      per-party **factory closure** instead of `Vec<(PartyId, P)>`. All parties still share one
+      concrete type `P` (monomorphization), but the factory keeps the per-party construction seam —
+      symmetric protocols are `|_| Proto`, and private inputs are `|pid| Proto { input: inputs[&pid] }`
+      — without `P: Clone` or per-party boilerplate. (`src/net/simulation/runtime.rs`.)
 - [ ] **Re-exports / prelude.** Only `Protocol` is re-exported at the crate root. Add a small
       `prelude` (or curated root re-exports) for the common path (`Network`, `Packet`, `PartyId`,
       `Environment`, `simulate`, the field/ring traits) so users aren't deep-pathing.
@@ -158,9 +174,9 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
 
 ## 7. Workstream
 
-- [ ] **`channel.rs::send` is missing `self.flush().await?`** after its writes — `tokio-rustls`
-      buffers ciphertext, so a strict request→response over real TLS can stall under backpressure.
-      _(Highest-priority correctness fix.)_
+- [x] **`channel.rs::send` flushes after its writes.** Now does `write_all(len)` → `write_all(bytes)`
+      → `flush().await?` (channel.rs:77-79), fixing the `tokio-rustls` ciphertext-buffering stall on a
+      strict request→response over real TLS. `connect_as_client` also flushes after sending the id.
 - [ ] **No real-TLS integration test.** The simulator suite never touches `TcpNetwork`. Add a
       localhost two-task `#[tokio::test]` covering handshake + length-prefixed framing + flush +
       close end-to-end.
@@ -179,8 +195,9 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
 Today CI only runs `check` / `build` / `test`. Harden it so releases are mechanical:
 
 - [ ] `cargo fmt --check`.
-- [ ] `cargo clippy --all-targets -- -D warnings` (clears the ~15 pre-existing style lints:
-      `Clock` `Default`, `module_inception` on `tests/simulator/mod.rs`, `needless_borrow`, …).
+- [ ] `cargo clippy --all-targets -- -D warnings` (clears the remaining pre-existing style lints:
+      `module_inception` on `tests/simulator/mod.rs`, `needless_borrow`, … — the `Clock` `Default`
+      lint is already gone after the §5 clock removal).
 - [ ] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
 - [ ] `cargo test` across the MSRV and stable; consider a matrix (Linux at minimum).
 - [ ] `cargo publish --dry-run` on tags.
@@ -217,7 +234,7 @@ Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
 | Version         | Theme                      | Contents                                                                                                                                                |
 | --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.2.0**       | _Publishable & honest_     | §4 (metadata, license field, tokio features), the §3 security disclaimer + `SECURITY.md`, the §7 `flush` fix. First crates.io release, clearly pre-1.0. |
+| **0.1.0**       | _Publishable & honest_     | §4 metadata/license/tokio features **(done)** and the §7 `flush` fix **(done)**. Add a `SECURITY.md` (the README disclaimer already exists) and it can be the first crates.io release, clearly pre-1.0. |
 | **0.3.0**       | _Correct & clean_          | Remaining §7 loose ends (real-TLS test, `channel_id` bug), §8 CI hardening (clippy/fmt/doc gates green).                                                |
 | **0.4.0 → 0.x** | _API stabilization_        | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.  |
 | **0.x**         | _Hardening & completeness_ | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                           |

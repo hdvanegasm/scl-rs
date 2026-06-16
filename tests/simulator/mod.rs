@@ -48,11 +48,7 @@ impl Protocol<SimNetwork> for SendRecv {
 fn real_protocol_runs_on_deterministic_core() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
-    let outcome = simulate(
-        SimpleNetworkConfig,
-        vec![(p0, SendRecv), (p1, SendRecv)],
-        vec![],
-    );
+    let outcome = simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![]);
     assert_eq!(outcome.outputs[&p0], 1_usize);
     assert_eq!(outcome.outputs[&p1], 0_usize);
 
@@ -92,11 +88,7 @@ fn hook_fires_on_matching_event() {
     let count = Arc::new(Mutex::new(0_usize));
     let hook = Arc::new(CountSendData(count.clone()));
 
-    simulate(
-        SimpleNetworkConfig,
-        vec![(p0, SendRecv), (p1, SendRecv)],
-        vec![hook],
-    );
+    simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![hook]);
 
     // Each party sends exactly once → two SendData events.
     assert_eq!(*count.lock().unwrap(), 2);
