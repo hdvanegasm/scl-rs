@@ -33,11 +33,9 @@ _SCL-inspired_ than a faithful port.
 
 ## Installation
 
-scl-rs is not yet published on crates.io. Depend on it from git:
-
 ```toml
 [dependencies]
-scl-rs = { git = "https://github.com/hdvanegasm/scl-rs" }
+scl-rs = "0.2.0"
 ```
 
 ## Writing a protocol
