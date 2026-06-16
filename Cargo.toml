@@ -3,6 +3,7 @@ name = "scl-rs"
 version = "0.2.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
+rust-version = "1.85.1"
 
 repository = "https://github.com/hdvanegasm/scl-rs"
 readme = "README.md"
