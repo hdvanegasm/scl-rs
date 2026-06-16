@@ -16,7 +16,7 @@ exclude = ["certs/", "gen_self_signed_certs.sh"]
 
 [dependencies]
 thiserror = "2.0.12"
-rand = "0.10"
+rand = "0.10.1"
 log = "0.4.29"
 serde_json = "1"
 postcard = { version = "1", features = ["alloc"] }
@@ -25,6 +25,7 @@ async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "rt"] }
 tokio-rustls = "0.26"
+rustls-webpki = "0.103.13"
 
 [dev-dependencies]
 # Needed so the compiled crate-doc examples can implement the `#[async_trait]` `Protocol` trait.
