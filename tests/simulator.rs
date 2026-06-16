@@ -5,6 +5,7 @@ use scl_rs::net::simulation::channel::{
 use scl_rs::net::simulation::event::{Event, EventType};
 use scl_rs::net::simulation::network::SimNetwork;
 use scl_rs::net::simulation::runtime::simulate;
+use scl_rs::net::simulation::switchboard::{Switchboard, TriggeredHook};
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
 use scl_rs::protocol::{Environment, Error, Protocol};
@@ -454,7 +455,7 @@ fn broadcast_from_party_zero_reaches_all_parties() {
         println!(
             "---- Party {}:\n{}",
             party.as_usize(),
-            outcome.traces[&party]
+            outcome.traces[party]
         );
     }
 }
@@ -480,4 +481,83 @@ fn output_event_elides_large_payloads() {
     let large_rendered = large.to_string();
     assert!(large_rendered.contains("OUTPUT"));
     assert!(large_rendered.contains("[0, 1, 2, 3, …, 96, 97, 98, 99] (100 bytes)"));
+}
+
+use std::sync::{Arc, Mutex};
+
+use async_trait::async_trait;
+
+struct SendRecv;
+
+#[async_trait]
+impl Protocol<SimNetwork> for SendRecv {
+    type Output = usize;
+
+    async fn run(&self, env: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+        let other = env.network.other()?;
+        let me = env.network.local_party();
+
+        let mut packet = Packet::empty();
+        packet.write(&me.as_usize()).unwrap();
+        env.network.send_to(other, &packet).await?;
+
+        let received = env.network.recv_from(other).await?;
+        let their_id_received: usize = received.read(0).unwrap();
+
+        Ok(their_id_received)
+    }
+
+    fn name(&self) -> &'static str {
+        "SendRecv"
+    }
+}
+
+#[test]
+fn real_protocol_runs_on_deterministic_core() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![]);
+    assert_eq!(outcome.outputs[&p0], 1_usize);
+    assert_eq!(outcome.outputs[&p1], 0_usize);
+
+    assert_eq!(
+        outcome.traces[&p0].event_types(),
+        vec![
+            EventType::Start,
+            EventType::ProtocolBegin,
+            EventType::SendData,
+            EventType::ReceiveData,
+            EventType::ProtocolEnd,
+            EventType::Output,
+            EventType::Stop
+        ],
+    );
+
+    println!("------ Party 0:\n{}", outcome.traces[&p0]);
+    println!("------ Party 1:\n{}", outcome.traces[&p1]);
+}
+
+struct CountSendData(Arc<Mutex<usize>>);
+
+impl TriggeredHook for CountSendData {
+    fn trigger(&self) -> Option<EventType> {
+        Some(EventType::SendData)
+    }
+
+    fn run(&self, _party: PartyId, _event: &Event, _switchboard: &mut Switchboard) {
+        *self.0.lock().expect("lock free") += 1;
+    }
+}
+
+#[test]
+fn hook_fires_on_matching_event() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let count = Arc::new(Mutex::new(0_usize));
+    let hook = Arc::new(CountSendData(count.clone()));
+
+    simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![hook]);
+
+    // Each party sends exactly once → two SendData events.
+    assert_eq!(*count.lock().unwrap(), 2);
 }
