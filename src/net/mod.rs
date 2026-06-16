@@ -30,6 +30,7 @@ use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_rustls::rustls::pki_types::pem::PemObject;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_rustls::rustls::server::{VerifierBuilderError, WebPkiClientVerifier};
 use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 
 /// Represents a party ID in the protocol.
@@ -76,6 +77,9 @@ pub enum NetworkError {
     /// Error returned when the execution expects a two-party protocol.
     #[error("expected a network with only two nodes, there are {0} nodes in the network")]
     ExpectedTwoNodeNet(usize),
+    /// The certificate verifier builder fails.
+    #[error("building for the verifier of certificates failed: {0:?}")]
+    VerifierBuilderError(#[from] VerifierBuilderError),
 }
 
 /// Special type for the network error.
@@ -290,13 +294,16 @@ impl TcpNetwork {
     /// The function returns an error if the certificate and the private key are not configured
     /// correctly.
     fn configure_tls(config: &NetworkConfig<'static>) -> Result<(ClientConfig, ServerConfig)> {
-        // Configure the client TLS
+        // Configure the client TLS.
         let client_conf = ClientConfig::builder()
             .with_root_certificates(config.root_cert_store.clone())
-            .with_no_client_auth();
+            .with_client_auth_cert(config.server_cert.clone(), config.priv_key.clone_key())?;
 
+        // Configure the server TLS.
+        let verifier =
+            WebPkiClientVerifier::builder(Arc::new(config.root_cert_store.clone())).build()?;
         let server_conf = ServerConfig::builder()
-            .with_no_client_auth()
+            .with_client_cert_verifier(verifier)
             .with_single_cert(config.server_cert.clone(), config.priv_key.clone_key())
             .map_err(NetworkError::TlsError)?;
 

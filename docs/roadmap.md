@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-11
 
-**Current version:** 0.2.0 (unpublished — **release-ready**; see §11)
+**Current version:** 0.2.0 (**published to crates.io on 2026-06-16**; tagged `v0.2.0`)
 
 **Goal:** ship a first crates.io release that external users can depend on, then reach a
 semver-stable **v1.0**.
@@ -237,7 +237,7 @@ Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
 | Version         | Theme                      | Contents                                                                                                                                                |
 | --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.2.0**       | _Publishable & honest_ ✅ **release-ready** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, and §8 CI (fmt/clippy/test/doc gates green) are all **done**. All gates pass and `cargo publish --dry-run` is clean. Remaining before tagging: commit the working tree, then `git tag v0.2.0` + `cargo publish`. First crates.io release, clearly pre-1.0. |
+| **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, clearly pre-1.0. |
 | **0.3.0**       | _Correct & clean_          | Remaining §7 loose ends (real-TLS test, `channel_id` bug); MSRV declaration + MSRV CI job. (§8 CI fmt/clippy/test/doc gates already landed in 0.2.0.)    |
 | **0.4.0 → 0.x** | _API stabilization_        | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.  |
 | **0.x**         | _Hardening & completeness_ | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                           |
