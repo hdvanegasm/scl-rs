@@ -323,6 +323,45 @@ fn simulation_trace_renders_events_nicely() {
     assert!(rendered.contains("STOP"));
 }
 
+#[test]
+fn trace_arrows_reflect_each_party_perspective() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![p0, p1],
+        |_| SendRecvProtocol,
+        vec![],
+    );
+
+    // Party 0's perspective: send to party 1, receive from party 1.
+    let trace0 = outcome.traces[&p0].to_string();
+    assert!(
+        trace0.contains("0 -> 1"),
+        "party 0 should send to party 1:\n{trace0}"
+    );
+    assert!(
+        trace0.contains("0 <- 1"),
+        "party 0 should receive from party 1:\n{trace0}"
+    );
+
+    // Party 1's perspective (the higher id, where the canonical-id bug surfaced): its arrows must
+    // point to/from party 0 from its own viewpoint, not be rendered as `0 -> 1` / `0 <- 1`.
+    let trace1 = outcome.traces[&p1].to_string();
+    assert!(
+        trace1.contains("1 -> 0"),
+        "party 1 should send to party 0:\n{trace1}"
+    );
+    assert!(
+        trace1.contains("1 <- 0"),
+        "party 1 should receive from party 0:\n{trace1}"
+    );
+    assert!(
+        !trace1.contains("0 -> 1") && !trace1.contains("0 <- 1"),
+        "party 1's arrows must reflect its own perspective, not the canonical channel id:\n{trace1}"
+    );
+}
+
 /// Protocol where party 0 only sends and party 1 only receives, with no message in the reverse
 /// direction. This is a regression test for a latency-bookkeeping bug where a party could not
 /// receive on a channel unless it had previously sent on it.

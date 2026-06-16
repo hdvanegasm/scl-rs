@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
@@ -29,5 +29,4 @@ tokio-rustls = "0.26"
 rustls-webpki = "0.103.13"
 
 [dev-dependencies]
-# Needed so the compiled crate-doc examples can implement the `#[async_trait]` `Protocol` trait.
 async-trait = "0.1"

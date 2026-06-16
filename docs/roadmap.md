@@ -118,8 +118,8 @@ passes and the package is clean. Only MSRV and the docs.rs verification remain.
 - [x] `cargo publish --dry-run` clean; `exclude = ["certs/", "gen_self_signed_certs.sh"]` keeps the
       private keys and generator script out of the tarball (`cargo package --list` confirms no
       `.pem`/`.key`/`.crt` ship).
-- [ ] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI. _(still absent)_
-- [ ] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
+- [x] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI.
+- [x] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
 
 ## 5. Workstream — API stabilization (the heart of v1.0; breaking now, frozen later)
 
@@ -138,7 +138,7 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
       move non-`Clone` inputs into `run`). Changing the receiver is breaking — decide before 1.0.
 - [x] **`Network: Send` supertrait added.** `#[async_trait]` makes `Protocol::run`'s future `Send`,
       which needs `Environment<N>: Send` → `N: Send`. Without the bound, generic `impl<N: Network>
-      Protocol<N>` did not compile (the crate-doc examples were `ignore`, hiding it). `Network` now
+  Protocol<N>` did not compile (the crate-doc examples were `ignore`, hiding it). `Network` now
       requires `Send`, so generic protocols are written as `impl<N: Network> Protocol<N>` with no extra
       bound; both `SimNetwork` and `TcpNetwork` already satisfy it. (`src/net/mod.rs`.) The crate-doc
       protocol + simulator examples are now **compiled** doctests (the simulator one runs and asserts),
@@ -181,9 +181,11 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
 - [ ] **No real-TLS integration test.** The simulator suite never touches `TcpNetwork`. Add a
       localhost two-task `#[tokio::test]` covering handshake + length-prefixed framing + flush +
       close end-to-end.
-- [ ] **Trace `channel_id` perspective bug.** `Switchboard::send`/`try_recv` record events with the
-      canonical `link.channel_id()` (min→max) instead of `ChannelId::new(recorder, peer)`, so
-      `Event::Display` renders arrows backwards for the higher-id party.
+- [x] **Trace `channel_id` perspective bug.** _Resolved._ `Switchboard::send`/`try_recv` now record
+      events with `ChannelId::new(recorder, peer)` (recorder in the `local` slot), so `Event::Display`
+      renders arrows from each party's own perspective; the canonical `link.channel_id()` survives only
+      in `ConfigDelay::delay`, where the symmetric lookup is intended. Guarded by the
+      `trace_arrows_reflect_each_party_perspective` regression test (`tests/simulator.rs`).
 - [ ] **Nested protocol calls are invisible in traces** — only the top-level protocol records
       `ProtocolBegin`/`End`. Decide whether nested `.await` calls should appear (needs a recording
       hook reachable from the network-generic `Environment`).
@@ -208,7 +210,7 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
 - [ ] **`examples/` directory** (none today). At minimum: (a) a simulator run, (b) a real two-party
       TLS deployment (the binary sketched in the crate docs), (c) a secret-sharing round-trip.
       Runnable examples are the fastest on-ramp for new users.
-- [ ] **`CHANGELOG.md`** (Keep a Changelog format) from 0.1.0 onward.
+- [x] **`CHANGELOG.md`** (Keep a Changelog format) from 0.1.0 onward.
 - [x] **`SECURITY.md`** added (status/posture + threat model & known limitations: variable-time
       sampling, non-CSPRNG `Rng` inputs, unaudited). Reporting channel is public GitHub issues for now
       (acceptable for a research tool); a private channel can be added if the posture changes.
@@ -235,13 +237,13 @@ These are not strictly required for 1.0 but shape how "complete" the first stabl
 
 Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
-| Version         | Theme                      | Contents                                                                                                                                                |
-| --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version         | Theme                                              | Contents                                                                                                                                                                                                                                                    |
+| --------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, clearly pre-1.0. |
-| **0.3.0**       | _Correct & clean_          | Remaining §7 loose ends (real-TLS test, `channel_id` bug); MSRV declaration + MSRV CI job. (§8 CI fmt/clippy/test/doc gates already landed in 0.2.0.)    |
-| **0.4.0 → 0.x** | _API stabilization_        | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.  |
-| **0.x**         | _Hardening & completeness_ | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                           |
-| **1.0.0**       | _Stabilize & release_      | Freeze the API, finalize docs/examples, lock the license + threat-model statements, `cargo publish --dry-run` clean, tag and publish.                   |
+| **0.3.0**       | _Correct & clean_                                  | Remaining §7 loose ends (real-TLS test, `channel_id` bug); MSRV declaration + MSRV CI job. (§8 CI fmt/clippy/test/doc gates already landed in 0.2.0.)                                                                                                       |
+| **0.4.0 → 0.x** | _API stabilization_                                | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.                                                                                                      |
+| **0.x**         | _Hardening & completeness_                         | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                                                                                                                               |
+| **1.0.0**       | _Stabilize & release_                              | Freeze the API, finalize docs/examples, lock the license + threat-model statements, `cargo publish --dry-run` clean, tag and publish.                                                                                                                       |
 
 ---
 

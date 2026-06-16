@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, breaking changes may occur in any `0.x` release and
 are bumped in the minor position (`0.y`).
 
-## [Unreleased]
+## [0.3.0] - 2026-06-16
 
 ### Changed
 
