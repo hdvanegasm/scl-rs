@@ -1,5 +1,5 @@
 use crate::net;
-use crate::net::simulation::switchboard::{Recv, Switchboard};
+use crate::net::simulation::switchboard::{Recv, RecvAny, Switchboard};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -43,6 +43,11 @@ impl SimNetwork {
 impl Network for SimNetwork {
     fn local_party(&self) -> PartyId {
         self.local
+    }
+
+    async fn recv_any(&mut self) -> net::Result<(Packet, PartyId)> {
+        let result = RecvAny::new(self.switchboard.clone(), self.local, self.parties.clone()).await;
+        Ok(result)
     }
 
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> net::Result<usize> {

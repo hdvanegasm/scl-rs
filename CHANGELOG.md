@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, breaking changes may occur in any `0.x` release and
 are bumped in the minor position (`0.y`).
 
-## [Unreleased]
+## [0.3.0] - 2026-06-17
 
 ### Changed
 
@@ -18,6 +18,9 @@ are bumped in the minor position (`0.y`).
   authentication only. **This changes the wire protocol: nodes running this
   version cannot complete a TLS handshake with `0.2.0` nodes.**
 - Updated dependencies following a `cargo audit` review.
+- Network configuration files are now parsed with a typed `serde` deserializer
+  instead of manual JSON walking. Unknown or misspelled keys are now rejected
+  (`deny_unknown_fields`) rather than silently ignored.
 
 ### Added
 
@@ -25,10 +28,21 @@ are bumped in the minor position (`0.y`).
   dedicated CI job.
 - `NetworkError::VerifierBuilderError` variant, returned when the client
   certificate verifier cannot be constructed.
+- `Network::recv_any`, which receives the next packet from whichever peer
+  delivers first, returning the sender's `PartyId` alongside it. This is the
+  building block for quorum-based protocols such as reliable broadcast, which
+  wait for the first `k`-of-`n` messages and must not block on the parties that
+  stay silent. It is currently implemented for the simulator; on `TcpNetwork` it
+  returns an error pending a cancellation-safe multiplexed receive path.
+- `NetworkError::Unsupported` variant, returned by a network operation that a
+  backend does not yet implement.
+- Added test for correctness of the TLS handshake.
 
 ### Fixed
 
 - Corrected the installation instructions in the documentation.
+- A `base_port` outside the `u16` range in a configuration file is now rejected
+  with an error instead of being silently truncated.
 
 ## [0.2.0] - 2026-06-16
 
@@ -84,5 +98,6 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   unchanged.
 
 [Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hdvanegasm/scl-rs/releases/tag/v0.1.0

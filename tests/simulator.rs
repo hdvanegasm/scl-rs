@@ -600,3 +600,123 @@ fn hook_fires_on_matching_event() {
     // Each party sends exactly once → two SendData events.
     assert_eq!(*count.lock().unwrap(), 2);
 }
+
+/// Protocol exercising [`Network::recv_any`]. One `collector` party waits for `quorum`
+/// messages from *whichever* peers respond first, never naming a sender in advance; the
+/// parties in `senders` each send their own id to the collector, and every other party
+/// stays silent. This is the quorum-wait at the heart of reliable broadcast: collect the
+/// first `k`-of-`n` without blocking on the parties that never send.
+struct QuorumCollect {
+    /// Party that gathers messages via `recv_any`.
+    collector: usize,
+    /// Number of messages the collector waits for.
+    quorum: usize,
+    /// Parties that send their id to the collector. Parties not listed stay silent.
+    senders: Vec<usize>,
+}
+
+#[async_trait]
+impl Protocol<SimNetwork> for QuorumCollect {
+    /// For the collector: the sorted ids it heard from. For everyone else: empty.
+    type Output = Vec<usize>;
+
+    async fn run(&self, env: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+        let me = env.network.local_party().as_usize();
+
+        if me == self.collector {
+            let mut heard = Vec::new();
+            for _ in 0..self.quorum {
+                let (packet, sender) = env.network.recv_any().await?;
+                // Each sender writes its own id as the payload, so the payload must match
+                // the `PartyId` that `recv_any` reports alongside it.
+                let payload: usize = packet.read(0).unwrap();
+                assert_eq!(
+                    payload,
+                    sender.as_usize(),
+                    "recv_any returned a mismatched (packet, sender) pair"
+                );
+                heard.push(sender.as_usize());
+            }
+            env.network.close().await?;
+            heard.sort_unstable();
+            Ok(heard)
+        } else if self.senders.contains(&me) {
+            let mut packet = Packet::empty();
+            packet.write(&me).unwrap();
+            env.network
+                .send_to(PartyId::from(self.collector), &packet)
+                .await?;
+            env.network.close().await?;
+            Ok(Vec::new())
+        } else {
+            // A silent party: it never sends, but must still terminate cleanly.
+            env.network.close().await?;
+            Ok(Vec::new())
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "QuorumCollect"
+    }
+}
+
+#[test]
+fn recv_any_collects_a_quorum_without_naming_senders() {
+    // Five parties: party 0 collects, parties 1..=3 send, party 4 stays silent.
+    let parties: Vec<PartyId> = (0..5).map(PartyId::from).collect();
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        parties.clone(),
+        |_| QuorumCollect {
+            collector: 0,
+            quorum: 3,
+            senders: vec![1, 2, 3],
+        },
+        vec![],
+    );
+
+    // The collector heard from exactly the three senders, even though it never named them
+    // and party 4 never sent a thing: `recv_any` waits on *any* link, so the silent party
+    // can neither be waited on nor cause a deadlock.
+    assert_eq!(outcome.outputs[&PartyId::from(0)], vec![1, 2, 3]);
+    for sender in [1, 2, 3] {
+        assert_eq!(outcome.outputs[&PartyId::from(sender)], Vec::<usize>::new());
+    }
+    assert_eq!(outcome.outputs[&PartyId::from(4)], Vec::<usize>::new());
+}
+
+#[test]
+fn recv_any_returns_at_quorum_and_does_not_wait_for_all() {
+    // Five parties: party 0 collects with a quorum of 3, but parties 1..=4 all send. The
+    // collector must stop after the first three and never block waiting for the fourth.
+    let parties: Vec<PartyId> = (0..5).map(PartyId::from).collect();
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        parties.clone(),
+        |_| QuorumCollect {
+            collector: 0,
+            quorum: 3,
+            senders: vec![1, 2, 3, 4],
+        },
+        vec![],
+    );
+
+    // Exactly the quorum was collected: three distinct, valid senders, no more.
+    let heard = &outcome.outputs[&PartyId::from(0)];
+    assert_eq!(heard.len(), 3, "the collector should stop at the quorum");
+    assert!(
+        heard.iter().all(|sender| (1..=4).contains(sender)),
+        "every reported sender must be one of the senders: {heard:?}"
+    );
+    let distinct: std::collections::HashSet<_> = heard.iter().collect();
+    assert_eq!(distinct.len(), 3, "the reported senders must be distinct");
+
+    // The collector recorded exactly `quorum` receptions, i.e. it never consumed the
+    // fourth message before finishing.
+    let recvs = outcome.traces[&PartyId::from(0)]
+        .events()
+        .iter()
+        .filter(|event| event.event_type() == EventType::ReceiveData)
+        .count();
+    assert_eq!(recvs, 3, "the collector should receive exactly the quorum");
+}

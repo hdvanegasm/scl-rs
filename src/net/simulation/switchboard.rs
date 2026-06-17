@@ -198,6 +198,102 @@ impl Switchboard {
     fn park(&mut self, link: Link, waker: Waker) {
         self.parked.insert(link, waker);
     }
+
+    /// Tries to receive the next packet destined for `local` from any of `senders`,
+    /// without blocking.
+    ///
+    /// Among the links that currently have a queued packet, the one with the lowest
+    /// sender id is chosen, which keeps the result deterministic and reproducible.
+    /// Returns the packet together with the sender it came from, or `None` if no link
+    /// has a packet ready.
+    pub fn try_recv_any(
+        &mut self,
+        local: PartyId,
+        senders: &[PartyId],
+    ) -> Option<(Packet, PartyId)> {
+        let sender = senders
+            .iter()
+            .copied()
+            .filter(|&sender| {
+                self.msg_queues
+                    .get(&Link {
+                        recipient: local,
+                        sender,
+                    })
+                    .is_some_and(|queue| !queue.is_empty())
+            })
+            .min_by_key(PartyId::as_usize)?;
+
+        // Remove the other peers from the parked list as the future is resolving.
+        for &peer in senders {
+            self.parked.remove(&Link {
+                recipient: local,
+                sender: peer,
+            });
+        }
+        let packet = self.try_recv(Link {
+            recipient: local,
+            sender,
+        })?;
+
+        Some((packet, sender))
+    }
+
+    /// Parks `waker` on every link delivering to `local`, so that a send from any of
+    /// `senders` wakes the task. Used by [`RecvAny`] to suspend until any peer sends.
+    pub fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
+        for &sender in senders {
+            self.parked.insert(
+                Link {
+                    sender,
+                    recipient: local,
+                },
+                waker.clone(),
+            );
+        }
+    }
+}
+
+/// Suspension primitive that suspends until any party sends a message.
+///
+/// It is similar to [`Recv`], where the difference is that instead of waiting on a link, it waits
+/// on all the links delivering messages to `local`. This future resolves imediately after a link
+/// gets a message.
+pub struct RecvAny {
+    switchboard: Arc<Mutex<Switchboard>>,
+    local: PartyId,
+    senders: Vec<PartyId>,
+}
+
+impl RecvAny {
+    /// Creates a new future resolving to a `(packet, sender)` that local receives from any party in
+    /// `senders`.
+    pub fn new(
+        switchboard: Arc<Mutex<Switchboard>>,
+        local: PartyId,
+        senders: Vec<PartyId>,
+    ) -> Self {
+        Self {
+            switchboard,
+            local,
+            senders,
+        }
+    }
+}
+
+impl Future for RecvAny {
+    type Output = (Packet, PartyId);
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut switchboard = self.switchboard.lock().expect("the lock must be free");
+        match switchboard.try_recv_any(self.local, &self.senders) {
+            Some(result) => Poll::Ready(result),
+            None => {
+                switchboard.park_any(self.local, &self.senders, cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
 }
 
 /// Suspension primitive on receive.
