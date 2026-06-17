@@ -2,7 +2,7 @@
 
 ## Status and Posture
 
-**scl-rs is a research and prototyping toolkit**. It has NOT been security-audited in any way and it is NOT intended for production use. It is pre-1.0 software. Breaking API changes may occur between `0.x` releases.
+**scl-rs is a research and prototyping toolkit**. It has NOT been security-audited in any way and it is NOT intended for production use. It stays on `0.x` indefinitely with no planned `1.0` release; breaking API changes may occur between `0.x` releases.
 
 Although this tool uses TLS to secure point-to-point channels, there's no guarantee that the channels are implemented correctly as the code has not been audited.
 

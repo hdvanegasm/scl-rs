@@ -4,8 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-While the project is pre-1.0, breaking changes may occur in any `0.x` release and
-are bumped in the minor position (`0.y`).
+scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
+`0.x` release and are bumped in the minor position (`0.y`).
+
+## [Unreleased]
+
+## [0.3.1] - 2026-06-17
+
+Documentation-only release; no functional or API changes.
+
+### Documentation
+
+- Documented that networking uses **mutual TLS (mTLS)** — in the README, crate-level docs, and the
+  network-configuration field descriptions. The `0.3.0` code already required mTLS, but the prose
+  still described one-way TLS.
+- Documented `Network::recv_any` in the crate/README introduction and the `SimNetwork` docs.
+- Recorded the project's versioning stance: scl-rs stays on `0.x` indefinitely with no planned `1.0`
+  release (README, crate docs, `SECURITY.md`), and reframed `docs/roadmap.md` accordingly.
 
 ## [0.3.0] - 2026-06-17
 
@@ -97,7 +112,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hdvanegasm/scl-rs/releases/tag/v0.1.0

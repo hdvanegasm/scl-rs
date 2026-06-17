@@ -1,15 +1,18 @@
-# scl-rs Roadmap to v1.0
+# scl-rs Development Roadmap
 
-**Date:** 2026-06-11
+**Date:** 2026-06-17
 
-**Current version:** 0.2.0 (**published to crates.io on 2026-06-16**; tagged `v0.2.0`)
+**Current version:** 0.3.0 (**published to crates.io on 2026-06-17**; tagged `v0.3.0`)
 
-**Goal:** ship a first crates.io release that external users can depend on, then reach a
-semver-stable **v1.0**.
+**Versioning stance:** scl-rs stays on **`0.x` indefinitely**. `1.0` is **not a planned milestone** —
+the "unaudited / not for production" posture is carried by the security disclaimer (not the version
+number), and the API has no downstream usage yet to justify freezing it. See §2.
 
-This document is a living plan. It captures where the library is today, the decisions that gate a
-public release, the work grouped into themed workstreams, a suggested version sequence, and an
-explicit **v1.0 Definition of Done**.
+**Goal:** evolve toward a **stable, well-baked `0.x` API** — one that settles across releases and
+breaks only rarely — while keeping the library useful for prototyping MPC protocols.
+
+This document is a living plan. It captures where the library is today, the work grouped into themed
+workstreams, a suggested version sequence, and a **Definition of a stable `0.x`** (§12).
 
 ---
 
@@ -32,47 +35,44 @@ explicit **v1.0 Definition of Done**.
 are excluded; `cargo publish --dry-run` passes; and the TLS `send` flush (§7) is fixed. A first `0.x`
 release can go out now.
 
-**What remains for v1.0** is mostly _productization_, not core features: MSRV declaration, API
-stabilization, and hardening. (The security disclaimer and `SECURITY.md` are now in place.) Those are
-the body of this roadmap.
+**What remains** is mostly _productization_, not core features: API stabilization, hardening, and
+docs/examples. (MSRV, the security disclaimer, and `SECURITY.md` are now in place.) Those are the body
+of this roadmap — work that improves the `0.x` line, not a checklist gating a `1.0`.
 
 ---
 
-## 2. What "v1.0" commits us to
+## 2. Versioning stance — perpetual `0.x` (decided)
 
-Publishing 1.0 is a **semver promise**: the public API won't break until 2.0. Everything users can
-name — traits (`Ring`, `FiniteField`, `Network`, `Protocol`), types (`Packet`, `Environment`,
-`SimulationOutcome`, every `pub enum` error), function signatures, and the trait method receivers —
-becomes a contract. The expensive-to-change items (§5: API stabilization) must therefore land
-**before** 1.0, while breaking them is still free. Anything we're unsure about should ship in a
-`0.x` first and bake.
+**Decision: scl-rs stays on `0.x` indefinitely; `1.0` is explicitly optional and not planned.**
 
-### Recommendation: stay on `0.x` deliberately (1.0 is a finish line, not a near-term move)
+SemVer still applies — `0.x` _is_ SemVer. Within a `0.y` line Cargo guarantees patch/minor
+compatibility, and a breaking change bumps the minor (`0.y → 0.(y+1)`). We follow that discipline
+because the registry's resolver relies on it; the only choice is whether our bumps tell the truth.
+What we are _not_ doing is making the `1.0` promise ("no breaks until 2.0").
 
-Publish early on `0.x`, but **do not reach for 1.0 yet**:
+Why stay on `0.x`:
 
-1. **In Cargo, `0.y` _is_ the "I reserve the right to break" signal** — and this roadmap holds a
-   concrete list of breaks we already intend (§5: `Packet` reads → `Result`, the error/`#[non_exhaustive]`
-   sweep, the `Protocol` receiver, the prelude). Don't promise "no breaks until 2.0" while holding a
-   to-do list of breaks; you'd either break the 1.0 promise immediately (erodes the trust 1.0 buys)
-   or freeze today's warts until a 2.0.
-2. **1.0 is a promise you make when you can keep it, not a milestone you award yourself.** The honest
-   precondition is "the API has been used by someone and survived." This crate is unpublished — zero
-   downstream feedback yet.
-3. **It's unaudited crypto.** A 1.0 carries an implicit "ready to depend on" that contradicts
-   "research / prototyping, not audited." `0.x` sets honest expectations for free.
-4. **The cost of waiting is low.** Cargo still gives patch/minor compatibility _within_ a `0.y` line,
-   and serious crates live on `0.x` for years.
+1. **The version number tracks API compatibility, not security trust.** "Unaudited / not for
+   production" is communicated by the README banner, crate-doc disclaimer, and `SECURITY.md` — the
+   right channel for it. Refusing to pass `1.0` to signal "not audited" overloads a number that is bad
+   at carrying that meaning (plenty of `0.x` crates ship in production; plenty of `1.0` crates are
+   toys). These are orthogonal axes; let each be carried by the right mechanism.
+2. **The honest precondition for `1.0` is "the API has been used by someone and survived."** This
+   crate has ~zero downstream users; until real usage pressure-tests the API, freezing it is premature
+   — independent of auditing. For a niche AGPL research tool this may never change, and that is fine.
+3. **The cost of staying on `0.x` is low.** Cargo gives patch/minor compatibility _within_ a `0.y`
+   line, and serious crates live on `0.x` for years. The main cost — some consumers read `0.x` as "not
+   ready" — barely applies here, since the AGPL + unaudited-research framing already says so out loud.
 
-**But don't drift into permanent `0.x`** ("0ver" is its own anti-pattern). 1.0 is a _defined_ finish
-line: flip to it when the §12 Definition of Done is met — specifically, the §5 API work is done and
-has **baked** through a couple of `0.x` releases with nothing further queued, the §3 license + security
-posture are decided, and ideally at least one real external user has hit the API without bouncing off.
+What "stable `0.x`" means in practice: do the §5 API-stabilization work, let the API **bake** across a
+few releases, then break only rarely and deliberately. This is where `#[non_exhaustive]` on public
+enums earns its keep — it turns new variants into _patch_ releases instead of forced minor bumps. A
+patch-mostly `0.x` line that breaks seldom is the intended terminal state, not a way-station to `1.0`.
 
-**One fork to decide on purpose:** for crypto, "API-stable" and "production-ready / audited" are
-_different_ claims. Either (a) treat 1.0 as purely an **API-stability** statement and lean on the
-security disclaimer for the rest (pragmatic), or (b) gate 1.0 on an actual **audit** (conservative).
-Both are defensible — pick one so "1.0" means something specific to users.
+**`1.0` remains available, never owed.** If a concrete reason ever appears — a real user asks for the
+stability guarantee, or a deliberate decision is made about what `1.0` should claim (pure
+API-stability vs an actual audit) — it can be revisited then. Until then it is off the table, and
+nothing in this roadmap is gated on it.
 
 ---
 
@@ -121,9 +121,11 @@ passes and the package is clean. Only MSRV and the docs.rs verification remain.
 - [x] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI.
 - [x] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
 
-## 5. Workstream — API stabilization (the heart of v1.0; breaking now, frozen later)
+## 5. Workstream — API stabilization (toward a stable `0.x` API)
 
-Each item below is a breaking change that is cheap today and expensive after 1.0.
+Each item below is a breaking change. On `0.x` these stay relatively cheap, but the aim is to land
+them, let the API **bake**, and then break only rarely — so do them deliberately and batch them per
+release rather than dribbling breaks out continuously.
 
 - [ ] **`Packet` consumer API is error-swallowing.** `read(idx) -> Option<T>` and `pop() -> Option<T>`
       silently return `None` on a deserialize failure or wrong index, while `write` returns `Result`.
@@ -131,11 +133,12 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
       "malformed." (`src/net/mod.rs`.)
 - [ ] **Error-type consistency sweep.** The crate exposes many independent error enums
       (`ChannelError`, `NetworkError`, `SimulationError`, `ShareError`, `protocol::Error`,
-      `poly::Error`, `matrix` errors). Review naming, `#[non_exhaustive]` on public enums (lets you
-      add variants post-1.0 without breaking), and whether `NetworkConfig::new` should return a crate
-      error instead of leaking `std::io::Result`.
+      `poly::Error`, `matrix` errors). Review naming, `#[non_exhaustive]` on public enums (lets later
+      releases add variants as non-breaking patches instead of forced minor bumps), and whether
+      `NetworkConfig::new` should return a crate error instead of leaking `std::io::Result`.
 - [ ] **`Protocol` receiver decision.** Settle `&self` vs consuming `self` (the latter lets a protocol
-      move non-`Clone` inputs into `run`). Changing the receiver is breaking — decide before 1.0.
+      move non-`Clone` inputs into `run`). Changing the receiver is breaking — settle it while the API
+      is still baking on `0.x`.
 - [x] **`Network: Send` supertrait added.** `#[async_trait]` makes `Protocol::run`'s future `Send`,
       which needs `Environment<N>: Send` → `N: Send`. Without the bound, generic `impl<N: Network>
   Protocol<N>` did not compile (the crate-doc examples were `ignore`, hiding it). `Network` now
@@ -180,7 +183,27 @@ Each item below is a breaking change that is cheap today and expensive after 1.0
       strict request→response over real TLS. `connect_as_client` also flushes after sending the id.
 - [ ] **No real-TLS integration test.** The simulator suite never touches `TcpNetwork`. Add a
       localhost two-task `#[tokio::test]` covering handshake + length-prefixed framing + flush +
-      close end-to-end.
+      close end-to-end. (0.3.0 added an in-module `tokio::io::duplex` handshake test — positive and
+      negative mTLS — but not yet a real two-task socket round-trip.)
+- [x] **`recv_any` — receive from any peer (quorum primitive).** `Network::recv_any` returns the next
+      packet from whichever peer delivers first (`(Packet, PartyId)`) — the building block for
+      quorum-based protocols (reliable broadcast: wait for the first `k`-of-`n`, never block on the
+      parties that stay silent). **Implemented for `SimNetwork`** in 0.3.0 (deterministic,
+      lowest-sender-id tie-break; `RecvAny` + `try_recv_any`/`park_any` in `switchboard.rs`), guarded
+      by regression tests in `tests/simulator.rs`.
+  - [ ] **Open thread — `TcpNetwork::recv_any` (0.4.0).** Currently returns
+        `NetworkError::Unsupported`. Blocked because `Channel::recv` is **not cancel-safe** (length
+        prefix + payload in two `read_exact`s), so a `select_all` over per-peer `recv()` futures
+        desyncs a stream whenever a losing branch is dropped mid-frame. Planned design: per-peer
+        reader tasks own each **split read half** and push complete packets into one shared `mpsc`;
+        `recv_any` pops a per-peer buffer or awaits the mpsc, and `recv_from(p)` demuxes by buffering
+        other peers' packets. Decisions: split read/write halves, special-case the loopback channel,
+        unbounded mpsc initially (revisit backpressure), propagate reader-task errors, and `abort()`
+        the tasks on `close()`.
+  - [ ] **Straggler / virtual-time regression test (sim).** Pin the property that a message from a
+        slow party delivered *after* the receiver already passed its quorum does not distort the
+        receiver's virtual time (delivery bumps `clock` in `deliver_next`, but it is inert once the
+        party is done, and post-quorum synchronous work is stamped before any further delivery).
 - [x] **Trace `channel_id` perspective bug.** _Resolved._ `Switchboard::send`/`try_recv` now record
       events with `ChannelId::new(recorder, peer)` (recorder in the `local` slot), so `Event::Display`
       renders arrows from each party's own perspective; the canonical `link.channel_id()` survives only
@@ -217,41 +240,44 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
 - [ ] **`CONTRIBUTING.md`**.
 - [ ] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
       at the top.
-- [ ] Optional rename `runtime.rs` → `simulator.rs` (cosmetic; do before 1.0 if at all — module paths
-      are public).
+- [ ] Optional rename `runtime.rs` → `simulator.rs` (cosmetic and breaking — module paths are public,
+      so batch it with other §5 breaks if done at all).
 
 ## 10. Workstream — Feature completeness (scope to taste)
 
-These are not strictly required for 1.0 but shape how "complete" the first stable release feels.
+These are not strictly required, but shape how "complete" the stable `0.x` surface feels.
 
 - [ ] **Arbitrary prime-`p` field** (open README item): a general `F_p` instead of only the
       hand-written Mersenne‑61 / secp256k1 fields.
 - [ ] **Test-coverage gap** (open README item): "write missing tests for all functionalities" —
       especially `net` (real path), `matrix`/`poly` edge cases, and serialization round-trips.
-- [ ] Any additional MPC facilities you want in the 1.0 surface (e.g. opening/reconstruction helpers,
-      a Beaver-triple/multiplication example to showcase typed composition end-to-end).
+- [ ] Any additional MPC facilities you want in the stable surface (e.g. opening/reconstruction
+      helpers, a Beaver-triple/multiplication example to showcase typed composition end-to-end).
 
 ---
 
 ## 11. Suggested release sequence
 
-Ship early and often on `0.x`; let the API bake before locking it at 1.0.
+Ship early and often on `0.x`; let the API bake and then break only rarely. There is no `1.0` row — a
+stable, patch-mostly `0.x` is the intended terminal state (§2).
 
 | Version         | Theme                                              | Contents                                                                                                                                                                                                                                                    |
 | --------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, clearly pre-1.0. |
-| **0.3.0**       | _Correct & clean_                                  | Remaining §7 loose ends (real-TLS test, `channel_id` bug); MSRV declaration + MSRV CI job. (§8 CI fmt/clippy/test/doc gates already landed in 0.2.0.)                                                                                                       |
-| **0.4.0 → 0.x** | _API stabilization_                                | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit). Each is breaking — batch and document.                                                                                                      |
+| **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, an early `0.x` release. |
+| **0.3.0**       | _Correct & clean_ ✅ **PUBLISHED 2026-06-17**      | Mutual TLS (mTLS) — wire-incompatible with 0.2.0; MSRV 1.85.1 + MSRV CI job; typed `serde` config parsing (`deny_unknown_fields`, `base_port` range check); `channel_id` perspective bug resolved + regression test; mTLS handshake tests (positive + negative); `Network::recv_any` **simulator-only** (quorum primitive). Tagged `v0.3.0`.                  |
+| **0.4.0 → 0.x** | _API stabilization_                                | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit) — each is breaking, batch and document. Plus the §7 `TcpNetwork::recv_any` open thread (cancel-safe multiplexed receive) and a real-TLS socket integration test.                                                                              |
 | **0.x**         | _Hardening & completeness_                         | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                                                                                                                               |
-| **1.0.0**       | _Stabilize & release_                              | Freeze the API, finalize docs/examples, lock the license + threat-model statements, `cargo publish --dry-run` clean, tag and publish.                                                                                                                       |
+| **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
 ---
 
-## 12. v1.0 — Definition of Done
+## 12. Definition of a stable `0.x`
 
-- [ ] License decided, recorded in `Cargo.toml`, and consistent with `LICENSE`.
+The bar for considering the `0.x` API "settled" — the steady state of §11, not a `1.0` gate:
+
+- [ ] License recorded in `Cargo.toml` and consistent with `LICENSE`. _(Done — AGPL-3.0-or-later.)_
 - [ ] Security posture + threat model documented; `SECURITY.md` present; disclaimer prominent.
-- [ ] Public API reviewed and deliberately frozen: `Packet` reads return `Result`; public error enums
+- [ ] Public API reviewed and deliberately settled: `Packet` reads return `Result`; public error enums
       `#[non_exhaustive]`; `Protocol` receiver and `Environment::clock` settled; prelude in place.
 - [ ] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
 - [ ] All §7 correctness loose ends closed (notably the TLS `flush` and a real-TLS integration test).
@@ -262,9 +288,9 @@ Ship early and often on `0.x`; let the API bake before locking it at 1.0.
 
 ---
 
-## 13. Deferred to post-1.0
+## 13. Deferred (later `0.x` or beyond)
 
-- Nested-call trace visibility (§7) if not done by 1.0.
+- Nested-call trace visibility (§7).
 - Adversarial/reordering simulation harness (delay/drop/reorder deliveries) — a payoff of the
   explicit-blocking-state design (`Poll::Pending` = "party blocked on recv").
 - Packet loss / retransmission modeling in the event loop.

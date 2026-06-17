@@ -7,9 +7,10 @@ use std::sync::Arc;
 /// The [`Network`] implementation backed by the deterministic simulator.
 ///
 /// Every party runs the *same* protocol code it would run in a real deployment; the only
-/// difference is that `send_to`/`recv_from` route through a shared [`Switchboard`] instead of a
-/// TCP socket. A `recv_from` whose message has not arrived yet suspends the party (returns
-/// `Poll::Pending`), letting the executor advance virtual time to the next deliverable event.
+/// difference is that `send_to`/`recv_from`/`recv_any` route through a shared [`Switchboard`] instead
+/// of a TCP socket. A `recv_from` (or `recv_any`) whose message has not arrived yet suspends the
+/// party (returns `Poll::Pending`), letting the executor advance virtual time to the next
+/// deliverable event.
 ///
 /// One `SimNetwork` is created per party by [`simulate`](crate::net::simulation::runtime::simulate);
 /// all parties share the same `Switchboard`. The `Mutex` is uncontended (the core is

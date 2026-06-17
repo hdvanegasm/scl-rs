@@ -15,7 +15,8 @@
 //! - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
 //! - **Linear algebra** — matrices and vectors over arbitrary rings.
 //! - **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing.
-//! - **Networking** — point-to-point channels over TCP, secured with TLS (`tokio-rustls`).
+//! - **Networking** — point-to-point channels over TCP, secured with **mutual TLS** (mTLS, via
+//!   `tokio-rustls`): each party authenticates the other's certificate, not just the server's.
 //! - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols
 //!   compose by calling one another and using each other's *typed* return values.
 //! - **A deterministic, discrete-event simulator** — run protocols on a virtual clock with configurable
@@ -29,18 +30,9 @@
 //! the simulator and the typed `async` protocol composition — so it is now better described as
 //! *SCL-inspired* than a faithful port.
 //!
-//! > **Status:** research / prototyping tool. It is **pre-1.0** (the API may change between `0.x`
-//! > releases) and **not security-audited** — not intended for production use. See
-//! > [`docs/roadmap.md`](docs/roadmap.md) for the path to a stable release.
-//!
-//! ## Installation
-//!
-//! scl-rs is not yet published on crates.io. Depend on it from git:
-//!
-//! ```toml
-//! [dependencies]
-//! scl-rs = { git = "https://github.com/hdvanegasm/scl-rs" }
-//! ```
+//! > **Status:** research / prototyping tool. It stays on **`0.x`** (the API may change between
+//! > `0.x` releases; there is **no planned `1.0`**) and is **not security-audited** — not intended
+//! > for production use. See [`docs/roadmap.md`](docs/roadmap.md) for the development plan.
 //!
 //! ## Writing a protocol
 //!
@@ -61,8 +53,10 @@
 //!
 //! Protocols communicate by sending `Packet`s — encapsulated bytes that can carry shares, field
 //! elements, polynomials, curve points, or any serializable type — through the `send_to` / `recv_from`
-//! methods of the `Network`. Because the protocol is written **generic over `N: Network`**, the very
-//! same code runs on the simulator and over a real TLS network:
+//! methods of the `Network`. A party can also take the next packet from *whichever* peer responds
+//! first with `recv_any` — the basis for quorum-based protocols such as reliable broadcast (currently
+//! available on the simulator). Because the protocol is written **generic over `N: Network`**, the
+//! very same code runs on the simulator and over a real TLS network:
 //!
 //! ```rust
 //! use async_trait::async_trait;
@@ -231,9 +225,13 @@
 //! - `peer_ips` — the IP of every party **including this node**, indexed by party id: party `i` has IP
 //!   `peer_ips[i]`, and the number of entries is the number of parties. Party `i` binds its own
 //!   listener on `peer_ips[i]`.
-//! - `server_cert` — this node's certificate, used when it acts as a TLS server.
+//! - `server_cert` — this node's certificate. Connections are **mutually authenticated** (mTLS), so
+//!   it is presented both as the node's TLS server certificate and as its client identity when it
+//!   dials a peer.
 //! - `priv_key` — the private key associated with `server_cert`.
-//! - `trusted_certs` — trusted CA certificates (useful when certificates are self-signed).
+//! - `trusted_certs` — trusted CA certificates used to verify peers in **both** roles (a server
+//!   verifying a connecting client and a client verifying the server); useful when certificates are
+//!   self-signed.
 //!
 //! #### Generating certificates
 //!
@@ -251,9 +249,11 @@
 //!
 //! ## Status and roadmap
 //!
-//! scl-rs is under active development and pre-1.0; the public API may change between `0.x` releases. The
-//! plan toward a stable, publishable v1.0 — API stabilization, security hardening, examples, and
-//! remaining features — is tracked in [`docs/roadmap.md`](docs/roadmap.md).
+//! scl-rs is under active development and stays on `0.x` indefinitely; the public API may change
+//! between `0.x` releases, and there is no planned `1.0` (the unaudited posture is carried by this
+//! disclaimer, not the version number). The plan toward a stable, well-baked `0.x` API — API
+//! stabilization, security hardening, examples, and remaining features — is tracked in
+//! [`docs/roadmap.md`](docs/roadmap.md).
 //!
 //! ## Acknowledgements
 //!
@@ -266,7 +266,7 @@
 pub mod math;
 
 /// Network facilities and methods that allow a set of parties
-/// to connect between them using TLS.
+/// to connect between them using mutual TLS (mTLS).
 pub mod net;
 
 /// Implementation of some tools commonly used in MPC protocols

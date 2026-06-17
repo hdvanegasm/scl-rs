@@ -197,11 +197,13 @@ pub struct NetworkConfig<'a> {
     sleep_time: Duration,
     /// IPs of each peer.
     pub peer_ips: Vec<Ipv4Addr>,
-    /// Root of trust certificates when acting as a client.
+    /// Trusted roots used to verify peer certificates in both roles: when this node dials a peer
+    /// (verifying the server) and when it accepts one (the mTLS client-certificate verifier).
     root_cert_store: RootCertStore,
-    /// Certificates to act like a server.
+    /// This node's certificate chain, presented both as the TLS server certificate and as the
+    /// client identity for mutual authentication.
     server_cert: Vec<CertificateDer<'a>>,
-    /// Private key to act like a server.
+    /// Private key associated with `server_cert`.
     priv_key: PrivateKeyDer<'a>,
 }
 
@@ -278,12 +280,15 @@ pub struct TcpNetwork {
 }
 
 impl TcpNetwork {
-    /// Configure the TLS channel according to the provided network configuration.
+    /// Builds the client and server TLS configurations for **mutual** authentication (mTLS) from the
+    /// network configuration: this node presents `server_cert` as both its server certificate and its
+    /// client identity, and verifies peers in both roles against the trusted root store
+    /// (`WebPkiClientVerifier` on the server side).
     ///
     /// # Error
     ///
-    /// The function returns an error if the certificate and the private key are not configured
-    /// correctly.
+    /// The function returns an error if the certificate/private key pair is invalid or the client
+    /// certificate verifier cannot be built.
     fn configure_tls(config: &NetworkConfig<'static>) -> Result<(ClientConfig, ServerConfig)> {
         // Configure the client TLS.
         let client_conf = ClientConfig::builder()
