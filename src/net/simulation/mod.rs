@@ -31,7 +31,6 @@
 //!   that polls ready party tasks and, when all are parked, asks an idle handler to make progress.
 //! - [`switchboard`](crate::net::simulation::switchboard) — the in-memory message router and
 //!   virtual-time event loop ([`Switchboard`](crate::net::simulation::switchboard::Switchboard),
-//!   [`Recv`](crate::net::simulation::switchboard::Recv),
 //!   [`Link`](crate::net::simulation::switchboard::Link), the
 //!   [`Delay`](crate::net::simulation::switchboard::Delay) timing model), plus trace recording and
 //!   the [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) extension point.
@@ -93,6 +92,7 @@ pub mod network;
 
 /// Errors for protocol simulations.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum SimulationError {
     /// The execution was interrupted and cancelled.
     #[error("a cancellation error occurred")]

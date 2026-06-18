@@ -5,6 +5,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
 /// Errors that may occur during vector manipulation.
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// Incompatible dimension during matrix operations.
     #[error("the operands do not have the same dimension: {0:?} and {1:?}")]

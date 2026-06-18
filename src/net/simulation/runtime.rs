@@ -20,8 +20,7 @@ use crate::{
         },
         PartyId,
     },
-    protocol::Environment,
-    Protocol,
+    protocol::{Environment, Protocol},
 };
 
 /// The result of a [`simulate`] run: every party's output and its event trace.

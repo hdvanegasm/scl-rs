@@ -9,6 +9,32 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Changed
+
+- Added `#[non_exhaustive]` to error enums.
+- `Packet::pop` and `Packet::read` now return a `NetworkError` instead of a silent `Option`.
+- `Protocol` now consumes `self`. This allows protocol to use non-`Clone` elements inside its
+  execution without using `Option` or `Mutex` tricks with interior mutability.
+- Tightened the public API surface. Several simulator internals are now `pub(crate)`:
+  `Switchboard::send`/`try_recv_any`/`park_any`/`new` and the `Recv`/`RecvAny` receive futures. The
+  `Switchboard` type itself, the `TriggeredHook` and `Delay` extension traits, and `Link` remain
+  public.
+- Updated package version in `Cargo.toml`.
+
+### Added
+
+- Added a prelude module re-exporting the common types and traits.
+- `NetworkError::EmptyPacket` and `NetworkError::WrongPacketIdx`, returned by `Packet::pop` and
+  `Packet::read` to distinguish an absent element from a malformed one.
+
+### Fixed
+
+- Corrected `gen_self_signed_certs.sh`: leaf certificates are now signed only by the root CA (the
+  redundant self-signed step that was immediately overwritten is gone) and carry both `serverAuth` and
+  `clientAuth` extended-key-usages so the same certificate works in both mTLS roles. The script now
+  validates its `<n_parties>` argument, fails fast on errors, drops the unused `DNS:server` subject
+  alternative name (only `IP:127.0.0.1` is used), and cleans up the intermediate CSR/serial files.
+
 ## [0.3.1] - 2026-06-17
 
 Documentation-only release; no functional or API changes.

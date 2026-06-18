@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Error that may occur during a protocol execution.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum Error {
     /// A network operation failed during the protocol.
     #[error("network error: {0:?}")]
@@ -16,7 +17,7 @@ pub trait Protocol<N: Network>: Send + Sync {
     /// The output of the protocol.
     type Output;
     /// Behavior of the protocol when run.
-    async fn run(&self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
+    async fn run(self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
     fn name(&self) -> &'static str;
 }

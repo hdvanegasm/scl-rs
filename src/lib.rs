@@ -45,7 +45,7 @@
 //!     /// The typed value this protocol produces.
 //!     type Output;
 //!     /// Behavior of the protocol when run.
-//!     async fn run(&self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
+//!     async fn run(self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
 //!     /// Identifier of the protocol.
 //!     fn name(&self) -> &'static str;
 //! }
@@ -70,7 +70,7 @@
 //!     // This protocol returns the other party's id.
 //!     type Output = usize;
 //!
-//!     async fn run(&self, env: &mut Environment<N>) -> Result<usize, Error> {
+//!     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
 //!         // Put this party's id into a packet and send it to the other party.
 //!         let mut packet = Packet::empty();
 //!         packet.write(&env.network.local_party().as_usize()).unwrap();
@@ -118,7 +118,7 @@
 //! # #[async_trait]
 //! # impl<N: Network> Protocol<N> for SendRecvProtocol {
 //! #     type Output = usize;
-//! #     async fn run(&self, env: &mut Environment<N>) -> Result<usize, Error> {
+//! #     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
 //! #         let mut packet = Packet::empty();
 //! #         packet.write(&env.network.local_party().as_usize()).unwrap();
 //! #         let other = env.network.other()?;
@@ -242,10 +242,12 @@
 //! bash gen_self_signed_certs.sh <n_parties>
 //! ```
 //!
-//! It writes `rootCA.crt` and, for each party `i`, `server_cert_p{i}.crt` and `priv_key_p{i}.pem`,
-//! into the `certs/` directory referenced by the configuration above. The generated certificates are
-//! valid for `127.0.0.1` only, so a multi-host deployment needs certificates whose subject alternative
-//! name matches each host's address.
+//! It writes `rootCA.crt` and, for each party `i`, a CA-signed `server_cert_p{i}.crt` and its
+//! `priv_key_p{i}.pem`, into the `certs/` directory referenced by the configuration above. Each leaf
+//! certificate carries both the server- and client-authentication usages, so the same file serves as
+//! a node's TLS server certificate and its client identity under mTLS. The certificates are valid for
+//! `127.0.0.1` only (their subject alternative name is that IP), so a multi-host deployment needs
+//! certificates whose subject alternative name matches each host's address.
 //!
 //! ## Status and roadmap
 //!
@@ -262,6 +264,36 @@
 //! Dalskov for his support and help, and for the [Secure Computation
 //! Library](https://github.com/anderspkd/secure-computation-library) that inspired this work.
 
+/// The crate's common imports, gathered for a single glob import.
+///
+/// Most protocol code needs the same handful of items — the [`Protocol`] trait
+/// and its [`Environment`] and [`Error`], the [`Network`] abstraction with
+/// [`Packet`] and [`PartyId`], the [`simulate`] entry point, and the core
+/// `math` traits. Instead of importing each from its own module, bring them all
+/// into scope at once:
+///
+/// ```
+/// use scl_rs::prelude::*;
+/// ```
+///
+/// [`Protocol`]: crate::protocol::Protocol
+/// [`Environment`]: crate::protocol::Environment
+/// [`Error`]: crate::protocol::Error
+/// [`Network`]: crate::net::Network
+/// [`Packet`]: crate::net::Packet
+/// [`PartyId`]: crate::net::PartyId
+/// [`simulate`]: crate::net::simulation::runtime::simulate
+pub mod prelude {
+    pub use crate::math::{
+        ec::EllipticCurve, field::FiniteField, matrix::Matrix, ring::Ring, vector::Vector,
+    };
+    pub use crate::net::{
+        simulation::runtime::simulate, simulation::runtime::SimulationOutcome, Network, Packet,
+        PartyId,
+    };
+    pub use crate::protocol::{Environment, Error, Protocol};
+}
+
 /// Mathematical tools used in MPC protocols.
 pub mod math;
 
@@ -275,6 +307,3 @@ pub mod ss;
 
 /// Traits and structs to write and run protocols and manage their results.
 pub mod protocol;
-
-/// Re-export of the [`Protocol`] trait used to define MPC protocols.
-pub use protocol::Protocol;

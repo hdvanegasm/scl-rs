@@ -16,7 +16,7 @@ pub struct SendRecvProtocol;
 impl Protocol<SimNetwork> for SendRecvProtocol {
     type Output = usize;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let mut packet = Packet::empty();
         packet
             .write(&environment.network.local_party().as_usize())
@@ -78,7 +78,7 @@ pub struct PingPongProtocol;
 impl Protocol<SimNetwork> for PingPongProtocol {
     type Output = Vec<usize>;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
         let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
@@ -133,7 +133,7 @@ pub struct ChainedFirstStage;
 impl Protocol<SimNetwork> for ChainedFirstStage {
     type Output = usize;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
@@ -164,7 +164,7 @@ pub struct ChainedSecondStage {
 impl Protocol<SimNetwork> for ChainedSecondStage {
     type Output = usize;
 
-    async fn run(&self, _environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, _environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         Ok(self.received + 100)
     }
 
@@ -227,7 +227,7 @@ pub struct BulkTransferProtocol;
 impl Protocol<SimNetwork> for BulkTransferProtocol {
     type Output = Vec<u8>;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Vec<u8>, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Vec<u8>, Error> {
         let other = environment.network.other()?;
 
         let mut packet = Packet::empty();
@@ -371,7 +371,7 @@ pub struct OneWayProtocol;
 impl Protocol<SimNetwork> for OneWayProtocol {
     type Output = Option<usize>;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<Option<usize>, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Option<usize>, Error> {
         let other = environment.network.other()?;
         if environment.network.local_party().as_usize() == 0 {
             let mut packet = Packet::empty();
@@ -424,7 +424,7 @@ pub struct BroadcastProtocol;
 impl Protocol<SimNetwork> for BroadcastProtocol {
     type Output = usize;
 
-    async fn run(&self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let me = environment.network.local_party();
 
         if me.as_usize() == 0 {
@@ -532,7 +532,7 @@ struct SendRecv;
 impl Protocol<SimNetwork> for SendRecv {
     type Output = usize;
 
-    async fn run(&self, env: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, env: &mut Environment<SimNetwork>) -> Result<usize, Error> {
         let other = env.network.other()?;
         let me = env.network.local_party();
 
@@ -620,7 +620,7 @@ impl Protocol<SimNetwork> for QuorumCollect {
     /// For the collector: the sorted ids it heard from. For everyone else: empty.
     type Output = Vec<usize>;
 
-    async fn run(&self, env: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+    async fn run(self, env: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
         let me = env.network.local_party().as_usize();
 
         if me == self.collector {

@@ -18,6 +18,7 @@ pub mod secp256k1_scalar;
 pub mod naf;
 
 /// Errors for mathematical operations between field elements.
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum FieldError {
     /// This error is raised when there is an inversion of zero.

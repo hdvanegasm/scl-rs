@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
@@ -16,9 +16,9 @@ exclude = ["certs/", "gen_self_signed_certs.sh"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "2.0.12"
-rand = "0.10.1"
-log = "0.4.29"
+thiserror = "2.0"
+rand = "0.10"
+log = "0.4"
 serde_json = "1"
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -26,7 +26,9 @@ async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros"] }
 tokio-rustls = "0.26"
-rustls-webpki = "0.103.13"
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = "0.1"
+rustls-webpki = "0.103"
 
 [dev-dependencies]
 async-trait = "0.1"

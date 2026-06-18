@@ -11,6 +11,7 @@ use std::{
 use thiserror::Error;
 
 /// Errors for all the polynomial operations.
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum Error<T> {
     /// This error is triggered when there is an interpolation and the elements in the x-axis are

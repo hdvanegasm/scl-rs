@@ -36,7 +36,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.3.1"
+scl-rs = "0.4.0"
 ```
 
 ## Writing a protocol
@@ -50,7 +50,7 @@ pub trait Protocol<N: Network>: Send + Sync {
     /// The typed value this protocol produces.
     type Output;
     /// Behavior of the protocol when run.
-    async fn run(&self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
+    async fn run(self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
     fn name(&self) -> &'static str;
 }
@@ -74,7 +74,7 @@ impl<N: Network> Protocol<N> for SendRecvProtocol {
     // This protocol returns the other party's id.
     type Output = usize;
 
-    async fn run(&self, env: &mut Environment<N>) -> Result<usize, Error> {
+    async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
         // Put this party's id into a packet and send it to the other party.
         let mut packet = Packet::empty();
         packet.write(&env.network.local_party().as_usize()).unwrap();
@@ -220,10 +220,12 @@ bundled script:
 bash gen_self_signed_certs.sh <n_parties>
 ```
 
-It writes `rootCA.crt` and, for each party `i`, `server_cert_p{i}.crt` and `priv_key_p{i}.pem`, into
-the `certs/` directory referenced by the configuration above. The generated certificates are valid for
-`127.0.0.1` only, so a multi-host deployment needs certificates whose subject alternative name matches
-each host's address.
+It writes `rootCA.crt` and, for each party `i`, a CA-signed `server_cert_p{i}.crt` and its
+`priv_key_p{i}.pem`, into the `certs/` directory referenced by the configuration above. Each leaf
+certificate carries both the server- and client-authentication usages, so the same file serves as a
+node's TLS server certificate and its client identity under mTLS. The certificates are valid for
+`127.0.0.1` only (their subject alternative name is that IP), so a multi-host deployment needs
+certificates whose subject alternative name matches each host's address.
 
 ## Status and roadmap
 

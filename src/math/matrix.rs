@@ -5,6 +5,7 @@ use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 use thiserror::Error;
 
 /// Errors that may occurs when creating and operating with matrices.
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum Error {
     /// The matrices that you are trying to operate are not compatible.

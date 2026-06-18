@@ -20,6 +20,7 @@ pub struct Secp256k1(
 );
 
 /// Errors that can occur when validating a `Secp256k1` point.
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum Secp256k1Error {
     /// The coordinates do not satisfy the curve equation `Y^2 Z = X^3 + 7 Z^3`,

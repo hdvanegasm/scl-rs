@@ -57,6 +57,7 @@ impl PartyId {
 
 /// Error type for network errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum NetworkError {
     /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
@@ -82,6 +83,15 @@ pub enum NetworkError {
     /// The requested operation is not yet supported by this network backend.
     #[error("unsupported functionality: {0:}")]
     Unsupported(&'static str),
+    /// The packet is empty.
+    #[error("the packet is empty")]
+    EmptyPacket,
+    /// The packet is accessed with wrong index.
+    #[error("accessing wrong packet index: {idx}")]
+    WrongPacketIdx {
+        /// Wrong index.
+        idx: usize,
+    },
 }
 
 /// Special type for the network error.
@@ -116,23 +126,26 @@ impl Packet {
     }
 
     /// Extract the last element added into the [`Packet`].
-    pub fn pop<T>(&mut self) -> Option<T>
+    pub fn pop<T>(&mut self) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let bytes = self.0.pop()?;
-        let object = from_bytes(&bytes).ok()?;
-        Some(object)
+        let bytes = self.0.pop().ok_or(NetworkError::EmptyPacket)?;
+        let object = from_bytes(&bytes)?;
+        Ok(object)
     }
 
     /// Read the element at the given index inside the [`Packet`].
-    pub fn read<T>(&self, obj_idx: usize) -> Option<T>
+    pub fn read<T>(&self, obj_idx: usize) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let bytes = self.0.get(obj_idx)?;
-        let object = postcard::from_bytes(bytes).ok()?;
-        Some(object)
+        let bytes = self
+            .0
+            .get(obj_idx)
+            .ok_or(NetworkError::WrongPacketIdx { idx: obj_idx })?;
+        let object = postcard::from_bytes(bytes)?;
+        Ok(object)
     }
 
     /// Write an element at the end of the packet.

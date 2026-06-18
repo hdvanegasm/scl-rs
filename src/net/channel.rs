@@ -16,6 +16,7 @@ use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
 /// Possible errors that may appear in a channel.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ChannelError {
     /// The party tried to connect to the other party but the timeout was reached.
     #[error("connection timeout")]

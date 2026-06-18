@@ -23,6 +23,7 @@ use thiserror::Error;
 
 /// Errors that occur when operating with shares.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ShareError<T: Ring> {
     /// Error when trying to reconstruct a secret but there are not enough shares.
     #[error("there are not enough shares to reconstruct the secret")]

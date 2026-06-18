@@ -49,8 +49,7 @@ impl Link {
 /// as each event is appended to a party's trace. They are the extension point for observing or
 /// steering a run (for example, injecting a reply when a party receives a particular message).
 ///
-/// `run` is handed `&mut Switchboard`, but only the switchboard's public API is reachable
-/// ([`send`](Switchboard::send), [`clock_of`](Switchboard::clock_of), …), so a hook cannot corrupt
+/// `run` is handed `&mut Switchboard`, but only the switchboard's public API is reachable, so a hook cannot corrupt
 /// the event queue or recurse back into the recording path.
 pub trait TriggeredHook: Send + Sync {
     /// The event type this hook reacts to, or `None` to react to *every* event.
@@ -83,7 +82,7 @@ pub struct Switchboard {
 impl Switchboard {
     /// Creates an empty switchboard that times links with the given `delay` model and fires the
     /// given `hooks` as events are recorded.
-    pub fn new(delay: impl Delay + 'static, hooks: Vec<Arc<dyn TriggeredHook>>) -> Self {
+    pub(crate) fn new(delay: impl Delay + 'static, hooks: Vec<Arc<dyn TriggeredHook>>) -> Self {
         Self {
             traces: HashMap::new(),
             msg_queues: HashMap::new(),
@@ -128,7 +127,7 @@ impl Switchboard {
     ///
     /// Schedules a delivery event at the sender's current virtual time plus the link delay; the
     /// event loop (`deliver_next`) delivers it and wakes the recipient later.
-    pub fn send(&mut self, from: PartyId, to: PartyId, packet: Packet) {
+    pub(crate) fn send(&mut self, from: PartyId, to: PartyId, packet: Packet) {
         let link = Link {
             sender: from,
             recipient: to,
@@ -206,7 +205,7 @@ impl Switchboard {
     /// sender id is chosen, which keeps the result deterministic and reproducible.
     /// Returns the packet together with the sender it came from, or `None` if no link
     /// has a packet ready.
-    pub fn try_recv_any(
+    pub(crate) fn try_recv_any(
         &mut self,
         local: PartyId,
         senders: &[PartyId],
@@ -241,7 +240,7 @@ impl Switchboard {
 
     /// Parks `waker` on every link delivering to `local`, so that a send from any of
     /// `senders` wakes the task. Used by [`RecvAny`] to suspend until any peer sends.
-    pub fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
+    pub(crate) fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
         for &sender in senders {
             self.parked.insert(
                 Link {
@@ -259,7 +258,7 @@ impl Switchboard {
 /// It is similar to [`Recv`], where the difference is that instead of waiting on a link, it waits
 /// on all the links delivering messages to `local`. This future resolves imediately after a link
 /// gets a message.
-pub struct RecvAny {
+pub(crate) struct RecvAny {
     switchboard: Arc<Mutex<Switchboard>>,
     local: PartyId,
     senders: Vec<PartyId>,
@@ -268,7 +267,7 @@ pub struct RecvAny {
 impl RecvAny {
     /// Creates a new future resolving to a `(packet, sender)` that local receives from any party in
     /// `senders`.
-    pub fn new(
+    pub(crate) fn new(
         switchboard: Arc<Mutex<Switchboard>>,
         local: PartyId,
         senders: Vec<PartyId>,
@@ -300,7 +299,7 @@ impl Future for RecvAny {
 ///
 /// This primitive waits in a receive instruction, and then resumes when the send is
 /// performed. Each link has the possibility to halt until there is some packet available to poll.
-pub struct Recv {
+pub(crate) struct Recv {
     switchboard: Arc<Mutex<Switchboard>>,
     link: Link,
 }
@@ -308,7 +307,11 @@ pub struct Recv {
 impl Recv {
     /// Creates a future that resolves with the next packet `recipient` receives from `sender`,
     /// suspending the task until one is available on that link.
-    pub fn new(switchboard: Arc<Mutex<Switchboard>>, sender: PartyId, recipient: PartyId) -> Self {
+    pub(crate) fn new(
+        switchboard: Arc<Mutex<Switchboard>>,
+        sender: PartyId,
+        recipient: PartyId,
+    ) -> Self {
         Self {
             switchboard,
             link: Link { recipient, sender },
