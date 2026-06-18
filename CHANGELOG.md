@@ -20,12 +20,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `Switchboard` type itself, the `TriggeredHook` and `Delay` extension traits, and `Link` remain
   public.
 - Updated package version in `Cargo.toml`.
+- Added `set_nodelay(true)` to the streams so that it turns off the Nagle's algorithm.
 
 ### Added
 
 - Added a prelude module re-exporting the common types and traits.
 - `NetworkError::EmptyPacket` and `NetworkError::WrongPacketIdx`, returned by `Packet::pop` and
   `Packet::read` to distinguish an absent element from a malformed one.
+- Added small information about benchmarking.
 
 ### Fixed
 

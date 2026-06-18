@@ -230,6 +230,15 @@ node's TLS server certificate and its client identity under mTLS. The certificat
 `127.0.0.1` only (their subject alternative name is that IP), so a multi-host deployment needs
 certificates whose subject alternative name matches each host's address.
 
+## Benchmarks
+
+We executed some naïve and quick benchmarks to compare the simulatied execution times with the
+`tc` Linux command utility. The results show that for 8-byte payload relayed for 10 sequential
+rounds over a 100 ms, 1 Mbit/s link with no loss, we have a difference of 0.14 ms (0.014 %)
+between both executions.
+
+A stronger, more detailed and statisticaly relevant benchmark will be added in the future.
+
 ## Status and roadmap
 
 scl-rs is under active development and stays on `0.x` indefinitely; the public API may change between

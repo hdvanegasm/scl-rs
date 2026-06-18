@@ -75,8 +75,10 @@ where
     async fn send(&mut self, packet: &Packet) -> Result<usize> {
         let bytes = postcard::to_allocvec(packet)?;
         let len = (bytes.len() as u64).to_le_bytes();
-        self.write_all(&len).await?;
-        self.write_all(&bytes).await?;
+        let mut framed = Vec::with_capacity(len.len() + bytes.len());
+        framed.extend_from_slice(&len);
+        framed.extend_from_slice(&bytes);
+        self.write_all(&framed).await?;
         self.flush().await?;
         Ok(packet.size())
     }
@@ -102,6 +104,10 @@ pub(crate) async fn accept_connection(
 ) -> Result<(TlsStream<TcpStream>, usize)> {
     let acceptor = TlsAcceptor::from(Arc::new(server_conf.clone()));
     let (tcp_stream, socket) = listener.accept().await?;
+
+    // Explicitly disables Nagle's algorithm.
+    tcp_stream.set_nodelay(true)?;
+
     let mut tls_stream = acceptor.accept(tcp_stream).await?;
 
     let mut id_buffer = [0u8; 8];
@@ -145,6 +151,9 @@ pub(crate) async fn connect_as_client(
         }
     })
     .await?;
+
+    // Explicitly disables Nagle's algorithm.
+    stream.set_nodelay(true)?;
 
     // TLS handshake.
     let mut tls_stream = connector.connect(server_name, stream).await?;
