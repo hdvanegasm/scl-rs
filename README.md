@@ -241,7 +241,7 @@ The simulator is meant to be a _useful_ predictor, not a perfect one: the goal i
 that "I ran this in the simulator and it took X" lets you expect a real run to
 behave similarly. The fidelity guarantee therefore holds _for protocols that suspend only through
 the abstractions the simulator models_ (the `Network` trait). Effects it doesn't represent
-(a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them
+(a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them.
 
 A stronger, more detailed and statisticaly relevant benchmark will be added in the future.
 
