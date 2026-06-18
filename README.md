@@ -1,5 +1,8 @@
 # scl-rs
 
+[![Documentation](https://docs.rs/scl-rs/badge.svg)](https://docs.rs/scl-rs/)
+[![Crates.io](https://img.shields.io/crates/v/scl-rs.svg)](https://crates.io/crates/scl-rs)
+
 **scl-rs** is a Rust toolkit for prototyping and testing secure multiparty computation (MPC)
 protocols. It bundles the mathematical building blocks, secret-sharing schemes, and networking that
 MPC protocols need — and, distinctively, a **deterministic simulator** that lets you develop and
