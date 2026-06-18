@@ -232,10 +232,16 @@ certificates whose subject alternative name matches each host's address.
 
 ## Benchmarks
 
-We executed some naïve and quick benchmarks to compare the simulatied execution times with the
+We executed some naïve and quick benchmarks to compare the simulated execution times with the
 `tc` Linux command utility. The results show that for 8-byte payload relayed for 10 sequential
-rounds over a 100 ms, 1 Mbit/s link with no loss, we have a difference of 0.14 ms (0.014 %)
-between both executions.
+rounds over a 100 ms, 1 Mbit/s link with no loss, the real execution takes +0.14 ms (0.014 %)
+more than the simulated execution.
+
+The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is
+that "I ran this in the simulator and it took X" lets you expect a real run to
+behave similarly. The fidelity guarantee therefore holds _for protocols that suspend only through
+the abstractions the simulator models_ (the `Network` trait). Effects it doesn't represent
+(a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them
 
 A stronger, more detailed and statisticaly relevant benchmark will be added in the future.
 
