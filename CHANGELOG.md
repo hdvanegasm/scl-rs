@@ -9,6 +9,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-19
+
+### Added
+
+- An `examples/simple_send_recv.rs` example: a minimal two-party send/receive protocol, written
+  generic over `N: Network` and run on the deterministic simulator. Runnable with
+  `cargo run --example simple_send_recv`.
+
 ## [0.4.0] - 2026-06-19
 
 ### Changed
@@ -169,7 +177,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...v0.3.0

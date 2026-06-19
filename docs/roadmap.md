@@ -2,7 +2,8 @@
 
 **Date:** 2026-06-17
 
-**Current version:** 0.4.0 (**published to crates.io on 2026-06-19**; tagged `v0.4.0`).
+**Current version:** 0.4.1 (**published to crates.io on 2026-06-19**; tagged `v0.4.1`) — a patch
+release adding the `examples/simple_send_recv.rs` example on top of 0.4.0.
 
 **Versioning stance:** scl-rs stays on **`0.x` indefinitely**. `1.0` is **not a planned milestone** —
 the "unaudited / not for production" posture is carried by the security disclaimer (not the version

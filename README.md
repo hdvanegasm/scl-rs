@@ -39,7 +39,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.4.0"
+scl-rs = "0.4.1"
 ```
 
 ## Writing a protocol
