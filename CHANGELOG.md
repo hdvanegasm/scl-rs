@@ -35,6 +35,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 - `NetworkError::ConnectionClosed` and `NetworkError::SendError`, returned by `TcpNetwork` when a peer
   connection is closed during a receive or a loop-back send fails.
 - Added small information about benchmarking.
+- A `publish-dry-run` CI workflow that runs `cargo publish --dry-run` on version tags (and on manual
+  dispatch), guarding releases against packaging regressions. It also fails if any private-key or
+  certificate material (`.pem`/`.key`/`.crt`/`.csr`/`.srl`) would be included in the published
+  tarball.
+- A real-TLS integration test (`tls_public_api_correctness`) that stands up two `TcpNetwork` instances
+  over loopback sockets and exercises the public API end to end: handshake, `send_to`/`recv_from`,
+  `recv_any` (asserting the sender's `PartyId`), a multi-record frame (a 64 KiB payload spanning
+  several TLS records, to cover the length-delimited reader's cross-read reassembly), and `close`.
 
 ### Removed
 

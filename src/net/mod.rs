@@ -584,6 +584,7 @@ mod tests {
     use rcgen::{CertificateParams, Issuer, KeyPair, SanType};
     use tempfile::TempDir;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::try_join;
     use tokio_rustls::{rustls::pki_types::ServerName, TlsAcceptor, TlsConnector};
 
     use super::*;
@@ -627,10 +628,10 @@ mod tests {
         }
     }
 
-    fn write_config_files(dir: &TempDir, n_parties: usize) {
+    fn write_config_files(dir: &TempDir, n_parties: usize, base_port: u16) {
         for i in 0..n_parties {
             let raw_net_config = NetworkConfigFile {
-                base_port: 5000,
+                base_port,
                 timeout: 5000,
                 sleep_time: 300,
                 peer_ips: (0..n_parties)
@@ -650,12 +651,73 @@ mod tests {
         }
     }
 
+    fn free_base_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    #[tokio::test]
+    async fn tls_public_api_correctness() {
+        const N_PARTIES: usize = 2;
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_party_certs(&temp_dir, N_PARTIES);
+        write_config_files(&temp_dir, N_PARTIES, free_base_port());
+
+        // Load the configuration from the created files.
+        let cfg_party_0 =
+            NetworkConfig::new(temp_dir.path().join("net_config_p0.json").as_path()).unwrap();
+        let cfg_party_1 =
+            NetworkConfig::new(temp_dir.path().join("net_config_p1.json").as_path()).unwrap();
+
+        let (mut net0, mut net1) = try_join!(
+            TcpNetwork::create(0, cfg_party_0),
+            TcpNetwork::create(1, cfg_party_1),
+        )
+        .unwrap();
+
+        let mut packet_send_recv = Packet::empty();
+        packet_send_recv.write(&123u8).unwrap();
+
+        net0.send_to(PartyId(1), &packet_send_recv).await.unwrap();
+        let recv_pkg = net1.recv_from(PartyId(0)).await.unwrap();
+        assert_eq!(packet_send_recv, recv_pkg);
+
+        let mut packet_send_recv_any = Packet::empty();
+        packet_send_recv_any.write(&111u8).unwrap();
+
+        net0.send_to(PartyId(1), &packet_send_recv_any)
+            .await
+            .unwrap();
+        let (recv_pkg, sender_pid) = net1.recv_any().await.unwrap();
+        assert_eq!(sender_pid, PartyId(0));
+        assert_eq!(recv_pkg, packet_send_recv_any);
+
+        let mut big_packet = Packet::empty();
+        let blob: Vec<u8> = (0..64 * 1024).map(|i| i as u8).collect();
+        big_packet.write(&blob).unwrap();
+        big_packet.write(&u64::MAX).unwrap();
+        big_packet.write(&"a string element".to_string()).unwrap();
+        big_packet
+            .write(&(0..1000u32).collect::<Vec<u32>>())
+            .unwrap();
+
+        net0.send_to(PartyId(1), &big_packet).await.unwrap();
+        let received = net1.recv_from(PartyId(0)).await.unwrap();
+        assert_eq!(big_packet, received);
+
+        net0.close().await.unwrap();
+        net1.close().await.unwrap();
+    }
+
     #[tokio::test]
     async fn tls_handshake_correctness() {
         const N_PARTIES: usize = 2;
         let temp_dir = tempfile::tempdir().unwrap();
         write_party_certs(&temp_dir, N_PARTIES);
-        write_config_files(&temp_dir, N_PARTIES);
+        write_config_files(&temp_dir, N_PARTIES, free_base_port());
 
         // Load the configuration from the created files.
         let cfg_party_0 =
@@ -694,7 +756,7 @@ mod tests {
         const N_PARTIES: usize = 2;
         let temp_dir = tempfile::tempdir().unwrap();
         write_party_certs(&temp_dir, N_PARTIES);
-        write_config_files(&temp_dir, N_PARTIES);
+        write_config_files(&temp_dir, N_PARTIES, free_base_port());
 
         // Load the configuration from the created files.
         let cfg_party_1 =

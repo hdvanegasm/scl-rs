@@ -1,0 +1,35 @@
+name: Publish dry-run
+
+# Verifies the crate packages and publishes cleanly without actually releasing.
+# Runs on version tags (the point at which a real `cargo publish` would happen)
+# and on demand via the Actions tab.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish-dry-run:
+    name: Publish dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Safety net: the published tarball must never contain private keys or
+      # certificates. `exclude` in Cargo.toml keeps `certs/` and the generator
+      # script out; this fails loudly if that ever regresses.
+      - name: Verify no key or certificate material is packaged
+        run: |
+          files="$(cargo package --list)"
+          if echo "$files" | grep -E '\.(pem|key|crt|csr|srl)$'; then
+            echo "::error::private key or certificate material would be packaged" >&2
+            exit 1
+          fi
+
+      - name: cargo publish --dry-run
+        run: cargo publish --dry-run
