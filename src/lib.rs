@@ -54,9 +54,10 @@
 //! Protocols communicate by sending `Packet`s — encapsulated bytes that can carry shares, field
 //! elements, polynomials, curve points, or any serializable type — through the `send_to` / `recv_from`
 //! methods of the `Network`. A party can also take the next packet from *whichever* peer responds
-//! first with `recv_any` — the basis for quorum-based protocols such as reliable broadcast (currently
-//! available on the simulator). Because the protocol is written **generic over `N: Network`**, the
-//! very same code runs on the simulator and over a real TLS network:
+//! first with `recv_any` — the basis for quorum-based protocols such as reliable broadcast, where a
+//! party acts on the first quorum of responses and must not block on the peers that stay silent.
+//! `recv_any` is available on both the simulator and a real TLS network. Because the protocol is
+//! written **generic over `N: Network`**, the very same code runs on either without changes:
 //!
 //! ```rust
 //! use async_trait::async_trait;
@@ -73,7 +74,7 @@
 //!     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
 //!         // Put this party's id into a packet and send it to the other party.
 //!         let mut packet = Packet::empty();
-//!         packet.write(&env.network.local_party().as_usize()).unwrap();
+//!         packet.write(&env.network.local_party().as_usize())?;
 //!
 //!         let other = env.network.other()?;
 //!         env.network.send_to(other, &packet).await?;
@@ -82,7 +83,7 @@
 //!         let received = env.network.recv_from(other).await?;
 //!         env.network.close().await?;
 //!
-//!         let their_id: usize = received.read(0).unwrap();
+//!         let their_id: usize = received.read(0)?;
 //!         Ok(their_id)
 //!     }
 //!
@@ -120,12 +121,12 @@
 //! #     type Output = usize;
 //! #     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
 //! #         let mut packet = Packet::empty();
-//! #         packet.write(&env.network.local_party().as_usize()).unwrap();
+//! #         packet.write(&env.network.local_party().as_usize())?;
 //! #         let other = env.network.other()?;
 //! #         env.network.send_to(other, &packet).await?;
 //! #         let received = env.network.recv_from(other).await?;
 //! #         env.network.close().await?;
-//! #         Ok(received.read(0).unwrap())
+//! #         Ok(received.read(0)?)
 //! #     }
 //! #     fn name(&self) -> &'static str { "SendRecvProtocol" }
 //! # }

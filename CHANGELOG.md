@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-19
+
 ### Changed
 
 - Added `#[non_exhaustive]` to error enums.
@@ -26,6 +28,10 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `StreamMap`), so dropping a `recv_any` future no longer discards a partially-read frame. Internally
   `TcpNetwork` now keeps the per-peer write and read halves keyed by `PartyId` (split out of each TLS
   stream) instead of boxed `Channel`s, and the loop-back path uses an in-process `mpsc` channel.
+- `NetworkConfig::new` now returns `Result<Self, NetworkError>` instead of `std::io::Result<Self>`,
+  so configuration loading reports errors through the crate error type like the rest of the network
+  API. Malformed JSON and unloadable PEM files surface as distinct variants rather than being
+  collapsed into an opaque `io::ErrorKind::InvalidInput`.
 
 ### Added
 
@@ -34,6 +40,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `Packet::read` to distinguish an absent element from a malformed one.
 - `NetworkError::ConnectionClosed` and `NetworkError::SendError`, returned by `TcpNetwork` when a peer
   connection is closed during a receive or a loop-back send fails.
+- `NetworkError::ConfigParse` and `NetworkError::InvalidPemFile`, returned by `NetworkConfig::new` for
+  malformed configuration JSON and unloadable certificate/private-key PEM files, respectively.
 - Added small information about benchmarking.
 - A `publish-dry-run` CI workflow that runs `cargo publish --dry-run` on version tags (and on manual
   dispatch), guarding releases against packaging regressions. It also fails if any private-key or
@@ -161,7 +169,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.1.0...v0.2.0

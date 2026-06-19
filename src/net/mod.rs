@@ -23,10 +23,7 @@ use std::{
     path::Path,
     time::Duration,
 };
-use std::{
-    fs,
-    io::{self, ErrorKind},
-};
+use std::{fs, io};
 use thiserror::Error;
 use tokio::io::{AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -95,6 +92,12 @@ pub enum NetworkError {
     /// The certificate verifier builder fails.
     #[error("building for the verifier of certificates failed: {0:?}")]
     VerifierBuilderError(#[from] VerifierBuilderError),
+    /// The network configuration file could not be parsed.
+    #[error("error parsing the network configuration file: {0:?}")]
+    ConfigParse(#[from] serde_json::Error),
+    /// A certificate or private-key PEM file referenced by the configuration could not be loaded.
+    #[error("error loading PEM material from the configuration: {0:?}")]
+    InvalidPemFile(#[from] tokio_rustls::rustls::pki_types::pem::Error),
     /// The packet is empty.
     #[error("the packet is empty")]
     EmptyPacket,
@@ -237,24 +240,25 @@ pub struct NetworkConfig<'a> {
 
 impl NetworkConfig<'_> {
     /// Creates a configuration for the network from a configuration file.
-    pub fn new(path_file: &Path) -> io::Result<Self> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NetworkError::IoError`] if the file cannot be read, [`NetworkError::ConfigParse`] if
+    /// its JSON is malformed or has unknown fields, and [`NetworkError::InvalidPemFile`] if any
+    /// referenced certificate or private-key PEM file cannot be loaded.
+    pub fn new(path_file: &Path) -> Result<Self> {
         let raw_file: NetworkConfigFile = serde_json::from_str(&fs::read_to_string(path_file)?)?;
 
-        let priv_key = PrivateKeyDer::from_pem_file(raw_file.priv_key)
-            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, err))?;
+        let priv_key = PrivateKeyDer::from_pem_file(raw_file.priv_key)?;
 
-        let server_cert = CertificateDer::pem_file_iter(raw_file.server_cert)
-            .map_err(|err| io::Error::new(ErrorKind::InvalidInput, err))?
+        let server_cert = CertificateDer::pem_file_iter(raw_file.server_cert)?
             .map(|cert| cert.unwrap())
             .collect();
 
         let mut trusted_certs = Vec::new();
         for trusted_cert in &raw_file.trusted_certs {
-            trusted_certs.extend(
-                CertificateDer::pem_file_iter(trusted_cert)
-                    .map_err(|err| io::Error::new(ErrorKind::InvalidInput, err))?
-                    .map(|cert| cert.unwrap()),
-            )
+            trusted_certs
+                .extend(CertificateDer::pem_file_iter(trusted_cert)?.map(|cert| cert.unwrap()))
         }
 
         let mut root_cert_store = RootCertStore::empty();

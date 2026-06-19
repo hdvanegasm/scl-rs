@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-17
 
-**Current version:** 0.3.0 (**published to crates.io on 2026-06-17**; tagged `v0.3.0`)
+**Current version:** 0.4.0 (**published to crates.io on 2026-06-19**; tagged `v0.4.0`).
 
 **Versioning stance:** scl-rs stays on **`0.x` indefinitely**. `1.0` is **not a planned milestone** —
 the "unaudited / not for production" posture is carried by the security disclaimer (not the version
@@ -127,18 +127,16 @@ Each item below is a breaking change. On `0.x` these stay relatively cheap, but 
 them, let the API **bake**, and then break only rarely — so do them deliberately and batch them per
 release rather than dribbling breaks out continuously.
 
-- [ ] **`Packet` consumer API is error-swallowing.** `read(idx) -> Option<T>` and `pop() -> Option<T>`
-      silently return `None` on a deserialize failure or wrong index, while `write` returns `Result`.
-      Move reads to `Result<T, _>` with a real error so consumers can distinguish "absent" from
-      "malformed." (`src/net/mod.rs`.)
-- [ ] **Error-type consistency sweep.** The crate exposes many independent error enums
-      (`ChannelError`, `NetworkError`, `SimulationError`, `ShareError`, `protocol::Error`,
-      `poly::Error`, `matrix` errors). Review naming, `#[non_exhaustive]` on public enums (lets later
-      releases add variants as non-breaking patches instead of forced minor bumps), and whether
-      `NetworkConfig::new` should return a crate error instead of leaking `std::io::Result`.
-- [ ] **`Protocol` receiver decision.** Settle `&self` vs consuming `self` (the latter lets a protocol
-      move non-`Clone` inputs into `run`). Changing the receiver is breaking — settle it while the API
-      is still baking on `0.x`.
+- [x] **`Packet` consumer API is error-swallowing — fixed in 0.4.0.** `read(idx)` and `pop()` now
+      return `Result<T, NetworkError>` (`EmptyPacket`/`WrongPacketIdx`), so consumers can distinguish
+      "absent" from "malformed." (`src/net/mod.rs`.)
+- [x] **Error-type consistency sweep — done in 0.4.0.** `#[non_exhaustive]` added to the public error
+      enums (new variants become patch-level changes), and `NetworkConfig::new` now returns
+      `Result<Self, NetworkError>` instead of leaking `std::io::Result` — malformed JSON and unloadable
+      PEM files surface as `NetworkError::ConfigParse`/`InvalidPemFile` rather than an opaque
+      `io::ErrorKind::InvalidInput`.
+- [x] **`Protocol` receiver decision — settled in 0.4.0.** `Protocol::run` now consumes `self`, letting
+      a protocol move non-`Clone` inputs into `run` without `Option`/`Mutex` interior-mutability tricks.
 - [x] **`Network: Send` supertrait added.** `#[async_trait]` makes `Protocol::run`'s future `Send`,
       which needs `Environment<N>: Send` → `N: Send`. Without the bound, generic `impl<N: Network>
   Protocol<N>` did not compile (the crate-doc examples were `ignore`, hiding it). `Network` now
@@ -158,11 +156,12 @@ release rather than dribbling breaks out continuously.
       concrete type `P` (monomorphization), but the factory keeps the per-party construction seam —
       symmetric protocols are `|_| Proto`, and private inputs are `|pid| Proto { input: inputs[&pid] }`
       — without `P: Clone` or per-party boilerplate. (`src/net/simulation/runtime.rs`.)
-- [ ] **Re-exports / prelude.** Only `Protocol` is re-exported at the crate root. Add a small
-      `prelude` (or curated root re-exports) for the common path (`Network`, `Packet`, `PartyId`,
-      `Environment`, `simulate`, the field/ring traits) so users aren't deep-pathing.
-- [ ] **Naming/visibility audit.** Walk every `pub` item; demote internals to `pub(crate)`; fix
-      inconsistencies (e.g. the `ss::ec` module's outer doc uses `//` not `///`).
+- [x] **Re-exports / prelude — added in 0.4.0.** A `prelude` module now re-exports the common path so
+      users aren't deep-pathing.
+- [x] **Naming/visibility audit — done in 0.4.0.** Simulator internals demoted to `pub(crate)`
+      (`Switchboard::send`/`try_recv_any`/`park_any`/`new`, the `Recv`/`RecvAny` futures); the vestigial
+      `Channel` trait and `LoopBackChannel` removed. (The `ss::ec` doc nit was already moot — `math/ec`
+      uses `//!` correctly.)
 
 ## 6. Workstream — Crypto & security hardening
 
@@ -181,25 +180,25 @@ release rather than dribbling breaks out continuously.
 - [x] **`channel.rs::send` flushes after its writes.** Now does `write_all(len)` → `write_all(bytes)`
       → `flush().await?` (channel.rs:77-79), fixing the `tokio-rustls` ciphertext-buffering stall on a
       strict request→response over real TLS. `connect_as_client` also flushes after sending the id.
-- [ ] **No real-TLS integration test.** The simulator suite never touches `TcpNetwork`. Add a
-      localhost two-task `#[tokio::test]` covering handshake + length-prefixed framing + flush +
-      close end-to-end. (0.3.0 added an in-module `tokio::io::duplex` handshake test — positive and
-      negative mTLS — but not yet a real two-task socket round-trip.)
+- [x] **Real-TLS integration test — added in 0.4.0.** `tls_public_api_correctness` stands up two
+      `TcpNetwork` instances over loopback sockets (on a dynamically discovered free port) and exercises
+      the public API end to end: handshake, `send_to`/`recv_from`, `recv_any` (asserting the sender's
+      `PartyId`), a multi-record 64 KiB frame (covering the length-delimited reader's cross-read
+      reassembly), and `close`.
 - [x] **`recv_any` — receive from any peer (quorum primitive).** `Network::recv_any` returns the next
       packet from whichever peer delivers first (`(Packet, PartyId)`) — the building block for
       quorum-based protocols (reliable broadcast: wait for the first `k`-of-`n`, never block on the
       parties that stay silent). **Implemented for `SimNetwork`** in 0.3.0 (deterministic,
       lowest-sender-id tie-break; `RecvAny` + `try_recv_any`/`park_any` in `switchboard.rs`), guarded
       by regression tests in `tests/simulator.rs`.
-  - [ ] **Open thread — `TcpNetwork::recv_any` (0.4.0).** Currently returns
-        `NetworkError::Unsupported`. Blocked because `Channel::recv` is **not cancel-safe** (length
-        prefix + payload in two `read_exact`s), so a `select_all` over per-peer `recv()` futures
-        desyncs a stream whenever a losing branch is dropped mid-frame. Planned design: per-peer
-        reader tasks own each **split read half** and push complete packets into one shared `mpsc`;
-        `recv_any` pops a per-peer buffer or awaits the mpsc, and `recv_from(p)` demuxes by buffering
-        other peers' packets. Decisions: split read/write halves, special-case the loopback channel,
-        unbounded mpsc initially (revisit backpressure), propagate reader-task errors, and `abort()`
-        the tasks on `close()`.
+  - [x] **`TcpNetwork::recv_any` — implemented in 0.4.0.** It previously returned
+        `NetworkError::Unsupported`. The cancel-safety problem (the old `Channel::recv` read a length
+        prefix + payload in two `read_exact`s) is solved by wrapping each peer's **split read half** in
+        a `FramedRead<_, LengthDelimitedCodec>` and polling all of them through a `StreamMap`: a frame
+        stays buffered across polls, so a dropped `recv_any` branch no longer desyncs the stream. The
+        loop-back peer is an in-process `mpsc` channel; `recv_from(p)` polls a single entry. (The
+        task-per-peer + shared-mpsc design originally sketched here was unnecessary — `StreamMap`
+        provides the multiplexing directly.)
   - [ ] **Straggler / virtual-time regression test (sim).** Pin the property that a message from a
         slow party delivered *after* the receiver already passed its quorum does not distort the
         receiver's virtual time (delivery bumps `clock` in `deliver_next`, but it is inert once the
@@ -225,7 +224,9 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
 - [x] `cargo clippy --all-targets -- -D warnings` (green; pre-existing style lints cleared).
 - [x] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
 - [x] `cargo test` on stable. _(MSRV matrix still pending — needs `rust-version` first; see §4/0.3.0.)_
-- [ ] `cargo publish --dry-run` on tags. _(Local dry-run passes; not yet wired as a tag-triggered job.)_
+- [x] `cargo publish --dry-run` on tags — added in 0.4.0 (`.github/workflows/publish-dry-run.yml`,
+      triggered on `v*` tags and manual dispatch). It also fails the job if any private-key/certificate
+      material would be packaged.
 - [ ] Optional: coverage reporting; `cargo-audit`/`deny` (see §6).
 
 ## 9. Workstream — Docs, examples & ecosystem
@@ -265,7 +266,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | --------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, an early `0.x` release. |
 | **0.3.0**       | _Correct & clean_ ✅ **PUBLISHED 2026-06-17**      | Mutual TLS (mTLS) — wire-incompatible with 0.2.0; MSRV 1.85.1 + MSRV CI job; typed `serde` config parsing (`deny_unknown_fields`, `base_port` range check); `channel_id` perspective bug resolved + regression test; mTLS handshake tests (positive + negative); `Network::recv_any` **simulator-only** (quorum primitive). Tagged `v0.3.0`.                  |
-| **0.4.0 → 0.x** | _API stabilization_                                | §5 in full (Packet `Result` API, error sweep, `Protocol` receiver, `Environment` clock, prelude, naming audit) — each is breaking, batch and document. Plus the §7 `TcpNetwork::recv_any` open thread (cancel-safe multiplexed receive) and a real-TLS socket integration test.                                                                              |
+| **0.4.0**       | _API stabilization_ ✅ **PUBLISHED 2026-06-19**    | §5 in full (Packet `Result` API, error sweep incl. `NetworkConfig::new` → crate error, `Protocol` consumes `self`, `Environment` clock, prelude, naming/visibility audit). Plus the §7 `TcpNetwork::recv_any` implementation (cancel-safe `FramedRead` + `StreamMap` multiplexing) and the `tls_public_api_correctness` real-TLS socket integration test, and the §8 `publish-dry-run` tag workflow. Tagged `v0.4.0`. |
 | **0.x**         | _Hardening & completeness_                         | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                                                                                                                               |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
@@ -277,10 +278,12 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
 
 - [ ] License recorded in `Cargo.toml` and consistent with `LICENSE`. _(Done — AGPL-3.0-or-later.)_
 - [ ] Security posture + threat model documented; `SECURITY.md` present; disclaimer prominent.
-- [ ] Public API reviewed and deliberately settled: `Packet` reads return `Result`; public error enums
-      `#[non_exhaustive]`; `Protocol` receiver and `Environment::clock` settled; prelude in place.
+- [x] Public API reviewed and deliberately settled: `Packet` reads return `Result`; public error enums
+      `#[non_exhaustive]`; `Protocol` receiver and `Environment::clock` settled; prelude in place. _(Done
+      across 0.2.0–0.4.0.)_
 - [ ] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
-- [ ] All §7 correctness loose ends closed (notably the TLS `flush` and a real-TLS integration test).
+- [ ] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0) and the real-TLS integration test
+      (0.4.0) are done; nested-call trace visibility and the D10 link unification remain.)_
 - [ ] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests across MSRV+stable,
       `publish --dry-run`.
 - [ ] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
