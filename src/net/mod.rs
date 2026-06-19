@@ -1,4 +1,5 @@
-/// Implements a channel using for point-to-point communication between two nodes.
+/// TLS connection helpers for point-to-point communication between two nodes, and the channel error
+/// type shared with the simulated network.
 pub mod channel;
 
 /// Implementation of a simulated network.
@@ -8,12 +9,13 @@ pub mod channel;
 /// report a time close to a real execution.
 pub mod simulation;
 
-use crate::net::channel::{Channel, ChannelError};
+use crate::net::channel::ChannelError;
 use async_trait::async_trait;
-use channel::LoopBackChannel;
 use postcard::from_bytes;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::{
     cmp::Ordering,
@@ -26,11 +28,18 @@ use std::{
     io::{self, ErrorKind},
 };
 use thiserror::Error;
-use tokio::net::TcpListener;
+use tokio::io::{AsyncWriteExt, WriteHalf};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_rustls::rustls::pki_types::pem::PemObject;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::server::{VerifierBuilderError, WebPkiClientVerifier};
 use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
+use tokio_rustls::TlsStream;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::{Stream, StreamExt, StreamMap};
+use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 /// Represents a party ID in the protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Eq, Default)]
@@ -59,6 +68,12 @@ impl PartyId {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum NetworkError {
+    /// Connection closed with a remote party.
+    ///
+    /// If the party is known the inner value will be `Some(id)`, otherwise,
+    /// the inner value would be `None`.
+    #[error("the connection was closed with the remote peer {0:?}")]
+    ConnectionClosed(Option<PartyId>),
     /// Encapsulates a TLS error.
     #[error("TLS error: {0:?}")]
     TlsError(#[from] tokio_rustls::rustls::Error),
@@ -80,9 +95,6 @@ pub enum NetworkError {
     /// The certificate verifier builder fails.
     #[error("building for the verifier of certificates failed: {0:?}")]
     VerifierBuilderError(#[from] VerifierBuilderError),
-    /// The requested operation is not yet supported by this network backend.
-    #[error("unsupported functionality: {0:}")]
-    Unsupported(&'static str),
     /// The packet is empty.
     #[error("the packet is empty")]
     EmptyPacket,
@@ -92,6 +104,9 @@ pub enum NetworkError {
         /// Wrong index.
         idx: usize,
     },
+    /// Encapsulates sending errors to a `tokio` channel.
+    #[error("error sending to the tokio channel")]
+    SendError(#[from] SendError<Packet>),
 }
 
 /// Special type for the network error.
@@ -283,13 +298,73 @@ pub trait Network: Send {
     fn other(&self) -> Result<PartyId>;
 }
 
-/// Network that contains all the channels connected to the party. Each channel is
-/// a connection to other parties.
+/// Read side of a peer connection: a stream that yields one decoded [`Packet`] per delimited frame.
+///
+/// For a socket peer this wraps a [`FramedRead`] over the TLS stream's read half, so a partially
+/// read frame stays buffered across polls and a dropped receive future is cancel-safe. For the
+/// loop-back peer it wraps the receiving end of an in-process `mpsc` channel. Both are boxed behind
+/// the same type so the receive paths can treat every peer uniformly.
+type PacketStream = Pin<Box<dyn Stream<Item = Result<Packet>> + Send>>;
+
+/// Write side of a peer connection.
+///
+/// Mirrors [`PacketStream`]: either the write half of a peer's TLS stream or the sending end of the
+/// loop-back `mpsc` channel.
+enum PeerWriter {
+    /// Sending end of the in-process loop-back channel (messages from this node to itself).
+    LoopBack(UnboundedSender<Packet>),
+    /// Write half of a peer's TLS stream.
+    Socket(WriteHalf<TlsStream<TcpStream>>),
+}
+
+impl PeerWriter {
+    /// Sends a [`Packet`] to the peer, returning the number of payload bytes sent.
+    ///
+    /// On a socket this writes the postcard-encoded packet with an 8-byte little-endian length
+    /// prefix (matching the `LengthDelimitedCodec` on the read side) and flushes it. On the
+    /// loop-back channel it hands the packet to the receiver directly.
+    async fn send(&mut self, packet: Packet) -> Result<usize> {
+        match self {
+            PeerWriter::LoopBack(sender) => {
+                let size_pkg = packet.size();
+                sender.send(packet)?;
+                Ok(size_pkg)
+            }
+            PeerWriter::Socket(stream) => {
+                let bytes = postcard::to_allocvec(&packet)?;
+                let len_message = bytes.len().to_le_bytes();
+                stream.write_all(&len_message).await?;
+                stream.write_all(&bytes).await?;
+                stream.flush().await?;
+                Ok(packet.size())
+            }
+        }
+    }
+
+    /// Closes the peer connection. Shuts down the TLS stream's write half for a socket; the
+    /// loop-back channel needs no explicit shutdown, so this is a no-op there.
+    async fn close(&mut self) -> Result<()> {
+        if let PeerWriter::Socket(socket_writer) = self {
+            socket_writer.shutdown().await?;
+        }
+        Ok(())
+    }
+}
+
+/// A real-network backend connecting this node to every party over mutually authenticated TLS.
+///
+/// Each peer connection is split into a `PeerWriter` and a `PacketStream`, both keyed by the peer's
+/// [`PartyId`]. The party's connection to itself is an in-process loop-back channel rather than a
+/// socket. Receiving from a single peer polls that peer's stream; [`Network::recv_any`] polls all of
+/// them at once through the underlying `StreamMap`.
 pub struct TcpNetwork {
-    /// ID of the local party.
+    /// ID of the party running this node.
     local_party_id: PartyId,
-    /// Channels for each peer.
-    peer_channels: Vec<Box<dyn Channel + Send>>,
+    /// Write side of every peer connection, keyed by peer ID.
+    writers: HashMap<PartyId, PeerWriter>,
+    /// Read side of every peer connection, keyed by peer ID. Polling the whole map yields the next
+    /// packet from whichever peer delivers first; polling a single entry receives from that peer.
+    receivers: StreamMap<PartyId, PacketStream>,
 }
 
 impl TcpNetwork {
@@ -319,6 +394,32 @@ impl TcpNetwork {
         Ok((client_conf, server_conf))
     }
 
+    /// Splits a peer's TLS stream into its write and read halves, wrapping the read half in a
+    /// length-delimited, postcard-decoding [`PacketStream`]. The codec uses an 8-byte little-endian
+    /// length prefix to match what [`PeerWriter::send`] writes on the socket.
+    fn split_socket(stream: TlsStream<TcpStream>) -> (PeerWriter, PacketStream) {
+        let (read_half, write_half) = tokio::io::split(stream);
+        let codec = LengthDelimitedCodec::builder()
+            .little_endian()
+            .length_field_length(8)
+            .new_codec();
+        let reader: PacketStream = Box::pin(FramedRead::new(read_half, codec).map(|frame| {
+            let bytes = frame?;
+            let inner_bytes: Vec<Vec<u8>> = postcard::from_bytes(&bytes)?;
+            Ok(Packet::new(inner_bytes))
+        }));
+        (PeerWriter::Socket(write_half), reader)
+    }
+
+    /// Builds the loop-back peer: an in-process `mpsc` channel whose sender becomes the
+    /// [`PeerWriter`] and whose receiver becomes the [`PacketStream`]. Lets a node send packets to
+    /// itself through the same interface it uses for remote peers.
+    fn create_loopback() -> (PeerWriter, PacketStream) {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let reader: PacketStream = Box::pin(UnboundedReceiverStream::new(receiver).map(Ok));
+        (PeerWriter::LoopBack(sender), reader)
+    }
+
     /// Creates a new network using the ID of the current party and the number of parties connected
     /// to the network.
     ///
@@ -330,6 +431,8 @@ impl TcpNetwork {
     /// - When the TLS configuration is not done correctly.
     /// - When the node is trying to connect as a server but is unable to accept the provided
     ///   client.
+    /// - With [`NetworkError::PartyNotFound`] when, after every connection is established, some peer
+    ///   ID is missing (for example because two accepts reported the same `remote_id`).
     pub async fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
         log::info!("creating network");
         let n_parties = config.peer_ips.len();
@@ -344,8 +447,8 @@ impl TcpNetwork {
         // Channels are kept indexed by peer ID. Client connections and the loop-back channel land
         // at a known index, but a server accept resolves the peer only after the handshake, so each
         // slot is filled by the `remote_id` the accept reports rather than by loop order.
-        let mut peers: Vec<Option<Box<dyn Channel + Send>>> =
-            (0..n_parties).map(|_| None).collect();
+        let mut writers = HashMap::new();
+        let mut readers = StreamMap::new();
 
         for i in 0..n_parties {
             match i.cmp(&id) {
@@ -362,65 +465,59 @@ impl TcpNetwork {
                         &client_conf,
                     )
                     .await?;
-                    peers[i] = Some(Box::new(stream));
+                    let (writer, reader) = Self::split_socket(stream);
+                    readers.insert(PartyId::from(i), reader);
+                    writers.insert(PartyId::from(i), writer);
                 }
                 Ordering::Greater => {
                     log::info!("acting as a server, waiting for a peer to connect");
                     let (stream, remote_id) =
                         channel::accept_connection(&server_listener, &server_conf).await?;
                     log::info!("accepted connection from peer ID {remote_id}");
-                    peers[remote_id] = Some(Box::new(stream));
+                    let (writer, reader) = Self::split_socket(stream);
+                    readers.insert(PartyId::from(remote_id), reader);
+                    writers.insert(PartyId::from(remote_id), writer);
                 }
                 Ordering::Equal => {
                     log::info!("adding the loop-back channel");
-                    peers[id] = Some(Box::new(LoopBackChannel::default()));
+                    let (writer, reader) = Self::create_loopback();
+                    readers.insert(PartyId::from(id), reader);
+                    writers.insert(PartyId::from(id), writer);
                 }
             }
         }
 
-        // Every slot must have been filled: peers with a lower ID connected to us, peers with a
-        // higher ID we connected to, and our own slot is the loop-back channel.
-        let peer_channels = peers
-            .into_iter()
-            .enumerate()
-            .map(|(i, channel)| channel.ok_or(NetworkError::PartyNotFound(PartyId(i))))
-            .collect::<Result<Vec<_>>>()?;
+        // Check that all parties are present
+        for i in 0..n_parties {
+            if !writers.contains_key(&PartyId(i)) {
+                return Err(NetworkError::PartyNotFound(PartyId(i)));
+            }
+        }
 
         Ok(Self {
+            writers,
+            receivers: readers,
             local_party_id: PartyId(id),
-            peer_channels,
         })
     }
 
-    /// Send a packet to every party in the network.
+    /// Sends a packet to every party in the network, including this node's own loop-back channel.
+    /// Returns the number of payload bytes written for the last peer.
     pub async fn send(&mut self, packet: &Packet) -> Result<usize> {
         let mut bytes_sent = 0;
-        for i in 0..self.peer_channels.len() {
-            bytes_sent = self
-                .peer_channels
-                .get_mut(i)
-                .expect("channel index not found")
-                .send(packet)
-                .await
-                .map_err(NetworkError::ChannelError)?;
+        for writer in self.writers.values_mut() {
+            bytes_sent = writer.send(packet.clone()).await?;
         }
         Ok(bytes_sent)
     }
 
-    /// Receive a packet from each party in the network.
+    /// Receives one packet from each party in the network, including this node's own loop-back
+    /// channel, ordered by ascending party ID.
     pub async fn recv(&mut self) -> Result<Vec<Packet>> {
         let mut packets = Vec::new();
-        for i in 0..self.peer_channels.len() {
-            let packet = self
-                .peer_channels
-                .get_mut(i)
-                .expect("channel index not found")
-                .recv()
-                .await
-                .map_err(NetworkError::ChannelError)?;
-            packets.push(packet);
+        for i in 0..self.receivers.len() {
+            packets.push(self.recv_from(PartyId(i)).await?);
         }
-
         Ok(packets)
     }
 }
@@ -428,14 +525,15 @@ impl TcpNetwork {
 #[async_trait]
 impl Network for TcpNetwork {
     async fn recv_any(&mut self) -> Result<(Packet, PartyId)> {
-        Err(NetworkError::Unsupported(
-            "the recv_any is not supported yet for TcpNetwork",
-        ))
+        match self.receivers.next().await {
+            Some((peer_id, result_packet)) => Ok((result_packet?, peer_id)),
+            None => Err(NetworkError::ConnectionClosed(None)),
+        }
     }
 
     fn other(&self) -> Result<PartyId> {
-        if self.peer_channels.len() != 2 {
-            Err(NetworkError::ExpectedTwoNodeNet(self.peer_channels.len()))
+        if self.writers.len() != 2 {
+            Err(NetworkError::ExpectedTwoNodeNet(self.writers.len()))
         } else {
             Ok(PartyId::from(1 - self.local_party_id.as_usize()))
         }
@@ -443,32 +541,34 @@ impl Network for TcpNetwork {
 
     /// Sends a packet of information to a given party.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize> {
-        let bytes_sent = self.peer_channels[usize::from(party_id)]
-            .send(packet)
-            .await
-            .map_err(NetworkError::ChannelError)?;
+        let bytes_sent = self
+            .writers
+            .get_mut(&party_id)
+            .ok_or(NetworkError::PartyNotFound(party_id))?
+            .send(packet.clone())
+            .await?;
         Ok(bytes_sent)
     }
 
     /// Receives a packet from a given party.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet> {
-        let packet = self.peer_channels[usize::from(party_id)]
-            .recv()
-            .await
-            .map_err(NetworkError::ChannelError)?;
-        Ok(packet)
+        let (_, reader) = self
+            .receivers
+            .iter_mut()
+            .find(|(id, _)| *id == party_id)
+            .ok_or(NetworkError::PartyNotFound(party_id))?;
+        match reader.next().await {
+            Some(packet) => packet,
+            None => Err(NetworkError::ConnectionClosed(Some(party_id))),
+        }
     }
 
     /// Closes the network by closing each channel.
     async fn close(&mut self) -> Result<()> {
-        for i in 0..self.peer_channels.len() {
-            self.peer_channels
-                .get_mut(i)
-                .expect("channel index not found")
-                .close()
-                .await
-                .map_err(NetworkError::ChannelError)?;
+        for writer in self.writers.values_mut() {
+            writer.close().await?;
         }
+        self.receivers.clear();
         Ok(())
     }
 

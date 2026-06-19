@@ -21,13 +21,26 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   public.
 - Updated package version in `Cargo.toml`.
 - Added `set_nodelay(true)` to the streams so that it turns off the Nagle's algorithm.
+- `TcpNetwork::recv_any` is now implemented; it previously returned `NetworkError::Unsupported`. Every
+  peer connection is multiplexed through a cancel-safe length-delimited frame reader (`FramedRead` +
+  `StreamMap`), so dropping a `recv_any` future no longer discards a partially-read frame. Internally
+  `TcpNetwork` now keeps the per-peer write and read halves keyed by `PartyId` (split out of each TLS
+  stream) instead of boxed `Channel`s, and the loop-back path uses an in-process `mpsc` channel.
 
 ### Added
 
 - Added a prelude module re-exporting the common types and traits.
 - `NetworkError::EmptyPacket` and `NetworkError::WrongPacketIdx`, returned by `Packet::pop` and
   `Packet::read` to distinguish an absent element from a malformed one.
+- `NetworkError::ConnectionClosed` and `NetworkError::SendError`, returned by `TcpNetwork` when a peer
+  connection is closed during a receive or a loop-back send fails.
 - Added small information about benchmarking.
+
+### Removed
+
+- Removed the vestigial `Channel` trait (and its blanket implementation), `LoopBackChannel`, and the
+  `ChannelError::EmptyBuffer` variant. They are superseded by the framed `TcpNetwork` transport
+  (`FramedRead` + `StreamMap` for sockets, an in-process `mpsc` channel for loop-back).
 
 ### Fixed
 

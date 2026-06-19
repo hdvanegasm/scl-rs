@@ -1,8 +1,5 @@
 use crate::net::simulation::channel::ChannelId;
 use crate::net::simulation::SimulationError;
-use crate::net::Packet;
-use async_trait::async_trait;
-use std::collections::VecDeque;
 use std::io::{self};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -21,9 +18,6 @@ pub enum ChannelError {
     /// The party tried to connect to the other party but the timeout was reached.
     #[error("connection timeout")]
     Timeout(#[from] Elapsed),
-    /// Trying to read from a channel with no information.
-    #[error("channel buffer is empty")]
-    EmptyBuffer,
     /// Error during byte serialization.
     #[error("error during serialization")]
     SerializationError(#[from] postcard::Error),
@@ -49,53 +43,6 @@ impl From<SimulationError> for ChannelError {
 
 /// Specialized [`Result`] for channel errors.
 pub type Result<T> = std::result::Result<T, ChannelError>;
-
-/// Defines a channel of the network.
-#[async_trait]
-pub trait Channel {
-    /// Closes a channel.
-    async fn close(&mut self) -> Result<()>;
-    /// Send a packet using the current channel.
-    async fn send(&mut self, packet: &Packet) -> Result<usize>;
-    /// Receives a packet from the current channel.
-    async fn recv(&mut self) -> Result<Packet>;
-}
-
-#[async_trait]
-impl<T> Channel for T
-where
-    T: AsyncReadExt + AsyncWriteExt + Unpin + Send,
-{
-    async fn close(&mut self) -> Result<()> {
-        self.shutdown().await?;
-        log::info!("channel successfully closed");
-        Ok(())
-    }
-
-    async fn send(&mut self, packet: &Packet) -> Result<usize> {
-        let bytes = postcard::to_allocvec(packet)?;
-        let len = (bytes.len() as u64).to_le_bytes();
-        let mut framed = Vec::with_capacity(len.len() + bytes.len());
-        framed.extend_from_slice(&len);
-        framed.extend_from_slice(&bytes);
-        self.write_all(&framed).await?;
-        self.flush().await?;
-        Ok(packet.size())
-    }
-
-    async fn recv(&mut self) -> Result<Packet> {
-        let mut len_buff = [0u8; 8];
-        self.read_exact(&mut len_buff).await?;
-        let len = u64::from_le_bytes(len_buff) as usize;
-
-        // Then, we receive the buffer the amount bytes until the end is reached.
-        let mut payload_buffer = vec![0; len];
-        self.read_exact(&mut payload_buffer).await?;
-        let inner: Vec<Vec<u8>> = postcard::from_bytes(&payload_buffer)?;
-
-        Ok(Packet::new(inner))
-    }
-}
 
 /// Accepts a connection in the corresponding listener.
 pub(crate) async fn accept_connection(
@@ -162,31 +109,4 @@ pub(crate) async fn connect_as_client(
         .await?;
     tls_stream.flush().await?;
     Ok(TlsStream::from(tls_stream))
-}
-
-/// This is a channel used when a party wants to connect with himself.
-#[derive(Default)]
-pub struct LoopBackChannel {
-    /// Queue of incomming channels.
-    buffer: VecDeque<Packet>,
-}
-
-#[async_trait]
-impl Channel for LoopBackChannel {
-    async fn close(&mut self) -> Result<()> {
-        self.buffer.clear();
-        log::info!("channel successfully closed");
-        Ok(())
-    }
-
-    async fn send(&mut self, packet: &Packet) -> Result<usize> {
-        log::info!("sent {} bytes to myself", packet.0.len());
-        self.buffer.push_back(packet.clone());
-        Ok(packet.0.len())
-    }
-
-    async fn recv(&mut self) -> Result<Packet> {
-        log::info!("received packet from myself");
-        self.buffer.pop_front().ok_or(ChannelError::EmptyBuffer)
-    }
 }

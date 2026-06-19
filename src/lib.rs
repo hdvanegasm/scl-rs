@@ -249,6 +249,20 @@
 //! `127.0.0.1` only (their subject alternative name is that IP), so a multi-host deployment needs
 //! certificates whose subject alternative name matches each host's address.
 //!
+//! ## Benchmarks
+//!
+//! We executed some naïve and quick benchmarks to compare the simulated execution times with the
+//! `tc` Linux command utility. The results show that for 8-byte payload relayed for 10 sequential
+//! rounds over a 100 ms, 1 Mbit/s link with no loss, the real execution takes +0.14 ms (0.014 %)
+//! more than the simulated execution.
+//!
+//! The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is
+//! that "I ran this in the simulator and it took X" lets you expect a real run to
+//! behave similarly. The fidelity guarantee therefore holds _for protocols that suspend only through
+//! the abstractions the simulator models_ (the `Network` trait). Effects it doesn't represent
+//! (a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them.
+
+//!
 //! ## Status and roadmap
 //!
 //! scl-rs is under active development and stays on `0.x` indefinitely; the public API may change

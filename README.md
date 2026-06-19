@@ -243,7 +243,7 @@ behave similarly. The fidelity guarantee therefore holds _for protocols that sus
 the abstractions the simulator models_ (the `Network` trait). Effects it doesn't represent
 (a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them.
 
-A stronger, more detailed and statisticaly relevant benchmark will be added in the future.
+A stronger, more detailed and statistically relevant benchmark will be added in the future.
 
 ## Status and roadmap
 
