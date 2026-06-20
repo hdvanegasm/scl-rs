@@ -9,6 +9,42 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Changed
+
+- **`Environment<N>` is now a trait, `Environment`, rather than a concrete struct.** The network is reached
+  through `fn network(&self) -> &Self::Net` and `fn network_mut(&mut self) -> &mut Self::Net` over an associated `type Net: Network` — the
+  one capability every protocol shares, since the same network threads through every layer of a
+  composed protocol. Families that need ambient, computation-wide state (e.g. a batched MAC-check
+  accumulator) define their own capability traits as **supertraits of `Env`** and bound on them; the
+  core crate ships no such capability, keeping `Env` protocol-agnostic.
+- **`Protocol` is parameterized by the environment, not the network.** `Protocol<N: Network>` with
+  `run(self, &mut Environment<N>)` becomes `Protocol<E: Environment>` with `run(self, &mut E)`. Fully general
+  protocols are written `impl<E: Environment> Protocol<E>` and run under any environment; a protocol that
+  requires extra capabilities bounds on the corresponding `Environment` supertrait, and those bounds
+  accumulate up a composition so the outermost protocol must supply the union of its subtree's
+  capabilities — enforced at compile time. **Migration:** replace the `N: Network` parameter with
+  `E: Environment`, take `&mut E`, and access the network via `env.network_mut()` and `env.network()` instead of `env.network`.
+- **`simulate` is now generic over the environment and takes an environment factory.**
+  `simulate<P, E>(config, parties, make_protocol, make_env, hooks)`, where
+  `make_env: impl Fn(PartyId, SimNetwork) -> E` constructs each party's environment — the harness can
+  no longer build it, because the environment type is open. The bounds are `E: Environment<Net = SimNetwork>`
+  (the simulated environment must wrap the simulator's network) and `P: Protocol<E>`, the latter
+  propagating each protocol's capability requirements to the factory: a protocol that needs a
+  capability will not compile against an environment that does not provide it.
+
+### Added
+
+- The `Environment` trait (associated `type Net: Network`, `network_mut`) and `GeneralEnv<N>`, the
+  general-purpose environment carrying only the network — the default for protocols that need no
+  ambient capability beyond the wire.
+
+### Removed
+
+- The concrete `Environment<N>` struct and `Environment::new`, superseded by the `Environment` trait and
+  `GeneralEnv<N>`. The prelude re-exports `Environment` and `GeneralEnv` in place of the old struct `Environment`.
+
 ## [0.4.1] - 2026-06-19
 
 ### Added

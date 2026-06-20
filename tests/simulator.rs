@@ -8,15 +8,15 @@ use scl_rs::net::simulation::runtime::simulate;
 use scl_rs::net::simulation::switchboard::{Switchboard, TriggeredHook};
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Error, Protocol};
+use scl_rs::protocol::{Error, GeneralEnv, Protocol};
 
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for SendRecvProtocol {
+impl Protocol<GeneralEnv<SimNetwork>> for SendRecvProtocol {
     type Output = usize;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
         let mut packet = Packet::empty();
         packet
             .write(&environment.network.local_party().as_usize())
@@ -45,6 +45,7 @@ fn send_recv_simulation() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -75,10 +76,10 @@ fn send_recv_simulation() {
 pub struct PingPongProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for PingPongProtocol {
+impl Protocol<GeneralEnv<SimNetwork>> for PingPongProtocol {
     type Output = Vec<usize>;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
         let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
@@ -114,6 +115,7 @@ fn ping_pong_preserves_message_order() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| PingPongProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -130,10 +132,10 @@ fn ping_pong_preserves_message_order() {
 pub struct ChainedFirstStage;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for ChainedFirstStage {
+impl Protocol<GeneralEnv<SimNetwork>> for ChainedFirstStage {
     type Output = usize;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
         let other = environment.network.other()?;
         let me = environment.network.local_party().as_usize();
 
@@ -161,10 +163,10 @@ pub struct ChainedSecondStage {
 }
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for ChainedSecondStage {
+impl Protocol<GeneralEnv<SimNetwork>> for ChainedSecondStage {
     type Output = usize;
 
-    async fn run(self, _environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, _environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
         Ok(self.received + 100)
     }
 
@@ -181,6 +183,7 @@ fn chained_protocols_pass_state_between_stages() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| ChainedFirstStage,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -224,10 +227,10 @@ const BULK_PAYLOAD_LEN: usize = 200_000;
 pub struct BulkTransferProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for BulkTransferProtocol {
+impl Protocol<GeneralEnv<SimNetwork>> for BulkTransferProtocol {
     type Output = Vec<u8>;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Vec<u8>, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Vec<u8>, Error> {
         let other = environment.network.other()?;
 
         let mut packet = Packet::empty();
@@ -254,6 +257,7 @@ fn simulation_reflects_bandwidth_and_latency() {
         SlowNetworkConfig,
         vec![p0, p1],
         |_| BulkTransferProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -331,6 +335,7 @@ fn trace_arrows_reflect_each_party_perspective() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -368,10 +373,10 @@ fn trace_arrows_reflect_each_party_perspective() {
 pub struct OneWayProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for OneWayProtocol {
+impl Protocol<GeneralEnv<SimNetwork>> for OneWayProtocol {
     type Output = Option<usize>;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<Option<usize>, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Option<usize>, Error> {
         let other = environment.network.other()?;
         if environment.network.local_party().as_usize() == 0 {
             let mut packet = Packet::empty();
@@ -401,6 +406,7 @@ fn one_way_communication_does_not_require_prior_send() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| OneWayProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -421,10 +427,10 @@ const BROADCAST_VALUE: usize = 7;
 pub struct BroadcastProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<SimNetwork> for BroadcastProtocol {
+impl Protocol<GeneralEnv<SimNetwork>> for BroadcastProtocol {
     type Output = usize;
 
-    async fn run(self, environment: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
         let me = environment.network.local_party();
 
         if me.as_usize() == 0 {
@@ -462,6 +468,7 @@ fn broadcast_from_party_zero_reaches_all_parties() {
         SimpleNetworkConfig,
         parties.clone(),
         |_| BroadcastProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -529,10 +536,10 @@ use async_trait::async_trait;
 struct SendRecv;
 
 #[async_trait]
-impl Protocol<SimNetwork> for SendRecv {
+impl Protocol<GeneralEnv<SimNetwork>> for SendRecv {
     type Output = usize;
 
-    async fn run(self, env: &mut Environment<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
         let other = env.network.other()?;
         let me = env.network.local_party();
 
@@ -555,7 +562,13 @@ impl Protocol<SimNetwork> for SendRecv {
 fn real_protocol_runs_on_deterministic_core() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
-    let outcome = simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![]);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![p0, p1],
+        |_| SendRecv,
+        |_, net| GeneralEnv::new(net),
+        vec![],
+    );
     assert_eq!(outcome.outputs[&p0], 1_usize);
     assert_eq!(outcome.outputs[&p1], 0_usize);
 
@@ -595,7 +608,13 @@ fn hook_fires_on_matching_event() {
     let count = Arc::new(Mutex::new(0_usize));
     let hook = Arc::new(CountSendData(count.clone()));
 
-    simulate(SimpleNetworkConfig, vec![p0, p1], |_| SendRecv, vec![hook]);
+    simulate(
+        SimpleNetworkConfig,
+        vec![p0, p1],
+        |_| SendRecv,
+        |_, net| GeneralEnv::new(net),
+        vec![hook],
+    );
 
     // Each party sends exactly once → two SendData events.
     assert_eq!(*count.lock().unwrap(), 2);
@@ -616,11 +635,11 @@ struct QuorumCollect {
 }
 
 #[async_trait]
-impl Protocol<SimNetwork> for QuorumCollect {
+impl Protocol<GeneralEnv<SimNetwork>> for QuorumCollect {
     /// For the collector: the sorted ids it heard from. For everyone else: empty.
     type Output = Vec<usize>;
 
-    async fn run(self, env: &mut Environment<SimNetwork>) -> Result<Vec<usize>, Error> {
+    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
         let me = env.network.local_party().as_usize();
 
         if me == self.collector {
@@ -672,6 +691,7 @@ fn recv_any_collects_a_quorum_without_naming_senders() {
             quorum: 3,
             senders: vec![1, 2, 3],
         },
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
@@ -698,6 +718,7 @@ fn recv_any_returns_at_quorum_and_does_not_wait_for_all() {
             quorum: 3,
             senders: vec![1, 2, 3, 4],
         },
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 

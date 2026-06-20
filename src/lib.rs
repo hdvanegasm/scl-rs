@@ -41,11 +41,11 @@
 //!
 //! ```ignore
 //! #[async_trait]
-//! pub trait Protocol<N: Network>: Send + Sync {
-//!     /// The typed value this protocol produces.
+//! pub trait Protocol<E: Environment>: Send + Sync {
+//!     /// The output of the protocol.
 //!     type Output;
 //!     /// Behavior of the protocol when run.
-//!     async fn run(self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
+//!     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
 //!     /// Identifier of the protocol.
 //!     fn name(&self) -> &'static str;
 //! }
@@ -53,8 +53,9 @@
 //!
 //! Protocols communicate by sending `Packet`s — encapsulated bytes that can carry shares, field
 //! elements, polynomials, curve points, or any serializable type — through the `send_to` / `recv_from`
-//! methods of the `Network`. A party can also take the next packet from *whichever* peer responds
-//! first with `recv_any` — the basis for quorum-based protocols such as reliable broadcast, where a
+//! methods of the `Network` wich is accessed through the `Environment`. A party can also
+//! take the next packet from *whichever* peer responds first with `recv_any` — the
+//! basis for quorum-based protocols such as reliable broadcast, where a
 //! party acts on the first quorum of responses and must not block on the peers that stay silent.
 //! `recv_any` is available on both the simulator and a real TLS network. Because the protocol is
 //! written **generic over `N: Network`**, the very same code runs on either without changes:
@@ -67,21 +68,21 @@
 //! pub struct SendRecvProtocol;
 //!
 //! #[async_trait]
-//! impl<N: Network> Protocol<N> for SendRecvProtocol {
+//! impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //!     // This protocol returns the other party's id.
 //!     type Output = usize;
 //!
-//!     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
+//!     async fn run(self, env: &mut E) -> Result<usize, Error> {
 //!         // Put this party's id into a packet and send it to the other party.
 //!         let mut packet = Packet::empty();
-//!         packet.write(&env.network.local_party().as_usize())?;
+//!         packet.write(&env.network().local_party().as_usize())?;
 //!
-//!         let other = env.network.other()?;
-//!         env.network.send_to(other, &packet).await?;
+//!         let other = env.network().other()?;
+//!         env.network_mut().send_to(other, &packet).await?;
 //!
 //!         // Receive the other party's id and return it as the typed output.
-//!         let received = env.network.recv_from(other).await?;
-//!         env.network.close().await?;
+//!         let received = env.network_mut().recv_from(other).await?;
+//!         env.network_mut().close().await?;
 //!
 //!         let their_id: usize = received.read(0)?;
 //!         Ok(their_id)
@@ -101,7 +102,7 @@
 //! straight back:
 //!
 //! ```ignore
-//! let their_id: usize = SendRecvProtocol.run(env).await?;
+//! let their_id: usize = SendRecvProtocol.run(&mut env).await?;
 //! ```
 //!
 //! ### Running on the simulator
@@ -113,19 +114,22 @@
 //! ```rust
 //! # use async_trait::async_trait;
 //! # use scl_rs::net::{Network, Packet};
-//! # use scl_rs::protocol::{Environment, Error, Protocol};
+//! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol};
 //! # pub struct SendRecvProtocol;
 //!
 //! # #[async_trait]
-//! # impl<N: Network> Protocol<N> for SendRecvProtocol {
+//! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //! #     type Output = usize;
-//! #     async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
+//! #     async fn run(self, env: &mut E) -> Result<usize, Error> {
 //! #         let mut packet = Packet::empty();
-//! #         packet.write(&env.network.local_party().as_usize())?;
-//! #         let other = env.network.other()?;
-//! #         env.network.send_to(other, &packet).await?;
-//! #         let received = env.network.recv_from(other).await?;
-//! #         env.network.close().await?;
+//! #         packet.write(&env.network().local_party().as_usize())?;
+//!
+//! #         let other = env.network().other()?;
+//! #         env.network_mut().send_to(other, &packet).await?;
+//!
+//! #         let received = env.network_mut().recv_from(other).await?;
+//! #         env.network_mut().close().await?;
+//!
 //! #         Ok(received.read(0)?)
 //! #     }
 //! #     fn name(&self) -> &'static str { "SendRecvProtocol" }
@@ -142,6 +146,7 @@
 //!     SimpleNetworkConfig,
 //!     vec![p0, p1],
 //!     |_| SendRecvProtocol,
+//!     |_, net| GeneralEnv::new(net),
 //!     vec![],
 //! );
 //!
@@ -173,7 +178,7 @@
 //!
 //! ```ignore
 //! use scl_rs::net::{NetworkConfig, TcpNetwork};
-//! use scl_rs::protocol::{Environment, Protocol};
+//! use scl_rs::protocol::{GeneralEnv, Environment, Protocol};
 //! use std::path::Path;
 //!
 //! #[tokio::main]
@@ -186,7 +191,7 @@
 //!
 //!     // `create` performs the TLS handshake with every peer, so it is async.
 //!     let network = TcpNetwork::create(my_id, config).await?;
-//!     let mut env = Environment::new(network);
+//!     let mut env = GeneralEnv::new(network);
 //!
 //!     // The very same protocol that ran on the simulator now runs over real TLS.
 //!     let output = SendRecvProtocol.run(&mut env).await?;
@@ -298,6 +303,7 @@
 /// [`Packet`]: crate::net::Packet
 /// [`PartyId`]: crate::net::PartyId
 /// [`simulate`]: crate::net::simulation::runtime::simulate
+/// [`GeneralEnv`]: crate::protocol::Environment
 pub mod prelude {
     pub use crate::math::{
         ec::EllipticCurve, field::FiniteField, matrix::Matrix, ring::Ring, vector::Vector,
@@ -306,7 +312,7 @@ pub mod prelude {
         simulation::runtime::simulate, simulation::runtime::SimulationOutcome, Network, Packet,
         PartyId,
     };
-    pub use crate::protocol::{Environment, Error, Protocol};
+    pub use crate::protocol::{Environment, Error, GeneralEnv, Protocol};
 }
 
 /// Mathematical tools used in MPC protocols.

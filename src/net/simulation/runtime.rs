@@ -50,15 +50,17 @@ fn record_event(
 /// protocol `make_protocol(pid)`; `hooks` fire as events are recorded. All parties
 /// run the same protocol type `P` — role differences are expressed inside the protocol (for example
 /// by branching on [`local_party`](crate::net::Network::local_party)).
-pub fn simulate<P>(
+pub fn simulate<P, E>(
     config: impl NetworkConfig + 'static,
     parties: Vec<PartyId>,
     make_protocol: impl Fn(PartyId) -> P,
+    make_env: impl Fn(PartyId, SimNetwork) -> E,
     hooks: Vec<Arc<dyn TriggeredHook>>,
 ) -> SimulationOutcome<P::Output>
 where
-    P: Protocol<SimNetwork> + 'static,
+    P: Protocol<E> + 'static,
     P::Output: Serialize + Send + Clone + 'static,
+    E: Environment<Net = SimNetwork> + 'static,
 {
     let switchboard = Arc::new(Mutex::new(Switchboard::new(ConfigDelay(config), hooks)));
     let outputs = Arc::new(Mutex::new(HashMap::new()));
@@ -68,10 +70,10 @@ where
         let network = SimNetwork::new(*party, parties.clone(), switchboard.clone());
         let outputs = outputs.clone();
         let switchboard = switchboard.clone();
-        let protocol = make_protocol(*party);
         let party = *party;
+        let protocol = make_protocol(party);
+        let mut env = make_env(party, network);
         tasks.push(Box::pin(async move {
-            let mut env = Environment::new(network);
             let result = drive(party, protocol, switchboard, &mut env).await;
             outputs
                 .lock()
@@ -88,15 +90,16 @@ where
 }
 
 /// Runs a party's protocol to completion, recording its lifecycle events and returning its output.
-async fn drive<P>(
+async fn drive<P, E>(
     party: PartyId,
     protocol: P,
     switchboard: Arc<Mutex<Switchboard>>,
-    env: &mut Environment<SimNetwork>,
+    env: &mut E,
 ) -> P::Output
 where
-    P: Protocol<SimNetwork>,
+    P: Protocol<E>,
     P::Output: Serialize,
+    E: Environment<Net = SimNetwork>,
 {
     record_event(&switchboard, party, move |t| Event::Start { timestamp: t });
     let name = protocol.name();

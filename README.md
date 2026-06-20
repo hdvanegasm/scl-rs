@@ -42,6 +42,35 @@ _SCL-inspired_ than a faithful port.
 scl-rs = "0.4.1"
 ```
 
+### Releases vs. `main`
+
+The supported way to use scl-rs is the latest **released crate on crates.io**; the
+installation instructions above refer to it.
+
+The **`main` branch** is the development tip. It is kept green on CI (`fmt`, `clippy`,
+`test`, `doc`) on every commit, so it builds and its tests pass — but it is **unreleased**,
+and its public API may **change between commits** without a version bump or notice.
+
+To use unreleased work, depend on a specific commit and pin the `rev`:
+
+```toml
+[dependencies]
+scl-rs = { git = "https://github.com/hdvanegasm/scl-rs", rev = "<commit-sha>" }
+```
+
+Pinning a `rev` (rather than the bare branch) means a later `main` commit can't change the
+API under you until you choose to update. Passing CI is the only guarantee `main` carries;
+the usual research / prototyping, not-audited status still applies.
+
+## Examples
+
+In the `examples/` folder, you wil find a set of examples that show how to use the library.
+To run an example in the file `<example_name>.rs`, you must run the command
+
+```text
+cargo run --example <example_name>
+```
+
 ## Writing a protocol
 
 A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`) and

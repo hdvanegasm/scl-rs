@@ -4,6 +4,7 @@
 use scl_rs::{
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, Environment, Error, Protocol},
+    protocol::GeneralEnv,
 };
 
 // A protocol is a struct that implements the `Protocol` trait.
@@ -14,7 +15,7 @@ pub struct SendRecvProtocol;
 // simulator (`SimNetwork`, used in `main` below) and over a real TLS deployment (`TcpNetwork`),
 // without any changes to its logic.
 #[async_trait::async_trait]
-impl<N: Network> Protocol<N> for SendRecvProtocol {
+impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // Here, you define what is the output of the protocol. This output can be arbitrary: it may be
     // a share, a party ID, a stream of bytes, etc.
     type Output = usize;
@@ -23,7 +24,7 @@ impl<N: Network> Protocol<N> for SendRecvProtocol {
     // current party, that is, you are writing how the current party will behave. Different parties
     // may behave in different ways, and you can access the current party ID using
     // `environment.network.local_party()`.
-    async fn run(self, environment: &mut Environment<N>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Error> {
         // You can only send `Packet`s to the network. A packet is a collection of serialized
         // objects. The packet can hold the serialized version of any serializable data structure.
         // Also, one packet can hold any number of completely different data structures as long as
@@ -32,19 +33,19 @@ impl<N: Network> Protocol<N> for SendRecvProtocol {
 
         // For example, here we are storing the current party ID into the packet to send it to the
         // network. Network operations return a `Result`, so we propagate any error with `?`.
-        packet.write(&environment.network.local_party().as_usize())?;
+        packet.write(&environment.network().local_party().as_usize())?;
 
-        let other = environment.network.other()?;
+        let other = environment.network().other()?;
 
         // Given that we are writing the protocol from the perspective of the current party, this
         // line instructs the current party to send its party ID to the other party.
-        environment.network.send_to(other, &packet).await?;
+        environment.network_mut().send_to(other, &packet).await?;
 
         // From the perspective of the other party, the party sends also its ID, so the current
         // party needs to receive it.
-        let received_packet = environment.network.recv_from(other).await?;
+        let received_packet = environment.network_mut().recv_from(other).await?;
 
-        environment.network.close().await?;
+        environment.network_mut().close().await?;
 
         let their_id: usize = received_packet.read(0)?;
 
@@ -70,6 +71,7 @@ fn main() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
+        |_, net| GeneralEnv::new(net),
         vec![],
     );
 
