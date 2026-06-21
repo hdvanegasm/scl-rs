@@ -2,6 +2,8 @@
 //! elements `[x_1, x_2, ..., x_n]` such that `x = x_1 + x_2 + ... + x_n`. In this secret sharing scheme,
 //! the party `i` receives the share `x_i`.
 
+use std::ops::Add;
+
 use crate::math::ring::Ring;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -43,5 +45,16 @@ where
         shares
             .iter()
             .fold(T::ZERO, |acc, share| acc + share.share())
+    }
+}
+
+impl<T> Add<&Self> for AdditiveSS<T>
+where
+    T: Ring,
+{
+    type Output = Self;
+
+    fn add(self, rhs: &Self) -> Self::Output {
+        Self(self.0 + &rhs.0)
     }
 }

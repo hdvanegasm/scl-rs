@@ -300,6 +300,8 @@ pub trait Network: Send {
     ///
     /// This function returns an error if the protocol that is being executed is not a two party protocol.
     fn other(&self) -> Result<PartyId>;
+    /// Returns the party IDs of the parties connected to the network.
+    fn party_ids(&self) -> Vec<PartyId>;
 }
 
 /// Read side of a peer connection: a stream that yields one decoded [`Packet`] per delimited frame.
@@ -528,6 +530,10 @@ impl TcpNetwork {
 
 #[async_trait]
 impl Network for TcpNetwork {
+    fn party_ids(&self) -> Vec<PartyId> {
+        self.writers.keys().copied().collect()
+    }
+
     async fn recv_any(&mut self) -> Result<(Packet, PartyId)> {
         match self.receivers.next().await {
             Some((peer_id, result_packet)) => Ok((result_packet?, peer_id)),

@@ -73,6 +73,10 @@ impl Network for SimNetwork {
         }
     }
 
+    fn party_ids(&self) -> Vec<PartyId> {
+        self.parties.clone()
+    }
+
     async fn close(&mut self) -> net::Result<()> {
         Ok(())
     }
