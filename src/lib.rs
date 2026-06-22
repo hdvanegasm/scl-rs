@@ -116,25 +116,24 @@
 //! # use scl_rs::net::{Network, Packet};
 //! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol};
 //! # pub struct SendRecvProtocol;
-//!
 //! # #[async_trait]
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //! #     type Output = usize;
 //! #     async fn run(self, env: &mut E) -> Result<usize, Error> {
 //! #         let mut packet = Packet::empty();
 //! #         packet.write(&env.network().local_party().as_usize())?;
-//!
+//! #
 //! #         let other = env.network().other()?;
 //! #         env.network_mut().send_to(other, &packet).await?;
-//!
+//! #
 //! #         let received = env.network_mut().recv_from(other).await?;
 //! #         env.network_mut().close().await?;
-//!
+//! #
 //! #         Ok(received.read(0)?)
 //! #     }
 //! #     fn name(&self) -> &'static str { "SendRecvProtocol" }
 //! # }
-//!
+//! #
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 //! use scl_rs::net::simulation::runtime::simulate;
 //! use scl_rs::net::PartyId;
