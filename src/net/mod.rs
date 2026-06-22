@@ -779,6 +779,26 @@ mod tests {
         let received = net1.recv_from(PartyId(0)).await.unwrap();
         assert_eq!(big_packet, received);
 
+        // `send_many`: party 0 scatters distinct packets to party 1 (a TLS socket) and to itself
+        // (the in-process loop-back) in one concurrent call. Each target must receive exactly its own
+        // packet, exercising the concurrent override's per-peer matching across both writer kinds.
+        let mut pkt_to_peer = Packet::empty();
+        pkt_to_peer.write(&201u8).unwrap();
+        let mut pkt_to_self = Packet::empty();
+        pkt_to_self.write(&202u8).unwrap();
+
+        net0.send_many(&[
+            (PartyId(1), pkt_to_peer.clone()),
+            (PartyId(0), pkt_to_self.clone()),
+        ])
+        .await
+        .unwrap();
+
+        let received_at_peer = net1.recv_from(PartyId(0)).await.unwrap();
+        assert_eq!(received_at_peer, pkt_to_peer);
+        let received_at_self = net0.recv_from(PartyId(0)).await.unwrap();
+        assert_eq!(received_at_self, pkt_to_self);
+
         net0.close().await.unwrap();
         net1.close().await.unwrap();
     }

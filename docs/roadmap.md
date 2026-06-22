@@ -2,15 +2,15 @@
 
 **Date:** 2026-06-22
 
-**Current version:** 0.4.1 (**published to crates.io on 2026-06-19**; tagged `v0.4.1`) — a patch
-release adding the `examples/simple_send_recv.rs` example on top of 0.4.0.
+**Current version:** 0.5.0 (**prepared for release 2026-06-22** — version bumped and `CHANGELOG`
+dated; the `v0.5.0` tag and `cargo publish` are pending the maintainer). The previous release, 0.4.1,
+was published to crates.io on 2026-06-19.
 
-**Unreleased (staged on `main` for the next `0.x`):** an environment-trait redesign (`Protocol<E:
-Environment>`, `simulate<P, E>` with an environment factory, `GeneralEnv`), `Protocol::execute` with
-a nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs, a
-`cargo-audit` CI workflow, a straggler/virtual-time regression test, and the D10 `Link` unification.
-These are breaking, so per the §2 policy the next release is a minor bump (`0.5.0`). See
-`CHANGELOG.md`.
+**0.5.0 contents:** an environment-trait redesign (`Protocol<E: Environment>`, `simulate<P, E>` with
+an environment factory, `GeneralEnv`), `Protocol::execute` with a nesting-aware brace-block trace
+`Display`, CSPRNG bounds on the secret-generation APIs, a `cargo-audit` CI workflow, a
+straggler/virtual-time regression test, the D10 `Link` unification, and the `send_many` scatter
+primitive. These are breaking, so per the §2 policy it is a minor bump. See `CHANGELOG.md`.
 
 **Versioning stance:** scl-rs stays on **`0.x` indefinitely**. `1.0` is **not a planned milestone** —
 the "unaudited / not for production" posture is carried by the security disclaimer (not the version
@@ -310,7 +310,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, an early `0.x` release. |
 | **0.3.0**       | _Correct & clean_ ✅ **PUBLISHED 2026-06-17**      | Mutual TLS (mTLS) — wire-incompatible with 0.2.0; MSRV 1.85.1 + MSRV CI job; typed `serde` config parsing (`deny_unknown_fields`, `base_port` range check); `channel_id` perspective bug resolved + regression test; mTLS handshake tests (positive + negative); `Network::recv_any` **simulator-only** (quorum primitive). Tagged `v0.3.0`.                  |
 | **0.4.0**       | _API stabilization_ ✅ **PUBLISHED 2026-06-19**    | §5 in full (Packet `Result` API, error sweep incl. `NetworkConfig::new` → crate error, `Protocol` consumes `self`, `Environment` clock, prelude, naming/visibility audit). Plus the §7 `TcpNetwork::recv_any` implementation (cancel-safe `FramedRead` + `StreamMap` multiplexing) and the `tls_public_api_correctness` real-TLS socket integration test, and the §8 `publish-dry-run` tag workflow. Tagged `v0.4.0`. |
-| **0.5.0** (staged, unreleased) | _Composition & env redesign_         | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, and the D10 `Link` unification (§7). Breaking, so a minor bump per §2. Staged on `main`; not yet tagged. |
+| **0.5.0** (releasing 2026-06-22) | _Composition & env redesign_       | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, the D10 `Link` unification (§7), and the `send_many` scatter primitive. Breaking, so a minor bump per §2. Prepared (version + `CHANGELOG`); `v0.5.0` tag + `cargo publish` pending. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc), §9 docs (`CONTRIBUTING.md`, the real-TLS deployment example), and chosen §10 features.                                                                                                     |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 

@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-22
+
 ### Changed
 
 - **`Environment<N>` is now a trait, `Environment`, rather than a concrete struct.** The network is reached
