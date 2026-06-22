@@ -741,3 +741,184 @@ fn recv_any_returns_at_quorum_and_does_not_wait_for_all() {
         .count();
     assert_eq!(recvs, 3, "the collector should receive exactly the quorum");
 }
+
+/// Party id of the straggler in [`StragglerScenario`]; also used by [`StragglerNetworkConfig`] to
+/// decide which links are slow.
+const STRAGGLER_ID: usize = 4;
+
+/// Network configuration that puts the straggler on a very high-latency link (20 s RTT) while every
+/// other cross-party link is fast (100 ms RTT). Loopback is instantaneous. This makes the
+/// straggler's message arrive long after the collector has reached its quorum on the fast senders.
+#[derive(Debug, Clone)]
+pub struct StragglerNetworkConfig;
+
+impl NetworkConfig for StragglerNetworkConfig {
+    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
+        if channel_id.local() == channel_id.remote() {
+            // SAFETY: default builder values are valid, so the build does not fail.
+            return ChannelConfigBuilder::default()
+                .net_type(NetworkType::Instant)
+                .build()
+                .unwrap();
+        }
+        let touches_straggler = channel_id.local().as_usize() == STRAGGLER_ID
+            || channel_id.remote().as_usize() == STRAGGLER_ID;
+        let rtt_ms = if touches_straggler { 20_000 } else { 100 };
+        // SAFETY: the values below are valid, so the build does not fail.
+        ChannelConfigBuilder::default()
+            .net_type(NetworkType::Tcp)
+            .bandwidth(Bandwidth::new(1_000_000))
+            .rtt(Rtt::new(rtt_ms))
+            .build()
+            .unwrap()
+    }
+}
+
+/// Multi-role protocol for the straggler virtual-time regression. A `collector` gathers a `quorum`
+/// of messages via `recv_any`; the `fast_senders` reach it quickly, while the single `straggler`
+/// sits on a slow link (see [`StragglerNetworkConfig`]) so its message lands long after quorum. A
+/// `late_receiver` waits *specifically* for the straggler, which keeps the simulation alive until
+/// the straggler is actually delivered — so the straggler's late delivery to the collector is
+/// popped *after* the collector has already finished, exercising the "delivery bumps the clock but
+/// is inert once the party is done" path.
+struct StragglerScenario {
+    collector: usize,
+    quorum: usize,
+    fast_senders: Vec<usize>,
+    straggler: usize,
+    late_receiver: usize,
+}
+
+#[async_trait]
+impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
+    /// Collector: the sorted ids it heard. Late receiver: the straggler id it eventually got.
+    /// Everyone else: empty.
+    type Output = Vec<usize>;
+
+    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
+        let me = env.network.local_party().as_usize();
+
+        if me == self.collector {
+            let mut heard = Vec::new();
+            for _ in 0..self.quorum {
+                let (_packet, sender) = env.network.recv_any().await?;
+                heard.push(sender.as_usize());
+            }
+            env.network.close().await?;
+            heard.sort_unstable();
+            Ok(heard)
+        } else if me == self.straggler {
+            // The straggler reports its id to both the collector and the late receiver. Both links
+            // are slow, so both messages arrive well after the collector's quorum.
+            let mut packet = Packet::empty();
+            packet.write(&me).unwrap();
+            env.network
+                .send_to(PartyId::from(self.collector), &packet)
+                .await?;
+            env.network
+                .send_to(PartyId::from(self.late_receiver), &packet)
+                .await?;
+            env.network.close().await?;
+            Ok(Vec::new())
+        } else if self.fast_senders.contains(&me) {
+            let mut packet = Packet::empty();
+            packet.write(&me).unwrap();
+            env.network
+                .send_to(PartyId::from(self.collector), &packet)
+                .await?;
+            env.network.close().await?;
+            Ok(Vec::new())
+        } else if me == self.late_receiver {
+            // Waits only for the straggler, keeping the simulation alive until the straggler's slow
+            // messages have been delivered.
+            let packet = env.network.recv_from(PartyId::from(self.straggler)).await?;
+            env.network.close().await?;
+            let value: usize = packet.read(0).unwrap();
+            Ok(vec![value])
+        } else {
+            env.network.close().await?;
+            Ok(Vec::new())
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "StragglerScenario"
+    }
+}
+
+#[test]
+fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
+    use std::time::Duration;
+
+    // 0 collects; 1..=3 are the fast senders; 4 is the straggler on the slow link; 5 waits for the
+    // straggler so the simulation outlives the collector.
+    let parties: Vec<PartyId> = (0..6).map(PartyId::from).collect();
+    let outcome = simulate(
+        StragglerNetworkConfig,
+        parties,
+        |_| StragglerScenario {
+            collector: 0,
+            quorum: 3,
+            fast_senders: vec![1, 2, 3],
+            straggler: STRAGGLER_ID,
+            late_receiver: 5,
+        },
+        |_, net| GeneralEnv::new(net),
+        vec![],
+    );
+
+    let collector = PartyId::from(0);
+    let late_receiver = PartyId::from(5);
+
+    // The collector reached quorum on the three fast senders; the straggler was never among them.
+    assert_eq!(outcome.outputs[&collector], vec![1, 2, 3]);
+    // ...yet the straggler *was* eventually delivered — the late receiver got it — so this is a
+    // genuine "delivered after quorum" case, not "never delivered at all".
+    assert_eq!(outcome.outputs[&late_receiver], vec![STRAGGLER_ID]);
+
+    let collector_trace = &outcome.traces[&collector];
+
+    // The collector consumed exactly the quorum; it never received the straggler's message.
+    let recvs: Vec<&Event> = collector_trace
+        .events()
+        .iter()
+        .filter(|event| event.event_type() == EventType::ReceiveData)
+        .collect();
+    assert_eq!(
+        recvs.len(),
+        3,
+        "the collector should receive exactly the quorum"
+    );
+
+    // Virtual time at which the collector reached quorum (its last reception) and stopped.
+    let quorum_time = recvs.last().unwrap().timestamp();
+    let stop_time = collector_trace
+        .events()
+        .iter()
+        .find(|event| event.event_type() == EventType::Stop)
+        .expect("the collector trace should contain a Stop event")
+        .timestamp();
+
+    // The straggler's actual arrival time, observed at the late receiver.
+    let straggler_arrival = outcome.traces[&late_receiver]
+        .events()
+        .iter()
+        .find(|event| event.event_type() == EventType::ReceiveData)
+        .expect("the late receiver should have received the straggler")
+        .timestamp();
+
+    // Reaching quorum and stopping happen at the same virtual instant: the post-quorum work
+    // (close/output/stop) is stamped before any further delivery advances the clock.
+    assert_eq!(
+        stop_time, quorum_time,
+        "the collector's post-quorum work must be stamped at the quorum time, not later"
+    );
+    // Sanity: the quorum time reflects the fast links' latency, so it is non-zero.
+    assert!(quorum_time > Duration::ZERO);
+    // The crux: the straggler lands far later, but that late delivery is inert for the collector —
+    // it does not inflate the collector's virtual time, which stays at the fast-quorum instant.
+    assert!(
+        quorum_time < straggler_arrival,
+        "collector quorum time {quorum_time:?} should be well before the straggler arrival {straggler_arrival:?}",
+    );
+}

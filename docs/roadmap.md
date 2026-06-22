@@ -205,18 +205,25 @@ release rather than dribbling breaks out continuously.
         loop-back peer is an in-process `mpsc` channel; `recv_from(p)` polls a single entry. (The
         task-per-peer + shared-mpsc design originally sketched here was unnecessary — `StreamMap`
         provides the multiplexing directly.)
-  - [ ] **Straggler / virtual-time regression test (sim).** Pin the property that a message from a
+  - [x] **Straggler / virtual-time regression test (sim).** Pins the property that a message from a
         slow party delivered *after* the receiver already passed its quorum does not distort the
         receiver's virtual time (delivery bumps `clock` in `deliver_next`, but it is inert once the
         party is done, and post-quorum synchronous work is stamped before any further delivery).
+        `straggler_delivery_after_quorum_does_not_distort_collector_time` in `tests/simulator.rs`: a
+        collector reaches quorum on fast senders while a straggler on a 20 s link is delivered (and
+        bumps the collector's clock) only after the collector has finished; the collector's `Stop` is
+        stamped at the quorum instant, strictly before the straggler's arrival (observed at a late
+        receiver that keeps the run alive).
 - [x] **Trace `channel_id` perspective bug.** _Resolved._ `Switchboard::send`/`try_recv` now record
       events with `ChannelId::new(recorder, peer)` (recorder in the `local` slot), so `Event::Display`
       renders arrows from each party's own perspective; the canonical `link.channel_id()` survives only
       in `ConfigDelay::delay`, where the symmetric lookup is intended. Guarded by the
       `trace_arrows_reflect_each_party_perspective` regression test (`tests/simulator.rs`).
-- [ ] **Nested protocol calls are invisible in traces** — only the top-level protocol records
-      `ProtocolBegin`/`End`. Decide whether nested `.await` calls should appear (needs a recording
-      hook reachable from the network-generic `Environment`).
+- [x] **Nested protocol calls are now visible in traces.** `Protocol::execute` brackets every
+      protocol invocation (top-level and inline sub-protocol) with `ProtocolBegin`/`ProtocolEnd`
+      markers via no-op-by-default `Network::record_protocol_begin`/`record_protocol_end` hooks
+      (overridden only by the simulator), and `SimulationTrace`'s `Display` renders the result as an
+      indented brace-block tree that mirrors the call structure.
 - [ ] **D10 unification.** Collapse the duplicated `Link {recipient,sender}` and
       `ChannelId {local,remote}` + `flip_end_points` into one directed pair type; re-key
       `NetworkConfig::channel_config` to `Link` (also enables asymmetric up/down links).
@@ -291,8 +298,9 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
       across 0.2.0–0.4.0.)_
 - [x] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
       _(Done — `shares_from_secret` on additive/Shamir/Feldman is bound on `rand::CryptoRng`.)_
-- [ ] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0) and the real-TLS integration test
-      (0.4.0) are done; nested-call trace visibility and the D10 link unification remain.)_
+- [ ] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0), the real-TLS integration test
+      (0.4.0), nested-call trace visibility, and the straggler/virtual-time regression test are done;
+      only the D10 link unification remains.)_
 - [ ] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests across MSRV+stable,
       `publish --dry-run`.
 - [ ] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
