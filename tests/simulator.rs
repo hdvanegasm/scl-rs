@@ -814,26 +814,20 @@ impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
             // are slow, so both messages arrive well after the collector's quorum.
             let mut packet = Packet::empty();
             packet.write(&me.as_usize()).unwrap();
-            env.network
-                .send_to(PartyId::from(self.collector), &packet)
-                .await?;
-            env.network
-                .send_to(PartyId::from(self.late_receiver), &packet)
-                .await?;
+            env.network.send_to(self.collector, &packet).await?;
+            env.network.send_to(self.late_receiver, &packet).await?;
             env.network.close().await?;
             Ok(Vec::new())
         } else if self.fast_senders.contains(&me) {
             let mut packet = Packet::empty();
             packet.write(&me.as_usize()).unwrap();
-            env.network
-                .send_to(PartyId::from(self.collector), &packet)
-                .await?;
+            env.network.send_to(self.collector, &packet).await?;
             env.network.close().await?;
             Ok(Vec::new())
         } else if me == self.late_receiver {
             // Waits only for the straggler, keeping the simulation alive until the straggler's slow
             // messages have been delivered.
-            let packet = env.network.recv_from(PartyId::from(self.straggler)).await?;
+            let packet = env.network.recv_from(self.straggler).await?;
             env.network.close().await?;
             let value: usize = packet.read(0).unwrap();
             Ok(vec![value])
