@@ -279,9 +279,10 @@ impl NetworkConfig<'_> {
 
 /// Represents a network used to execute a protocol.
 ///
-/// `Network` requires [`Send`] so that protocols generic over `N: Network` can be implemented with
-/// the `#[async_trait]` `Protocol` trait (whose `run` future is `Send`). Both `SimNetwork` and
-/// `TcpNetwork` already satisfy this.
+/// `Network` requires [`Send`] so that protocols generic over an `Environment` (whose associated
+/// `Net: Network` threads through every layer) can be implemented with the `#[async_trait]`
+/// `Protocol` trait, whose `run` future is `Send`. Both `SimNetwork` and `TcpNetwork` already
+/// satisfy this.
 #[async_trait]
 pub trait Network: Send {
     /// Sends a `packet` to the party with ID `party_id`.

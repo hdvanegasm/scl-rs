@@ -30,8 +30,7 @@
 //! - [`executor`](crate::net::simulation::executor) — the network-agnostic scheduler: a dumb pump
 //!   that polls ready party tasks and, when all are parked, asks an idle handler to make progress.
 //! - [`switchboard`](crate::net::simulation::switchboard) — the in-memory message router and
-//!   virtual-time event loop ([`Switchboard`](crate::net::simulation::switchboard::Switchboard),
-//!   [`Link`](crate::net::simulation::switchboard::Link), the
+//!   virtual-time event loop ([`Switchboard`](crate::net::simulation::switchboard::Switchboard), the
 //!   [`Delay`](crate::net::simulation::switchboard::Delay) timing model), plus trace recording and
 //!   the [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) extension point.
 //! - [`network`](crate::net::simulation::network) —
@@ -43,7 +42,8 @@
 //!   and traces.
 //! - [`channel`](crate::net::simulation::channel) — shared channel configuration
 //!   ([`ChannelConfig`](crate::net::simulation::channel::ChannelConfig),
-//!   [`NetworkConfig`](crate::net::simulation::channel::NetworkConfig)) and the network timing math.
+//!   [`NetworkConfig`](crate::net::simulation::channel::NetworkConfig)), the directed
+//!   [`Link`](crate::net::simulation::channel::Link), and the network timing math.
 //! - [`event`](crate::net::simulation::event) — the
 //!   [`Event`](crate::net::simulation::event::Event) records collected into a
 //!   [`SimulationTrace`](crate::net::simulation::SimulationTrace).
@@ -56,16 +56,20 @@
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 //! use scl_rs::net::simulation::runtime::simulate;
 //! use scl_rs::net::PartyId;
+//! use scl_rs::protocol::GeneralEnv;
 //!
-//! let protocols = vec![
-//!     (PartyId::from(0), SendRecvProtocol),
-//!     (PartyId::from(1), SendRecvProtocol),
-//! ];
-//! let outcome = simulate(SimpleNetworkConfig, protocols, vec![]);
+//! let parties = vec![PartyId::from(0), PartyId::from(1)];
+//! let outcome = simulate(
+//!     SimpleNetworkConfig,
+//!     parties,
+//!     |_| SendRecvProtocol,
+//!     |_, net| GeneralEnv::new(net),
+//!     vec![],
+//! );
 //! let output_p0 = &outcome.outputs[&PartyId::from(0)];
 //! ```
 
-use crate::net::simulation::channel::{ChannelConfigBuilder, ChannelId};
+use crate::net::simulation::channel::{ChannelConfigBuilder, Link};
 use crate::net::simulation::event::{Event, EventType};
 use crate::net::{NetworkError, PartyId};
 use thiserror::Error;
@@ -110,10 +114,10 @@ pub enum SimulationError {
     #[error("party {0:?} not found")]
     PartyNotFound(PartyId),
     /// The channel was not in a certain set or collection.
-    #[error("channel {id:?} not found: {err_context}")]
+    #[error("channel {link:?} not found: {err_context}")]
     ChannelNotFound {
-        /// ID of the missing channel.
-        id: ChannelId,
+        /// The missing channel's directed link.
+        link: Link,
         /// Context for the error.
         err_context: &'static str,
     },

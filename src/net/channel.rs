@@ -1,4 +1,4 @@
-use crate::net::simulation::channel::ChannelId;
+use crate::net::simulation::channel::Link;
 use crate::net::simulation::SimulationError;
 use std::io::{self};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub enum ChannelError {
     TlsError(#[from] tokio_rustls::rustls::Error),
     /// The channel was not found in the set of available channels for the current node.
     #[error("channel not found: {0:?}")]
-    ChannelNotFound(ChannelId),
+    ChannelNotFound(Link),
     /// An internal error in a simulated network execution.
     #[error("error during the execution of the simulation")]
     Internal(Box<dyn std::error::Error + Send + Sync>),

@@ -2,42 +2,46 @@ use crate::net::simulation::{Result, SimulationError};
 use crate::net::PartyId;
 use std::time::Duration;
 
-/// An ID for a channel connecting two parties.
+/// A directed link between two parties: the channel that carries packets from `sender` to
+/// `recipient`.
 ///
-/// The ID of the channel consists of the pair of the two parties connected through the channel: the
-/// local party, and the remote party.
-#[derive(Hash, PartialEq, PartialOrd, Debug, Eq, Copy, Clone)]
-pub struct ChannelId {
-    local: PartyId,
-    remote: PartyId,
+/// A `Link` is the single identifier for a party-to-party channel throughout the simulator: it is
+/// the routing key for queued messages, the value recorded in the send/receive
+/// [`Event`](crate::net::simulation::event::Event)s, and the key passed to
+/// [`NetworkConfig::channel_config`] when timing a message. Because it is *directed* (`sender` →
+/// `recipient`), a [`NetworkConfig`] may give the two orientations of a party pair different
+/// characteristics (asymmetric up/down links); a symmetric configuration simply ignores the
+/// orientation.
+#[derive(Hash, PartialEq, Eq, Copy, Clone, Debug)]
+pub struct Link {
+    sender: PartyId,
+    recipient: PartyId,
 }
 
-impl ChannelId {
-    /// Creates a new channel.
-    pub fn new(local: PartyId, remote: PartyId) -> Self {
-        ChannelId { local, remote }
+impl Link {
+    /// Creates the directed link that carries packets from `sender` to `recipient`.
+    pub fn new(sender: PartyId, recipient: PartyId) -> Self {
+        Link { sender, recipient }
     }
 
-    /// Returns the channel ID consisting of the end-points of the channel flipped.
-    pub fn flip_end_points(&self) -> Self {
-        Self::new(self.remote, self.local)
+    /// The party that sends on this link.
+    pub fn sender(&self) -> PartyId {
+        self.sender
     }
 
-    /// Returns the ID of the local node in the channel ID.
-    pub fn local(&self) -> PartyId {
-        self.local
-    }
-
-    /// Returns the ID of the remote node in the channel ID.
-    pub fn remote(&self) -> PartyId {
-        self.remote
+    /// The party that receives on this link.
+    pub fn recipient(&self) -> PartyId {
+        self.recipient
     }
 }
 
 /// Configuration of a network.
 pub trait NetworkConfig: Clone + Send + Sync {
-    /// Returns the configuration for a specific channel.
-    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig;
+    /// Returns the configuration for the directed `link` (`sender` → `recipient`).
+    ///
+    /// The link is directed, so a configuration may return different characteristics for the two
+    /// orientations of the same party pair; a symmetric network ignores the direction.
+    fn channel_config(&self, link: Link) -> ChannelConfig;
 }
 
 /// Bandwidth used in this channel measured in bits per second.
@@ -306,9 +310,9 @@ impl Default for ChannelConfigBuilder {
 pub struct SimpleNetworkConfig;
 
 impl NetworkConfig for SimpleNetworkConfig {
-    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
+    fn channel_config(&self, link: Link) -> ChannelConfig {
         let mut default_config = ChannelConfigBuilder::default();
-        if channel_id.local == channel_id.remote {
+        if link.sender == link.recipient {
             default_config = default_config.net_type(NetworkType::Instant);
         }
         // SAFETY: The default values are correct. Hence, this will not panic.

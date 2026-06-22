@@ -1,4 +1,4 @@
-use crate::net::simulation::channel::ChannelId;
+use crate::net::simulation::channel::Link;
 use std::fmt;
 use std::time::Duration;
 
@@ -43,15 +43,15 @@ pub enum Event {
     CloseChannel {
         /// Virtual time at which the channel was closed.
         timestamp: Duration,
-        /// The channel that was closed.
-        channel_id: ChannelId,
+        /// The directed link that was closed.
+        link: Link,
     },
     /// The party sent a packet to a peer.
     SendData {
         /// Sender's virtual time when the packet was handed to the network.
         timestamp: Duration,
-        /// The channel the packet was sent on.
-        channel_id: ChannelId,
+        /// The directed link the packet was sent on (`sender` → `recipient`).
+        link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
     },
@@ -59,8 +59,8 @@ pub enum Event {
     ReceiveData {
         /// Receiver's virtual time when the packet was delivered.
         timestamp: Duration,
-        /// The channel the packet was received on.
-        channel_id: ChannelId,
+        /// The directed link the packet was received on (`sender` → `recipient`).
+        link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
     },
@@ -70,8 +70,8 @@ pub enum Event {
     HasData {
         /// Virtual time of the observation.
         timestamp: Duration,
-        /// The channel that has data available.
-        channel_id: ChannelId,
+        /// The directed link that has data available.
+        link: Link,
     },
     /// The party slept (waited) for a fixed duration.
     Sleep {
@@ -146,15 +146,26 @@ impl Event {
 
 /// Renders an event as a single human-readable line, useful for debugging a protocol's behavior.
 ///
-/// The format is `[<timestamp>s] <EVENT_NAME> <details>`, where channels are shown as
-/// `local -> remote` for outgoing operations and `local <- remote` for incoming ones.
+/// The format is `[<timestamp>s] <EVENT_NAME> <details>`. Links are shown from the recording
+/// party's perspective: `sender -> recipient` for outgoing operations and `recipient <- sender`
+/// for incoming ones, so the recording party is always on the left.
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let channel = |id: &ChannelId, arrow: &str| {
+        // The recording party is always shown on the left of the arrow, so the link reads from its
+        // own perspective: an outgoing operation is `sender -> recipient` and an incoming one is
+        // `recipient <- sender`.
+        let outgoing = |link: &Link| {
             format!(
-                "{} {arrow} {}",
-                id.local().as_usize(),
-                id.remote().as_usize()
+                "{} -> {}",
+                link.sender().as_usize(),
+                link.recipient().as_usize()
+            )
+        };
+        let incoming = |link: &Link| {
+            format!(
+                "{} <- {}",
+                link.recipient().as_usize(),
+                link.sender().as_usize()
             )
         };
 
@@ -163,20 +174,14 @@ impl fmt::Display for Event {
             Event::Stop { .. } => ("STOP", String::new()),
             Event::Killed { reason, .. } => ("KILLED", format!("reason: {reason}")),
             Event::Cancelled { .. } => ("CANCELLED", String::new()),
-            Event::CloseChannel { channel_id, .. } => ("CLOSE_CHANNEL", channel(channel_id, "->")),
-            Event::SendData {
-                channel_id, size, ..
-            } => (
-                "SEND",
-                format!("{} ({size} bytes)", channel(channel_id, "->")),
-            ),
-            Event::ReceiveData {
-                channel_id, size, ..
-            } => (
-                "RECV",
-                format!("{} ({size} bytes)", channel(channel_id, "<-")),
-            ),
-            Event::HasData { channel_id, .. } => ("HAS_DATA", channel(channel_id, "<-")),
+            Event::CloseChannel { link, .. } => ("CLOSE_CHANNEL", outgoing(link)),
+            Event::SendData { link, size, .. } => {
+                ("SEND", format!("{} ({size} bytes)", outgoing(link)))
+            }
+            Event::ReceiveData { link, size, .. } => {
+                ("RECV", format!("{} ({size} bytes)", incoming(link)))
+            }
+            Event::HasData { link, .. } => ("HAS_DATA", incoming(link)),
             Event::Sleep { duration, .. } => ("SLEEP", format!("for {duration:?}")),
             Event::Output { output, .. } => {
                 // Show small payloads in full; for larger ones show the first and last few bytes

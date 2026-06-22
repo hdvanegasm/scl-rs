@@ -10,38 +10,13 @@ use std::{
 
 use crate::net::{
     simulation::{
-        channel::{ChannelId, NetworkConfig},
+        channel::{Link, NetworkConfig},
         event::{Event, EventType},
         executor::Idle,
         SimulationTrace,
     },
     Packet, PartyId,
 };
-
-/// A directed link between two parties, identified from the receiver's side.
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub struct Link {
-    /// The recipient (receiver) of messages on this link.
-    pub recipient: PartyId,
-    /// The sender of messages on this link.
-    pub sender: PartyId,
-}
-
-impl Link {
-    /// The `ChannelId` whose `ChannelConfig` governs this link.
-    ///
-    /// Network properties are currently symmetric, so the orientation here is
-    /// not significant — but we canonicalize so send/recv never disagree even
-    /// if a future config becomes direction-sensitive.
-    pub fn channel_id(&self) -> ChannelId {
-        let (a, b) = (self.sender, self.recipient);
-        if a.as_usize() <= b.as_usize() {
-            ChannelId::new(a, b)
-        } else {
-            ChannelId::new(b, a)
-        }
-    }
-}
 
 /// A hook that runs in reaction to events recorded during a simulation.
 ///
@@ -128,10 +103,7 @@ impl Switchboard {
     /// Schedules a delivery event at the sender's current virtual time plus the link delay; the
     /// event loop (`deliver_next`) delivers it and wakes the recipient later.
     pub(crate) fn send(&mut self, from: PartyId, to: PartyId, packet: Packet) {
-        let link = Link {
-            sender: from,
-            recipient: to,
-        };
+        let link = Link::new(from, to);
 
         // Pick the current time of the sender.
         let now = self.clock_of(from);
@@ -139,7 +111,7 @@ impl Switchboard {
             from,
             Event::SendData {
                 timestamp: now,
-                channel_id: ChannelId::new(from, to),
+                link,
                 size: packet.size(),
             },
         );
@@ -157,7 +129,7 @@ impl Switchboard {
     pub(crate) fn deliver_next(&mut self) -> Idle {
         match self.events.pop() {
             Some(Reverse(event)) => {
-                let recipient_clock = self.clocks.entry(event.link.recipient).or_default();
+                let recipient_clock = self.clocks.entry(event.link.recipient()).or_default();
                 // Update the recipient clock for the event. The event may be behind in time.
                 *recipient_clock = (*recipient_clock).max(event.arrival);
                 self.msg_queues
@@ -181,12 +153,12 @@ impl Switchboard {
     /// Tries to receive a packet.
     fn try_recv(&mut self, link: Link) -> Option<Packet> {
         let packet = self.msg_queues.get_mut(&link)?.pop_front()?;
-        let timestamp = self.clock_of(link.recipient);
+        let timestamp = self.clock_of(link.recipient());
         self.record_event(
-            link.recipient,
+            link.recipient(),
             Event::ReceiveData {
                 timestamp,
-                channel_id: ChannelId::new(link.recipient, link.sender),
+                link,
                 size: packet.size(),
             },
         );
@@ -215,25 +187,16 @@ impl Switchboard {
             .copied()
             .filter(|&sender| {
                 self.msg_queues
-                    .get(&Link {
-                        recipient: local,
-                        sender,
-                    })
+                    .get(&Link::new(sender, local))
                     .is_some_and(|queue| !queue.is_empty())
             })
             .min_by_key(PartyId::as_usize)?;
 
         // Remove the other peers from the parked list as the future is resolving.
         for &peer in senders {
-            self.parked.remove(&Link {
-                recipient: local,
-                sender: peer,
-            });
+            self.parked.remove(&Link::new(peer, local));
         }
-        let packet = self.try_recv(Link {
-            recipient: local,
-            sender,
-        })?;
+        let packet = self.try_recv(Link::new(sender, local))?;
 
         Some((packet, sender))
     }
@@ -242,13 +205,7 @@ impl Switchboard {
     /// `senders` wakes the task. Used by [`RecvAny`] to suspend until any peer sends.
     pub(crate) fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
         for &sender in senders {
-            self.parked.insert(
-                Link {
-                    sender,
-                    recipient: local,
-                },
-                waker.clone(),
-            );
+            self.parked.insert(Link::new(sender, local), waker.clone());
         }
     }
 }
@@ -314,7 +271,7 @@ impl Recv {
     ) -> Self {
         Self {
             switchboard,
-            link: Link { recipient, sender },
+            link: Link::new(sender, recipient),
         }
     }
 }
@@ -362,8 +319,7 @@ where
     N: NetworkConfig,
 {
     fn delay(&self, link: Link, size_bytes: usize) -> Duration {
-        let channel_id = link.channel_id();
-        self.0.channel_config(channel_id).message_delay(size_bytes)
+        self.0.channel_config(link).message_delay(size_bytes)
     }
 }
 

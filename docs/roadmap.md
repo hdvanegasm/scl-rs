@@ -1,9 +1,16 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-06-17
+**Date:** 2026-06-22
 
 **Current version:** 0.4.1 (**published to crates.io on 2026-06-19**; tagged `v0.4.1`) — a patch
 release adding the `examples/simple_send_recv.rs` example on top of 0.4.0.
+
+**Unreleased (staged on `main` for the next `0.x`):** an environment-trait redesign (`Protocol<E:
+Environment>`, `simulate<P, E>` with an environment factory, `GeneralEnv`), `Protocol::execute` with
+a nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs, a
+`cargo-audit` CI workflow, a straggler/virtual-time regression test, and the D10 `Link` unification.
+These are breaking, so per the §2 policy the next release is a minor bump (`0.5.0`). See
+`CHANGELOG.md`.
 
 **Versioning stance:** scl-rs stays on **`0.x` indefinitely**. `1.0` is **not a planned milestone** —
 the "unaudited / not for production" posture is carried by the security disclaimer (not the version
@@ -19,7 +26,7 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
 
 ## 1. Current state (honest snapshot)
 
-**What exists and works** (`cargo build`, `cargo test`, `cargo doc -D warnings` all clean; ~4 kLOC):
+**What exists and works** (`cargo build`, `cargo test`, `cargo doc -D warnings` all clean; ~4.7 kLOC):
 
 - **`math`** — `Ring` and `FiniteField<const LIMBS>` traits; Mersenne‑61 field; secp256k1 base
   field, scalar field, and curve; rings, polynomials (Lagrange interpolation), matrices, vectors,
@@ -28,17 +35,21 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
 - **`net`** — real TLS point-to-point networking (`TcpNetwork` over `tokio-rustls`) **and** a
   single-threaded deterministic discrete-event simulator (`SimNetwork` + `Switchboard` + virtual
   clock), both behind one `Network` trait.
-- **`protocol`** — one `Protocol<N>` trait with a typed `Output`; protocols compose by direct
-  `.await`; `simulate<P>` runs them deterministically and returns typed outputs + event traces.
+- **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output`; protocols compose by
+  calling one another through `Protocol::execute` (which brackets each call with trace markers).
+  `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
+  protocols deterministically and returns typed outputs + nesting-aware event traces.
 
-**Publishability is now cleared** (see §4): `Cargo.toml` has `license`, `description`, `keywords`,
-`categories`, `repository`, `readme`; tokio features are narrowed; `certs/` and the generator script
-are excluded; `cargo publish --dry-run` passes; and the TLS `send` flush (§7) is fixed. A first `0.x`
-release can go out now.
+**Published and iterating** (see §4): releases `0.2.0`–`0.4.1` have shipped to crates.io. `Cargo.toml`
+has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
+narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
+is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. A substantial breaking
+redesign is now staged unreleased on `main` for the next `0.x` (see the header note).
 
-**What remains** is mostly _productization_, not core features: API stabilization, hardening, and
-docs/examples. (MSRV, the security disclaimer, and `SECURITY.md` are now in place.) Those are the body
-of this roadmap — work that improves the `0.x` line, not a checklist gating a `1.0`.
+**What remains** is mostly _productization_, not core features: finishing the §6 hardening
+(constant-time review — deferred; threat-model doc), §9 docs (`CONTRIBUTING.md`, a real-TLS example),
+and chosen §10 features. Those are the body of this roadmap — work that improves the `0.x` line, not a
+checklist gating a `1.0`.
 
 ---
 
@@ -99,27 +110,29 @@ This is cryptography / MPC code. Going public without a clear posture is itself 
   production use") in `README.md`, crate docs, and a `SECURITY.md`.
 - Decide the **threat model** you claim (honest-but-curious? malicious? side-channel resistance?) and
   state it. Today the arithmetic uses **variable-time** sampling (`Uint::random_mod_vartime` in the
-  secp256k1 fields) and the secret-sharing APIs accept any `Rng` (not necessarily a CSPRNG) — so the
-  honest current claim is "no side-channel guarantees." See §6.
+  secp256k1 fields), so the honest current claim is "no side-channel guarantees" — the
+  secret-generation APIs now require a CSPRNG (§6), but that addresses predictability, not timing.
+  This posture is stated in `SECURITY.md`. See §6.
 
 ---
 
 ## 4. Workstream — Publishability (make `cargo publish` succeed)
 
-Mechanical, do first; unblocks an early `0.x` on crates.io. **Essentially complete** — the dry-run
-passes and the package is clean. Only MSRV and the docs.rs verification remain.
+Mechanical, do first; unblocked an early `0.x` on crates.io. **Complete** — every item below is done:
+the dry-run passes, the package is clean, MSRV is pinned, and docs.rs renders.
 
 - [x] Add `license` to `Cargo.toml` — `license = "AGPL-3.0-or-later"` (see D-A).
 - [x] Add `description` — present.
 - [x] `repository`, `readme`, `keywords`, `categories` — present. (`documentation`/`homepage` are
       optional niceties; docs.rs is inferred from the crate name.)
-- [x] Narrow tokio features: now `tokio = { features = ["net", "io-util", "time", "rt"] }` (down from
-      `"full"`); `cargo build`/`cargo test` green. `rt` is needed only by the unused
-      `JoinHandleError` variant — drop that variant and `rt` can go too.
+- [x] Narrow tokio features: now `["net", "io-util", "time", "rt", "macros", "sync"]` (down from
+      `"full"`); `cargo build`/`cargo test` green. `rt` is still needed only by the unused
+      `JoinHandleError` variant — dropping that variant would let `rt` go too (still present as of
+      0.4.1).
 - [x] `cargo publish --dry-run` clean; `exclude = ["certs/", "gen_self_signed_certs.sh"]` keeps the
       private keys and generator script out of the tarball (`cargo package --list` confirms no
       `.pem`/`.key`/`.crt` ship).
-- [x] Declare an **MSRV**: `rust-version = "1.XX"` and test it in CI.
+- [x] Declare an **MSRV**: `rust-version = "1.85.1"`, with a dedicated MSRV job in CI.
 - [x] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
 
 ## 5. Workstream — API stabilization (toward a stable `0.x` API)
@@ -127,6 +140,11 @@ passes and the package is clean. Only MSRV and the docs.rs verification remain.
 Each item below is a breaking change. On `0.x` these stay relatively cheap, but the aim is to land
 them, let the API **bake**, and then break only rarely — so do them deliberately and batch them per
 release rather than dribbling breaks out continuously.
+
+> **Note:** the items below record the API as settled at **0.4.0**. The unreleased `Environment`
+> redesign (staged for `0.5.0`) has since superseded two of them — `Protocol<N>` → `Protocol<E:
+> Environment>` and `simulate<P>` → `simulate<P, E>` with an environment factory — so where these
+> entries say "now," read it as "as of 0.4.0."
 
 - [x] **`Packet` consumer API is error-swallowing — fixed in 0.4.0.** `read(idx)` and `pop()` now
       return `Result<T, NetworkError>` (`EmptyPacket`/`WrongPacketIdx`), so consumers can distinguish
@@ -171,9 +189,11 @@ release rather than dribbling breaks out continuously.
       are now bound on `R: CryptoRng` (which, in rand 0.10, implies `RngCore`), so callers can't seed
       secret material from a predictable PRG. Lower-level, not-inherently-secret sampling
       (`Ring::random`, `Polynomial`/`Matrix`/`Vector::random`) deliberately still accepts any `Rng`.
-- [ ] **Constant-time review.** secp256k1 field sampling uses `random_mod_vartime`; audit field/curve
-      ops for data-dependent timing on secret inputs. Either provide constant-time paths or document
-      the absence of side-channel resistance precisely.
+- [ ] **Constant-time review** — _deliberately deferred while the library is research/prototyping
+      (decided 2026-06-22); not a near-term priority._ secp256k1 field sampling uses
+      `random_mod_vartime`; a future audit would check field/curve ops for data-dependent timing on
+      secret inputs and either provide constant-time paths or document the absence precisely. The
+      current "no side-channel guarantees" posture is already stated in `SECURITY.md`.
 - [x] **Supply-chain hygiene.** `cargo-audit` (RUSTSEC advisories) runs in CI via a dedicated
       `Security audit` workflow (`.github/workflows/audit.yml`): on push/PR to `main` and a weekly
       cron, with `-D warnings` so unmaintained/yanked advisories also gate. Known-unfixable advisories
@@ -181,7 +201,7 @@ release rather than dribbling breaks out continuously.
       `atomic-polyfill` pulled in via postcard → heapless 0.7). `cargo-deny` (license/bans) not added.
 - [ ] **Threat-model doc** stating what each primitive does and does not guarantee (ties to D-B).
 
-## 7. Workstream
+## 7. Workstream — Networking & simulator correctness
 
 - [x] **`channel.rs::send` flushes after its writes.** Now does `write_all(len)` → `write_all(bytes)`
       → `flush().await?` (channel.rs:77-79), fixing the `tokio-rustls` ciphertext-buffering stall on a
@@ -214,29 +234,36 @@ release rather than dribbling breaks out continuously.
         bumps the collector's clock) only after the collector has finished; the collector's `Stop` is
         stamped at the quorum instant, strictly before the straggler's arrival (observed at a late
         receiver that keeps the run alive).
-- [x] **Trace `channel_id` perspective bug.** _Resolved._ `Switchboard::send`/`try_recv` now record
-      events with `ChannelId::new(recorder, peer)` (recorder in the `local` slot), so `Event::Display`
-      renders arrows from each party's own perspective; the canonical `link.channel_id()` survives only
-      in `ConfigDelay::delay`, where the symmetric lookup is intended. Guarded by the
-      `trace_arrows_reflect_each_party_perspective` regression test (`tests/simulator.rs`).
+- [x] **Trace perspective bug.** _Resolved._ Send/receive events record the directed `Link` they
+      occurred on, and `Event::Display` renders arrows from each party's own perspective by event
+      direction (`sender -> recipient` outgoing, `recipient <- sender` incoming), so each party's
+      trace reads from its own viewpoint. Guarded by the `trace_arrows_reflect_each_party_perspective`
+      regression test (`tests/simulator.rs`). (The original canonical-`ChannelId` mechanism was
+      superseded by the D10 `Link` unification below.)
 - [x] **Nested protocol calls are now visible in traces.** `Protocol::execute` brackets every
       protocol invocation (top-level and inline sub-protocol) with `ProtocolBegin`/`ProtocolEnd`
       markers via no-op-by-default `Network::record_protocol_begin`/`record_protocol_end` hooks
       (overridden only by the simulator), and `SimulationTrace`'s `Display` renders the result as an
       indented brace-block tree that mirrors the call structure.
-- [ ] **D10 unification.** Collapse the duplicated `Link {recipient,sender}` and
-      `ChannelId {local,remote}` + `flip_end_points` into one directed pair type; re-key
-      `NetworkConfig::channel_config` to `Link` (also enables asymmetric up/down links).
+- [x] **D10 unification.** The duplicated `Link {recipient,sender}` (routing) and
+      `ChannelId {local,remote}` (config/trace) are collapsed into one directed `Link {sender,
+      recipient}` in `net::simulation::channel`; the dead `flip_end_points` is removed.
+      `NetworkConfig::channel_config` is re-keyed to `Link`, enabling asymmetric up/down links (the
+      delay is no longer canonicalized to an unordered pair). The same `Link` now serves routing,
+      config, and the `Event` trace, and arrows are rendered from event direction (`sender ->
+      recipient` / `recipient <- sender`).
 
 ## 8. Workstream — Quality gates & CI
 
-CI now runs separate fmt / clippy / test / doc jobs (the `module_inception` and `needless_borrow`
-lints were cleared; `tests/simulator/` was flattened to a single `tests/simulator.rs`):
+CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inception` and
+`needless_borrow` lints were cleared; `tests/simulator/` was flattened to a single
+`tests/simulator.rs`), plus the dedicated `publish-dry-run` and `Security audit` workflows:
 
 - [x] `cargo fmt --all --check`.
 - [x] `cargo clippy --all-targets -- -D warnings` (green; pre-existing style lints cleared).
 - [x] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
-- [x] `cargo test` on stable. _(MSRV matrix still pending — needs `rust-version` first; see §4/0.3.0.)_
+- [x] `cargo test` on stable; a dedicated **MSRV** job builds on the pinned `rust-version = 1.85.1`
+      (added in 0.3.0). _(The MSRV job runs `cargo build`, not the full test suite.)_
 - [x] `cargo publish --dry-run` on tags — added in 0.4.0 (`.github/workflows/publish-dry-run.yml`,
       triggered on `v*` tags and manual dispatch). It also fails the job if any private-key/certificate
       material would be packaged.
@@ -245,9 +272,10 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
 
 ## 9. Workstream — Docs, examples & ecosystem
 
-- [ ] **`examples/` directory** (none today). At minimum: (a) a simulator run, (b) a real two-party
-      TLS deployment (the binary sketched in the crate docs), (c) a secret-sharing round-trip.
-      Runnable examples are the fastest on-ramp for new users.
+- [ ] **`examples/` directory** — _partially done._ Two examples exist: `simple_send_recv.rs` (a
+      simulator run) and `additive_shr_secure_sum.rs` (a secret-sharing round-trip on the simulator).
+      Still missing: (b) a runnable **real two-party TLS deployment** example (the binary sketched in
+      the crate docs).
 - [x] **`CHANGELOG.md`** (Keep a Changelog format) from 0.1.0 onward.
 - [x] **`SECURITY.md`** added (status/posture + threat model & known limitations: variable-time
       sampling, non-CSPRNG `Rng` inputs, unaudited). Reporting channel is public GitHub issues for now
@@ -282,7 +310,8 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, an early `0.x` release. |
 | **0.3.0**       | _Correct & clean_ ✅ **PUBLISHED 2026-06-17**      | Mutual TLS (mTLS) — wire-incompatible with 0.2.0; MSRV 1.85.1 + MSRV CI job; typed `serde` config parsing (`deny_unknown_fields`, `base_port` range check); `channel_id` perspective bug resolved + regression test; mTLS handshake tests (positive + negative); `Network::recv_any` **simulator-only** (quorum primitive). Tagged `v0.3.0`.                  |
 | **0.4.0**       | _API stabilization_ ✅ **PUBLISHED 2026-06-19**    | §5 in full (Packet `Result` API, error sweep incl. `NetworkConfig::new` → crate error, `Protocol` consumes `self`, `Environment` clock, prelude, naming/visibility audit). Plus the §7 `TcpNetwork::recv_any` implementation (cancel-safe `FramedRead` + `StreamMap` multiplexing) and the `tls_public_api_correctness` real-TLS socket integration test, and the §8 `publish-dry-run` tag workflow. Tagged `v0.4.0`. |
-| **0.x**         | _Hardening & completeness_                         | §6 (CSPRNG bounds, constant-time review, cargo-audit), §9 examples/docs, chosen §10 features.                                                                                                                                                               |
+| **0.5.0** (staged, unreleased) | _Composition & env redesign_         | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, and the D10 `Link` unification (§7). Breaking, so a minor bump per §2. Staged on `main`; not yet tagged. |
+| **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc), §9 docs (`CONTRIBUTING.md`, the real-TLS deployment example), and chosen §10 features.                                                                                                     |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
 ---
@@ -292,25 +321,30 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 The bar for considering the `0.x` API "settled" — the steady state of §11, not a `1.0` gate:
 
 - [ ] License recorded in `Cargo.toml` and consistent with `LICENSE`. _(Done — AGPL-3.0-or-later.)_
-- [ ] Security posture + threat model documented; `SECURITY.md` present; disclaimer prominent.
+- [x] Security posture + threat model documented; `SECURITY.md` present; disclaimer prominent. _(Done
+      — `SECURITY.md` states the unaudited posture, variable-time sampling, and side-channel
+      limitations; the README banner and crate-doc disclaimer are prominent. A more detailed
+      per-primitive threat-model doc (§6) remains optional.)_
 - [x] Public API reviewed and deliberately settled: `Packet` reads return `Result`; public error enums
       `#[non_exhaustive]`; `Protocol` receiver and `Environment::clock` settled; prelude in place. _(Done
       across 0.2.0–0.4.0.)_
 - [x] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
       _(Done — `shares_from_secret` on additive/Shamir/Feldman is bound on `rand::CryptoRng`.)_
-- [ ] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0), the real-TLS integration test
-      (0.4.0), nested-call trace visibility, and the straggler/virtual-time regression test are done;
-      only the D10 link unification remains.)_
-- [ ] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests across MSRV+stable,
-      `publish --dry-run`.
+- [x] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0), the real-TLS integration test
+      (0.4.0), nested-call trace visibility, the straggler/virtual-time regression test, and the D10
+      link unification are all done.)_
+- [x] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests on stable (build on MSRV
+      1.85.1), `publish --dry-run`, and `cargo-audit`. _(All jobs present in `.github/workflows/`.)_
 - [ ] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
+      _(Partial — the simulator-run and secret-sharing examples exist and `CHANGELOG.md` is current; a
+      real-deployment TLS example is still missing.)_
 - [ ] `docs.rs` renders cleanly; README on-ramp is accurate end to end.
 
 ---
 
 ## 13. Deferred (later `0.x` or beyond)
 
-- Nested-call trace visibility (§7).
+- Constant-time / side-channel hardening (§6) — deliberately deferred while prototyping.
 - Adversarial/reordering simulation harness (delay/drop/reorder deliveries) — a payoff of the
   explicit-blocking-state design (`Poll::Pending` = "party blocked on recv").
 - Packet loss / retransmission modeling in the event loop.

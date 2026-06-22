@@ -78,11 +78,11 @@ its behavior in `run`; network operations return a `Result`, so errors propagate
 
 ```rust
 #[async_trait]
-pub trait Protocol<N: Network>: Send + Sync {
+pub trait Protocol<E: Environment>: Send + Sync {
     /// The typed value this protocol produces.
     type Output;
     /// Behavior of the protocol when run.
-    async fn run(self, environment: &mut Environment<N>) -> Result<Self::Output, Error>;
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
     fn name(&self) -> &'static str;
 }
@@ -94,7 +94,8 @@ methods of the `Network`. A party can also take the next packet from _whichever_
 with `recv_any` — the basis for quorum-based protocols such as reliable broadcast, where a party acts
 on the first quorum of responses and must not block on the peers that stay silent. `recv_any` is
 available on both the simulator and a real TLS network. Because the protocol is written **generic
-over `N: Network`**, the very same code runs on either without changes:
+over `E: Environment`** (and therefore over any `Network` the environment wraps), the very same code
+runs on either without changes:
 
 ```rust
 use scl_rs::net::{Network, Packet};
@@ -103,21 +104,21 @@ use scl_rs::protocol::{Environment, Error, Protocol};
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
-impl<N: Network> Protocol<N> for SendRecvProtocol {
+impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // This protocol returns the other party's id.
     type Output = usize;
 
-    async fn run(self, env: &mut Environment<N>) -> Result<usize, Error> {
+    async fn run(self, env: &mut E) -> Result<usize, Error> {
         // Put this party's id into a packet and send it to the other party.
         let mut packet = Packet::empty();
-        packet.write(&env.network.local_party().as_usize())?;
+        packet.write(&env.network().local_party().as_usize())?;
 
-        let other = env.network.other()?;
-        env.network.send_to(other, &packet).await?;
+        let other = env.network().other()?;
+        env.network_mut().send_to(other, &packet).await?;
 
         // Receive the other party's id and return it as the typed output.
-        let received = env.network.recv_from(other).await?;
-        env.network.close().await?;
+        let received = env.network_mut().recv_from(other).await?;
+        env.network_mut().close().await?;
 
         let their_id: usize = received.read(0)?;
         Ok(their_id)
@@ -148,6 +149,7 @@ clock and returns a `SimulationOutcome` with each party's typed output and its e
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::runtime::simulate;
 use scl_rs::net::PartyId;
+use scl_rs::protocol::GeneralEnv;
 
 let p0 = PartyId::from(0_usize);
 let p1 = PartyId::from(1_usize);
@@ -155,7 +157,10 @@ let p1 = PartyId::from(1_usize);
 let outcome = simulate(
     SimpleNetworkConfig,
     vec![p0, p1],
+    // Per-party protocol factory.
     |_| SendRecvProtocol,
+    // Per-party environment factory: wrap the simulated network in the default environment.
+    |_, net| GeneralEnv::new(net),
     vec![],
 );
 
@@ -183,7 +188,7 @@ from command-line arguments):
 
 ```rust
 use scl_rs::net::{NetworkConfig, TcpNetwork};
-use scl_rs::protocol::{Environment, Protocol};
+use scl_rs::protocol::{GeneralEnv, Protocol};
 use std::path::Path;
 
 #[tokio::main]
@@ -196,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // `create` performs the TLS handshake with every peer, so it is async.
     let network = TcpNetwork::create(my_id, config).await?;
-    let mut env = Environment::new(network);
+    let mut env = GeneralEnv::new(network);
 
     // The very same protocol that ran on the simulator now runs over real TLS.
     let output = SendRecvProtocol.execute(&mut env).await?;

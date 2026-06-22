@@ -1,5 +1,5 @@
 use scl_rs::net::simulation::channel::{
-    Bandwidth, ChannelConfig, ChannelConfigBuilder, ChannelId, NetworkConfig, NetworkType, Rtt,
+    Bandwidth, ChannelConfig, ChannelConfigBuilder, Link, NetworkConfig, NetworkType, Rtt,
     SimpleNetworkConfig,
 };
 use scl_rs::net::simulation::event::{Event, EventType};
@@ -200,8 +200,8 @@ fn chained_protocols_pass_state_between_stages() {
 pub struct SlowNetworkConfig;
 
 impl NetworkConfig for SlowNetworkConfig {
-    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
-        if channel_id.local() == channel_id.remote() {
+    fn channel_config(&self, link: Link) -> ChannelConfig {
+        if link.sender() == link.recipient() {
             // SAFETY: default builder values are valid, so the build does not fail.
             return ChannelConfigBuilder::default()
                 .net_type(NetworkType::Instant)
@@ -294,19 +294,20 @@ fn simulation_reflects_bandwidth_and_latency() {
 fn simulation_trace_renders_events_nicely() {
     use std::time::Duration;
 
-    let channel = ChannelId::new(PartyId::from(0), PartyId::from(1));
+    // A directed link carrying packets from party 0 to party 1.
+    let channel = Link::new(PartyId::from(0), PartyId::from(1));
     let trace = SimulationTrace::new(vec![
         Event::Start {
             timestamp: Duration::ZERO,
         },
         Event::SendData {
             timestamp: Duration::from_millis(100),
-            channel_id: channel,
+            link: channel,
             size: 8,
         },
         Event::ReceiveData {
             timestamp: Duration::from_millis(200),
-            channel_id: channel,
+            link: channel,
             size: 16,
         },
         Event::Stop {
@@ -318,12 +319,13 @@ fn simulation_trace_renders_events_nicely() {
 
     // One line per event, in order.
     assert_eq!(rendered.lines().count(), 4);
-    // Each event is rendered with its name and the expected channel direction.
+    // Each event is rendered from the recording party's perspective: a send on the 0 -> 1 link is
+    // shown as `0 -> 1`, while a receive on that same link is the receiver's view, `1 <- 0`.
     assert!(rendered.contains("START"));
     assert!(rendered.contains("SEND"));
     assert!(rendered.contains("0 -> 1 (8 bytes)"));
     assert!(rendered.contains("RECV"));
-    assert!(rendered.contains("0 <- 1 (16 bytes)"));
+    assert!(rendered.contains("1 <- 0 (16 bytes)"));
     assert!(rendered.contains("STOP"));
 }
 
@@ -753,16 +755,16 @@ const STRAGGLER_ID: usize = 4;
 pub struct StragglerNetworkConfig;
 
 impl NetworkConfig for StragglerNetworkConfig {
-    fn channel_config(&self, channel_id: ChannelId) -> ChannelConfig {
-        if channel_id.local() == channel_id.remote() {
+    fn channel_config(&self, link: Link) -> ChannelConfig {
+        if link.sender() == link.recipient() {
             // SAFETY: default builder values are valid, so the build does not fail.
             return ChannelConfigBuilder::default()
                 .net_type(NetworkType::Instant)
                 .build()
                 .unwrap();
         }
-        let touches_straggler = channel_id.local().as_usize() == STRAGGLER_ID
-            || channel_id.remote().as_usize() == STRAGGLER_ID;
+        let touches_straggler =
+            link.sender().as_usize() == STRAGGLER_ID || link.recipient().as_usize() == STRAGGLER_ID;
         let rtt_ms = if touches_straggler { 20_000 } else { 100 };
         // SAFETY: the values below are valid, so the build does not fail.
         ChannelConfigBuilder::default()
@@ -782,11 +784,11 @@ impl NetworkConfig for StragglerNetworkConfig {
 /// popped *after* the collector has already finished, exercising the "delivery bumps the clock but
 /// is inert once the party is done" path.
 struct StragglerScenario {
-    collector: usize,
+    collector: PartyId,
     quorum: usize,
-    fast_senders: Vec<usize>,
-    straggler: usize,
-    late_receiver: usize,
+    fast_senders: Vec<PartyId>,
+    straggler: PartyId,
+    late_receiver: PartyId,
 }
 
 #[async_trait]
@@ -796,7 +798,7 @@ impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
     type Output = Vec<usize>;
 
     async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
-        let me = env.network.local_party().as_usize();
+        let me = env.network.local_party();
 
         if me == self.collector {
             let mut heard = Vec::new();
@@ -811,7 +813,7 @@ impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
             // The straggler reports its id to both the collector and the late receiver. Both links
             // are slow, so both messages arrive well after the collector's quorum.
             let mut packet = Packet::empty();
-            packet.write(&me).unwrap();
+            packet.write(&me.as_usize()).unwrap();
             env.network
                 .send_to(PartyId::from(self.collector), &packet)
                 .await?;
@@ -822,7 +824,7 @@ impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
             Ok(Vec::new())
         } else if self.fast_senders.contains(&me) {
             let mut packet = Packet::empty();
-            packet.write(&me).unwrap();
+            packet.write(&me.as_usize()).unwrap();
             env.network
                 .send_to(PartyId::from(self.collector), &packet)
                 .await?;
@@ -857,11 +859,11 @@ fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
         StragglerNetworkConfig,
         parties,
         |_| StragglerScenario {
-            collector: 0,
+            collector: PartyId::from(0),
             quorum: 3,
-            fast_senders: vec![1, 2, 3],
-            straggler: STRAGGLER_ID,
-            late_receiver: 5,
+            fast_senders: (1..=3).map(PartyId::from).collect(),
+            straggler: PartyId::from(STRAGGLER_ID),
+            late_receiver: PartyId::from(5),
         },
         |_, net| GeneralEnv::new(net),
         vec![],

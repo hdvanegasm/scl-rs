@@ -45,9 +45,9 @@ pub trait Protocol<E: Environment>: Send + Sync {
     }
 }
 
-/// Environment that holds all the information needed accross multiple composability layers.
+/// Environment that holds all the information needed across multiple composability layers.
 ///
-/// This is information that is needed throughout the entire session no mather how deep you go in the
+/// This is information that is needed throughout the entire session no matter how deep you go in the
 /// composability layers. For example, a common case that is needed (and required) across all
 /// protocol and sub-protocol calls (in every composability layer) is the network. Hence, we enforce
 /// that the environment should hold the object that implements the [`Network`] trait, as the same
@@ -58,14 +58,14 @@ pub trait Environment: Send {
 
     /// Returns a mutable reference to the network used for the protocol execution.
     fn network_mut(&mut self) -> &mut Self::Net;
-    /// Returns an inmutable reference to the network used for the protocol execution.
+    /// Returns an immutable reference to the network used for the protocol execution.
     fn network(&self) -> &Self::Net;
 }
 
 /// Environment that provides the network as the sole information that traverses through layers.
 ///
 /// This is the most basic environment. If a protocol requires information that needs to be passed
-/// to deep layers of protocol composition, we recommend the API user to create a diferent struct that
+/// to deep layers of protocol composition, we recommend the API user to create a different struct that
 /// implements the [`Environment`] trait.
 pub struct GeneralEnv<N: Network> {
     /// Network in which the protocol is being executed.

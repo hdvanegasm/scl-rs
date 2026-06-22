@@ -43,6 +43,17 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   as `rand::rng()` or a `ChaCha20Rng` seeded from OS entropy; a non-CSPRNG generator no longer
   compiles. Lower-level sampling that is not inherently secret (`Ring::random`, `Polynomial::random`,
   `Matrix::random`, `Vector::random`) is unchanged and still accepts any `Rng`.
+- **`ChannelId` is replaced by a single directed `Link` type.** The simulator previously had two
+  party-pair types — `ChannelId { local, remote }` and an internal routing `Link` — which are now
+  collapsed into one directed `Link { sender, recipient }` in
+  `net::simulation::channel`. `NetworkConfig::channel_config` now takes a `Link` (`sender` →
+  `recipient`) instead of a `ChannelId`, so a configuration can give the two directions of a party
+  pair different characteristics (asymmetric up/down links); the `SendData`/`ReceiveData`/etc.
+  `Event` variants carry a `link: Link` instead of `channel_id: ChannelId`. **Migration:** in a
+  `channel_config` implementation, replace `channel_id.local()`/`.remote()` with
+  `link.sender()`/`.recipient()` (loopback is `link.sender() == link.recipient()`); the unused
+  `ChannelId::flip_end_points` is removed. Trace rendering is unchanged — links still print from each
+  party's own perspective (`sender -> recipient` outgoing, `recipient <- sender` incoming).
 
 ### Added
 

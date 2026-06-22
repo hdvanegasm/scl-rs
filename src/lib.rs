@@ -53,12 +53,12 @@
 //!
 //! Protocols communicate by sending `Packet`s — encapsulated bytes that can carry shares, field
 //! elements, polynomials, curve points, or any serializable type — through the `send_to` / `recv_from`
-//! methods of the `Network` wich is accessed through the `Environment`. A party can also
+//! methods of the `Network`, which is accessed through the `Environment`. A party can also
 //! take the next packet from *whichever* peer responds first with `recv_any` — the
 //! basis for quorum-based protocols such as reliable broadcast, where a
 //! party acts on the first quorum of responses and must not block on the peers that stay silent.
 //! `recv_any` is available on both the simulator and a real TLS network. Because the protocol is
-//! written **generic over `N: Network`**, the very same code runs on either without changes:
+//! written **generic over `E: Environment`**, the very same code runs on either without changes:
 //!
 //! ```rust
 //! use async_trait::async_trait;
@@ -287,10 +287,10 @@
 /// The crate's common imports, gathered for a single glob import.
 ///
 /// Most protocol code needs the same handful of items — the [`Protocol`] trait
-/// and its [`Environment`] and [`Error`], the [`Network`] abstraction with
-/// [`Packet`] and [`PartyId`], the [`simulate`] entry point, and the core
-/// `math` traits. Instead of importing each from its own module, bring them all
-/// into scope at once:
+/// with its [`Environment`] (and the default [`GeneralEnv`]) and [`Error`], the
+/// [`Network`] abstraction with [`Packet`] and [`PartyId`], the [`simulate`]
+/// entry point, and the core `math` traits. Instead of importing each from its
+/// own module, bring them all into scope at once:
 ///
 /// ```
 /// use scl_rs::prelude::*;
@@ -303,7 +303,7 @@
 /// [`Packet`]: crate::net::Packet
 /// [`PartyId`]: crate::net::PartyId
 /// [`simulate`]: crate::net::simulation::runtime::simulate
-/// [`GeneralEnv`]: crate::protocol::Environment
+/// [`GeneralEnv`]: crate::protocol::GeneralEnv
 pub mod prelude {
     pub use crate::math::{
         ec::EllipticCurve, field::FiniteField, matrix::Matrix, ring::Ring, vector::Vector,
