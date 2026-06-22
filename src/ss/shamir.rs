@@ -2,7 +2,7 @@ use crate::math::{
     field::FiniteField,
     poly::{interpolate_polynomial_at, Polynomial},
 };
-use rand::Rng;
+use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 use super::ShareError;
@@ -27,11 +27,16 @@ where
     }
 
     /// Computes a share from a secret.
+    ///
+    /// The sharing polynomial hides the secret in its other coefficients, so `rng` is bound on
+    /// [`CryptoRng`] to keep callers from sampling those coefficients with a predictable
+    /// (non-cryptographic) generator. Pass a cryptographically secure source such as `rand::rng()`
+    /// or a `ChaCha20Rng` seeded from OS entropy.
     pub fn shares_from_secret(
         secret: F,
         degree: usize,
         party_indexes: &[F],
-        rng: &mut impl Rng,
+        rng: &mut impl CryptoRng,
     ) -> (Vec<Self>, Polynomial<F>) {
         let mut polynomial = Polynomial::random(degree, rng);
         polynomial.set_constant_coeff(secret);

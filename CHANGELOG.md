@@ -36,6 +36,13 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   opens with `<name> {`, indents the events that occur within it, and closes with `}` at the same
   level as the opening line; nested sub-protocol calls indent further, so the tree mirrors the call
   structure.
+- **Secret-generation APIs now require a CSPRNG.** `AdditiveSS::shares_from_secret`,
+  `ShamirSS::shares_from_secret`, and `FeldmanSS::shares_from_secret` bound their generator on
+  `rand::CryptoRng` instead of `rand::Rng`, so secret material can no longer be seeded from a
+  predictable (non-cryptographic) generator. **Migration:** pass a cryptographically secure RNG such
+  as `rand::rng()` or a `ChaCha20Rng` seeded from OS entropy; a non-CSPRNG generator no longer
+  compiles. Lower-level sampling that is not inherently secret (`Ring::random`, `Polynomial::random`,
+  `Matrix::random`, `Vector::random`) is unchanged and still accepts any `Rng`.
 
 ### Added
 

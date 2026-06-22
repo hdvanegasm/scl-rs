@@ -13,7 +13,7 @@ If you use **scl-rs** in production, use it at your own risk. The authors and co
 scl-rs currently makes **no side-channel resistance guarantees**. In particular:
 
 - Some field arithmetic uses **variable-time** operations (e.g. `random_mod_vartime` in the secp256k1 fields), so timing may depend on secret values.
-- The secret-sharing APIs accept any `rand::Rng`; security requires the caller to supply a cryptographically secure RNG (CSPRNG). The library does not enforce this.
+- The secret-generation APIs (`AdditiveSS::shares_from_secret`, `ShamirSS::shares_from_secret`, `FeldmanSS::shares_from_secret`) now require a cryptographically secure RNG by bounding their generator on `rand::CryptoRng`, so secret material cannot be seeded from a predictable generator. Lower-level sampling that is not inherently secret material (e.g. `Ring::random`, `Polynomial::random`) still accepts any `rand::Rng`; supplying secret inputs through those is the caller's responsibility.
 - No formal analysis or audit has been performed on the protocols, the networking, or the cryptographic primitives.
 
 Treat all guarantees as "best effort for research" until a release explicitly states otherwise.

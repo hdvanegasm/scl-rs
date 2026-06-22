@@ -5,7 +5,7 @@
 use std::ops::Add;
 
 use crate::math::ring::Ring;
-use rand::Rng;
+use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 /// Represents an additive share.
@@ -26,8 +26,12 @@ where
         &self.0
     }
 
-    /// Computes the shares for a `secret` for `n_parties` number of parties using the PRG `rng`.
-    pub fn shares_from_secret<R: Rng>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
+    /// Computes the shares for a `secret` for `n_parties` number of parties using the CSPRNG `rng`.
+    ///
+    /// The shares are secret material, so `rng` is bound on [`CryptoRng`] to keep callers from
+    /// seeding secrets with a predictable (non-cryptographic) generator. Pass a cryptographically
+    /// secure source such as `rand::rng()` or a `ChaCha20Rng` seeded from OS entropy.
+    pub fn shares_from_secret<R: CryptoRng>(secret: T, n_parties: usize, rng: &mut R) -> Vec<Self> {
         let mut shares = Vec::with_capacity(n_parties);
         let mut rand_acc = T::ZERO;
         for _ in 1..n_parties {

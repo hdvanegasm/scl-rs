@@ -166,9 +166,11 @@ release rather than dribbling breaks out continuously.
 
 ## 6. Workstream — Crypto & security hardening
 
-- [ ] **CSPRNG bounds for secret material.** Secret-generation APIs (`AdditiveShares::shares_from_secret`,
-      Shamir/Feldman) accept any `R: Rng`. Bound them on `R: CryptoRng + RngCore` (or document loudly)
-      so callers can't accidentally seed secrets from a predictable PRG.
+- [x] **CSPRNG bounds for secret material.** The secret-generation APIs
+      (`AdditiveSS::shares_from_secret`, `ShamirSS::shares_from_secret`, `FeldmanSS::shares_from_secret`)
+      are now bound on `R: CryptoRng` (which, in rand 0.10, implies `RngCore`), so callers can't seed
+      secret material from a predictable PRG. Lower-level, not-inherently-secret sampling
+      (`Ring::random`, `Polynomial`/`Matrix`/`Vector::random`) deliberately still accepts any `Rng`.
 - [ ] **Constant-time review.** secp256k1 field sampling uses `random_mod_vartime`; audit field/curve
       ops for data-dependent timing on secret inputs. Either provide constant-time paths or document
       the absence of side-channel resistance precisely.
@@ -240,8 +242,9 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
       sampling, non-CSPRNG `Rng` inputs, unaudited). Reporting channel is public GitHub issues for now
       (acceptable for a research tool); a private channel can be added if the posture changes.
 - [ ] **`CONTRIBUTING.md`**.
-- [ ] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
-      at the top.
+- [x] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
+      at the top. _(Done — the old checkbox list was replaced by the "Status and roadmap" section
+      linking to this file; the two leftover specifics moved to §10 as "open README item"s.)_
 - [ ] Optional rename `runtime.rs` → `simulator.rs` (cosmetic and breaking — module paths are public,
       so batch it with other §5 breaks if done at all).
 
@@ -282,7 +285,8 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
 - [x] Public API reviewed and deliberately settled: `Packet` reads return `Result`; public error enums
       `#[non_exhaustive]`; `Protocol` receiver and `Environment::clock` settled; prelude in place. _(Done
       across 0.2.0–0.4.0.)_
-- [ ] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
+- [x] Secret-generation APIs require a CSPRNG (or the limitation is documented as a conscious choice).
+      _(Done — `shares_from_secret` on additive/Shamir/Feldman is bound on `rand::CryptoRng`.)_
 - [ ] All §7 correctness loose ends closed. _(TLS `flush` (0.2.0) and the real-TLS integration test
       (0.4.0) are done; nested-call trace visibility and the D10 link unification remain.)_
 - [ ] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests across MSRV+stable,

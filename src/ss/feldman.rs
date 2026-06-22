@@ -1,6 +1,6 @@
 use super::{shamir::ShamirSS, ShareError};
 use crate::math::{ec::EllipticCurve, ring::Ring};
-use rand::Rng;
+use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 /// Represents a Feldman Secret Sharing element.
@@ -46,11 +46,16 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     }
 
     /// Computes the Feldman Shares of a secret element.
+    ///
+    /// The underlying Shamir sharing hides the secret in the polynomial coefficients it samples, so
+    /// `rng` is bound on [`CryptoRng`] to keep callers from generating secret material with a
+    /// predictable (non-cryptographic) generator. Pass a cryptographically secure source such as
+    /// `rand::rng()` or a `ChaCha20Rng` seeded from OS entropy.
     pub fn shares_from_secret(
         secret: C::ScalarField,
         degree: usize,
         party_indexes: &[C::ScalarField],
-        rng: &mut impl Rng,
+        rng: &mut impl CryptoRng,
     ) -> Vec<Self> {
         let (shamir_shares, polynomial) =
             ShamirSS::shares_from_secret(secret, degree, party_indexes, rng);
