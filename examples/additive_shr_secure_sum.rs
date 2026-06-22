@@ -62,13 +62,17 @@ where
         let mut rng = ChaCha20Rng::from_rng(&mut rand::rng());
         let shares = AdditiveSS::shares_from_secret(self.secret, n_parties, &mut rng);
 
-        // Hand share `i` to party `i`. We send to *every* party, including ourselves: a party
-        // sending to itself is just an in-process delivery, which keeps this loop uniform.
+        // Hand share `i` to party `i`. We send to *every* party, including ourselves (a party
+        // sending to itself is just an in-process delivery, which keeps this uniform). Building the
+        // scatter as one `send_many` lets a real network dispatch the sends concurrently — one socket
+        // per peer — instead of serializing them; on the simulator the two are equivalent.
+        let mut messages = Vec::with_capacity(n_parties);
         for (party_id, share) in env.network().party_ids().iter().zip(shares) {
             let mut packet = Packet::empty();
             packet.write(&share)?;
-            env.network_mut().send_to(*party_id, &packet).await?;
+            messages.push((*party_id, packet));
         }
+        env.network_mut().send_many(&messages).await?;
 
         // Symmetrically, receive the one share that each party sent to us. After this loop we hold
         // exactly one share of every party's secret.
@@ -102,12 +106,17 @@ where
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
         let n_parties = env.network().party_ids().len();
 
-        // Reveal our own share by sending it to every party (ourselves included, as before).
-        for party in env.network().party_ids() {
-            let mut packet = Packet::empty();
-            packet.write(&self.share)?;
-            env.network_mut().send_to(party, &packet).await?;
-        }
+        // Reveal our own share by sending it to every party (ourselves included, as before) — the
+        // same packet scattered to all of them in one call.
+        let mut packet = Packet::empty();
+        packet.write(&self.share)?;
+        let messages: Vec<(PartyId, Packet)> = env
+            .network()
+            .party_ids()
+            .into_iter()
+            .map(|party| (party, packet.clone()))
+            .collect();
+        env.network_mut().send_many(&messages).await?;
 
         // Collect everyone's revealed share. Once we have all `n` shares of the same secret, their
         // sum is the secret itself.

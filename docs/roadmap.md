@@ -349,4 +349,13 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
   explicit-blocking-state design (`Poll::Pending` = "party blocked on recv").
 - Packet loss / retransmission modeling in the event loop.
 - Compute-time / sender-side cost modeling in the virtual clock.
+- **In-protocol timeout / deadline primitive (virtual-time).** Let a protocol wait on a `Network`
+  operation *with a deadline* and proceed if nothing arrives in time — needed by
+  partially-synchronous protocols (round timeouts, BFT view-change timers). It cannot be built on
+  `tokio::time::timeout`, whose clock is wall-clock: under the deterministic simulator the deadline
+  must be a **virtual-time** event scheduled on the switchboard that fires at a virtual instant and
+  wakes the parked party, so a timeout and a message race *deterministically*. Exposed through the
+  `Network`/`Environment` API so one code path runs on both backends (mapping to
+  `tokio::time::timeout` on a real deployment). The only protocol-facing capability with no
+  executor-agnostic workaround today — surfaced during the `send_many`/concurrency design.
 - Broader MPC protocol library on top of the typed-composition core.

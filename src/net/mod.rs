@@ -11,6 +11,7 @@ pub mod simulation;
 
 use crate::net::channel::ChannelError;
 use async_trait::async_trait;
+use futures_util::future::try_join_all;
 use postcard::from_bytes;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
@@ -287,6 +288,28 @@ impl NetworkConfig<'_> {
 pub trait Network: Send {
     /// Sends a `packet` to the party with ID `party_id`.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
+
+    /// Sends each `(party, packet)` in `messages`, returning once every packet has been handed to
+    /// the network.
+    ///
+    /// This is the *scatter* primitive: a party fanning a (typically distinct) message out to many
+    /// peers in one round. The default implementation sends sequentially; a backend where concurrent
+    /// sends matter — a real network with an independent socket per peer — may override it to
+    /// dispatch them concurrently. Any such concurrency must stay **within the calling task** (e.g.
+    /// `futures::future::join_all`), never `tokio::spawn` or a background thread, so the method stays
+    /// drivable by the deterministic simulator. The simulator stamps every send at the sender's
+    /// current virtual instant regardless of dispatch order, so sequential and concurrent dispatch
+    /// are equivalent there; an override only changes a real deployment.
+    ///
+    /// Each peer should appear at most once in `messages`; to send several packets to the same peer,
+    /// call [`send_to`](Network::send_to) in sequence.
+    async fn send_many(&mut self, messages: &[(PartyId, Packet)]) -> Result<()> {
+        for (party_id, packet) in messages {
+            self.send_to(*party_id, packet).await?;
+        }
+        Ok(())
+    }
+
     /// Receives a `packet` from the party with ID `party_id`.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
     /// Receives a `packet` from any party returning also the party ID of the sender.
@@ -571,6 +594,31 @@ impl Network for TcpNetwork {
             .send(packet.clone())
             .await?;
         Ok(bytes_sent)
+    }
+
+    /// Sends every message concurrently — one independent TLS socket per peer.
+    ///
+    /// Each peer's write half is independent, so rather than awaiting the sends one after another
+    /// (the default), this drives them all concurrently *within the current task* via
+    /// [`try_join_all`]: a fan-out round then costs roughly one send's latency instead of their sum.
+    /// No task is spawned, so this stays a plain `.await` over `Network` futures. Targets are
+    /// validated up front, so a missing peer is reported before any packet is sent.
+    async fn send_many(&mut self, messages: &[(PartyId, Packet)]) -> Result<()> {
+        for (party_id, _) in messages {
+            if !self.writers.contains_key(party_id) {
+                return Err(NetworkError::PartyNotFound(*party_id));
+            }
+        }
+        // `iter_mut` hands out a disjoint `&mut` per peer, so every matched send borrows a different
+        // writer and they can all be in flight at once.
+        let sends = self.writers.iter_mut().filter_map(|(party_id, writer)| {
+            messages
+                .iter()
+                .find(|(target, _)| target == party_id)
+                .map(|(_, packet)| writer.send(packet.clone()))
+        });
+        try_join_all(sends).await?;
+        Ok(())
     }
 
     /// Receives a packet from a given party.

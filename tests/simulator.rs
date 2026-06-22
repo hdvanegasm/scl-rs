@@ -918,3 +918,61 @@ fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
         "collector quorum time {quorum_time:?} should be well before the straggler arrival {straggler_arrival:?}",
     );
 }
+
+/// Protocol exercising [`Network::send_many`]. Party 0 scatters a *distinct* value (`10 * peer`) to
+/// every other party in a single call; each other party receives its value from party 0 and returns
+/// it. Verifies the scatter primitive delivers the right packet to each peer.
+struct ScatterProtocol;
+
+#[async_trait]
+impl Protocol<GeneralEnv<SimNetwork>> for ScatterProtocol {
+    /// Party 0: 0. Every other party: the value it received from party 0.
+    type Output = usize;
+
+    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
+        let me = env.network.local_party().as_usize();
+
+        if me == 0 {
+            let messages: Vec<(PartyId, Packet)> = env
+                .network
+                .party_ids()
+                .into_iter()
+                .filter(|party| party.as_usize() != 0)
+                .map(|party| {
+                    let mut packet = Packet::empty();
+                    packet.write(&(party.as_usize() * 10)).unwrap();
+                    (party, packet)
+                })
+                .collect();
+            env.network.send_many(&messages).await?;
+            env.network.close().await?;
+            Ok(0)
+        } else {
+            let packet = env.network.recv_from(PartyId::from(0)).await?;
+            env.network.close().await?;
+            Ok(packet.read(0).unwrap())
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "ScatterProtocol"
+    }
+}
+
+#[test]
+fn send_many_scatters_distinct_messages_to_each_peer() {
+    let parties: Vec<PartyId> = (0..4).map(PartyId::from).collect();
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        parties,
+        |_| ScatterProtocol,
+        |_, net| GeneralEnv::new(net),
+        vec![],
+    );
+
+    // Party 0 scattered `10 * peer` to each peer; every peer got exactly its own value.
+    assert_eq!(outcome.outputs[&PartyId::from(0)], 0);
+    for peer in [1usize, 2, 3] {
+        assert_eq!(outcome.outputs[&PartyId::from(peer)], peer * 10);
+    }
+}

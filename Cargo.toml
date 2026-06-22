@@ -35,6 +35,7 @@ tokio = { version = "1", features = [
 tokio-rustls = "0.26"
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-stream = "0.1"
+futures-util = "0.3"
 rustls-webpki = "0.103"
 
 [dev-dependencies]

@@ -68,6 +68,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `Protocol::execute`. They default to no-ops; the deterministic simulator overrides them to record
   `ProtocolBegin` / `ProtocolEnd` events, while real-network backends keep no trace and stay no-ops,
   so behavior there is unchanged.
+- **`Network::send_many`** — a *scatter* primitive that sends a batch of `(PartyId, Packet)` messages
+  in one round. It is a provided method that defaults to a sequential loop over `send_to`;
+  `TcpNetwork` overrides it to drive the per-peer socket writes concurrently (within the task, via
+  `try_join_all` — no spawning, so the deterministic simulator still drives it). On the simulator a
+  sequential and a concurrent scatter are equivalent (every send is stamped at the sender's current
+  virtual instant), so this only speeds up a real deployment while keeping one code path for both. The
+  `examples/additive_shr_secure_sum.rs` distribution and reconstruction rounds now use it. (Adds a
+  `futures-util` dependency.)
 - An `examples/additive_shr_secure_sum.rs` example: an `n`-party secure summation ("hello world" of
   MPC) built on additive secret sharing, composing a sharing-distribution sub-protocol and a
   reconstruction sub-protocol, generic over the environment. Runnable with
