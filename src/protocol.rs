@@ -20,6 +20,29 @@ pub trait Protocol<E: Environment>: Send + Sync {
     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
     fn name(&self) -> &'static str;
+
+    /// Runs this protocol bracketed by protocol-scope trace markers.
+    ///
+    /// This is the entry point for invoking a protocol — including a sub-protocol called from
+    /// within another protocol's [`run`](Protocol::run). It records a protocol-begin marker,
+    /// runs the protocol, and records a protocol-end marker. Those markers let the trace reflect
+    /// how protocols nest (see the tree-formatted
+    /// [`SimulationTrace`](crate::net::simulation::SimulationTrace) display). On backends that keep
+    /// no trace (a real network), the markers are no-ops, so behavior is identical to calling
+    /// [`run`](Protocol::run) directly.
+    ///
+    /// Prefer calling `execute` over `run`: `run` defines a protocol's behavior, while `execute`
+    /// invokes it with tracing.
+    async fn execute(self, environment: &mut E) -> Result<Self::Output, Error>
+    where
+        Self: Sized,
+    {
+        let name = self.name();
+        environment.network_mut().record_protocol_begin(name);
+        let output = self.run(environment).await;
+        environment.network_mut().record_protocol_end(name);
+        output
+    }
 }
 
 /// Environment that holds all the information needed accross multiple composability layers.

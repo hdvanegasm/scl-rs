@@ -102,20 +102,13 @@ where
     E: Environment<Net = SimNetwork>,
 {
     record_event(&switchboard, party, move |t| Event::Start { timestamp: t });
-    let name = protocol.name();
-    record_event(&switchboard, party, move |t| Event::ProtocolBegin {
-        timestamp: t,
-        protocol_name: name,
-    });
+    // `execute` brackets the protocol with protocol-begin/-end markers (recorded through the
+    // network's trace hooks), exactly as it does for any sub-protocol the protocol calls — so the
+    // top-level protocol nests in the trace the same way nested calls do.
     let result = protocol
-        .run(env)
+        .execute(env)
         .await
         .expect("the protocol should reach an end");
-
-    record_event(&switchboard, party, move |t| Event::ProtocolEnd {
-        timestamp: t,
-        protocol_name: name,
-    });
 
     let output =
         postcard::to_allocvec(&result).expect("the protocol result must serialize correctly");

@@ -9,8 +9,6 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Changed
 
 - **`Environment<N>` is now a trait, `Environment`, rather than a concrete struct.** The network is reached
@@ -33,12 +31,29 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   (the simulated environment must wrap the simulator's network) and `P: Protocol<E>`, the latter
   propagating each protocol's capability requirements to the factory: a protocol that needs a
   capability will not compile against an environment that does not provide it.
+- **`SimulationTrace`'s `Display` now renders as an indented tree** that shows protocol composition,
+  rather than a flat one-event-per-line list. Each protocol scope is rendered as a brace block: it
+  opens with `<name> {`, indents the events that occur within it, and closes with `}` at the same
+  level as the opening line; nested sub-protocol calls indent further, so the tree mirrors the call
+  structure.
 
 ### Added
 
 - The `Environment` trait (associated `type Net: Network`, `network_mut`) and `GeneralEnv<N>`, the
   general-purpose environment carrying only the network — the default for protocols that need no
   ambient capability beyond the wire.
+- **`Protocol::execute`** — a provided method that invokes a protocol (including a sub-protocol from
+  within another protocol's `run`), bracketing it with protocol-scope trace markers. `run` defines a
+  protocol's behavior; `execute` invokes it with tracing, so the trace reflects how protocols nest.
+  Invoke protocols through `execute` rather than `run` (e.g. `SubProtocol { .. }.execute(env).await?`).
+- **`Network::record_protocol_begin` / `record_protocol_end`** — trace hooks called by
+  `Protocol::execute`. They default to no-ops; the deterministic simulator overrides them to record
+  `ProtocolBegin` / `ProtocolEnd` events, while real-network backends keep no trace and stay no-ops,
+  so behavior there is unchanged.
+- An `examples/additive_shr_secure_sum.rs` example: an `n`-party secure summation ("hello world" of
+  MPC) built on additive secret sharing, composing a sharing-distribution sub-protocol and a
+  reconstruction sub-protocol, generic over the environment. Runnable with
+  `cargo run --example additive_shr_secure_sum`.
 
 ### Removed
 

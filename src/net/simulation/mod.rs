@@ -173,17 +173,55 @@ impl SimulationTrace {
     }
 }
 
-/// Renders the whole trace with one event per line, in the order in which the events occurred.
+/// Renders the whole trace as an indented tree, in the order in which the events occurred.
 ///
-/// This is meant for debugging a protocol's behavior: it can be printed to the console with
+/// Each protocol scope is delimited by a [`ProtocolBegin`](Event::ProtocolBegin) /
+/// [`ProtocolEnd`](Event::ProtocolEnd) pair (recorded by
+/// [`Protocol::execute`](crate::protocol::Protocol::execute)), rendered as a brace block: a
+/// protocol-begin line prints `<name> {` and indents everything that follows it; its matching
+/// protocol-end line prints `}` at the same level as the opening line. Because protocols nest when
+/// one calls another, the indentation shows the composition structure:
+///
+/// ```text
+/// SecureAdditionAdditiveShare {
+///     DistributeAdditiveShare {
+///         [     0.000s] SEND           0 -> 0 (33 bytes)
+///         ...
+///     }
+///     ReconstructAdditiveShare {
+///         ...
+///     }
+/// }
+/// ```
+///
+/// Every other event keeps its single-line `[<timestamp>s] <EVENT> <details>` form (see the
+/// [`Event`] display). This is meant for debugging a protocol's behavior: it can be printed with
 /// `println!("{trace}")` or written to a file with `write!(file, "{trace}")`.
 impl std::fmt::Display for SimulationTrace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const INDENT: &str = "    ";
+        let mut depth: usize = 0;
         for (idx, event) in self.0.iter().enumerate() {
             if idx > 0 {
                 writeln!(f)?;
             }
-            write!(f, "{event}")?;
+            // A closing brace dedents *before* it is printed, so it aligns with the line that
+            // opened the block. `saturating_sub` keeps rendering robust if a trace is unbalanced.
+            if let Event::ProtocolEnd { .. } = event {
+                depth = depth.saturating_sub(1);
+            }
+            for _ in 0..depth {
+                f.write_str(INDENT)?;
+            }
+            match event {
+                Event::ProtocolBegin { protocol_name, .. } => {
+                    write!(f, "{protocol_name} {{")?;
+                    // Everything up to the matching closing brace is nested one level deeper.
+                    depth += 1;
+                }
+                Event::ProtocolEnd { .. } => write!(f, "}}")?,
+                other => write!(f, "{other}")?,
+            }
         }
         Ok(())
     }

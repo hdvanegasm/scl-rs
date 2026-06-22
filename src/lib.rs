@@ -102,7 +102,7 @@
 //! straight back:
 //!
 //! ```ignore
-//! let their_id: usize = SendRecvProtocol.run(&mut env).await?;
+//! let their_id: usize = SendRecvProtocol.execute(&mut env).await?;
 //! ```
 //!
 //! ### Running on the simulator
@@ -194,7 +194,7 @@
 //!     let mut env = GeneralEnv::new(network);
 //!
 //!     // The very same protocol that ran on the simulator now runs over real TLS.
-//!     let output = SendRecvProtocol.run(&mut env).await?;
+//!     let output = SendRecvProtocol.execute(&mut env).await?;
 //!     println!("Party {my_id} output: {output}");
 //!     Ok(())
 //! }

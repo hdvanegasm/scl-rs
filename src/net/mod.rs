@@ -302,6 +302,18 @@ pub trait Network: Send {
     fn other(&self) -> Result<PartyId>;
     /// Returns the party IDs of the parties connected to the network.
     fn party_ids(&self) -> Vec<PartyId>;
+
+    /// Records that a protocol scope is beginning, for backends that keep an execution trace.
+    ///
+    /// Called by [`Protocol::execute`](crate::protocol::Protocol::execute) right before a protocol
+    /// (or sub-protocol) runs, so the trace reflects how protocols nest. The deterministic
+    /// simulator records a protocol-begin event; a real-network backend keeps no trace, so the
+    /// default is a no-op and behavior is unchanged.
+    fn record_protocol_begin(&mut self, _protocol_name: &'static str) {}
+
+    /// Records that a protocol scope has ended; the counterpart to
+    /// [`record_protocol_begin`](Network::record_protocol_begin).
+    fn record_protocol_end(&mut self, _protocol_name: &'static str) {}
 }
 
 /// Read side of a peer connection: a stream that yields one decoded [`Packet`] per delimited frame.

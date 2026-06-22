@@ -49,7 +49,7 @@ where
     type Output = Vec<AdditiveSS<R>>;
 
     fn name(&self) -> &'static str {
-        "DistributeAdditiveShare"
+        "DistAdditiveShr"
     }
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -123,7 +123,7 @@ where
     }
 
     fn name(&self) -> &'static str {
-        "ReconstructAdditiveShare"
+        "ReconstrAdditiveShr"
     }
 }
 
@@ -144,7 +144,8 @@ where
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
         // Step 1: distribute a sharing of our input and gather a share of every party's input.
-        let shares: Vec<AdditiveSS<R>> = DistrAdditiveShr { secret: self.input }.run(env).await?;
+        let shares: Vec<AdditiveSS<R>> =
+            DistrAdditiveShr { secret: self.input }.execute(env).await?;
 
         // Step 2: locally add the shares we hold. Because additive sharing is linear, this sum is a
         // valid share of the sum of all the inputs — computed with no communication at all.
@@ -153,12 +154,14 @@ where
             .fold(AdditiveSS::new(R::ZERO), |acc, elem| acc + elem);
 
         // Step 3: reconstruct the sum from everyone's summed share.
-        let result = ReconstrAdditiveShr { share: share_sum }.run(env).await?;
+        let result = ReconstrAdditiveShr { share: share_sum }
+            .execute(env)
+            .await?;
         Ok(result)
     }
 
     fn name(&self) -> &'static str {
-        "SecureAdditionAdditiveShare"
+        "SecSumAdditiveShr"
     }
 }
 

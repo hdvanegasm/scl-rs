@@ -135,7 +135,7 @@ instance, a larger protocol's `run` could reuse `SendRecvProtocol` and get its t
 straight back:
 
 ```rust
-let their_id: usize = SendRecvProtocol.run(env).await?;
+let their_id: usize = SendRecvProtocol.execute(env).await?;
 ```
 
 ### Running on the simulator
@@ -199,7 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut env = Environment::new(network);
 
     // The very same protocol that ran on the simulator now runs over real TLS.
-    let output = SendRecvProtocol.run(&mut env).await?;
+    let output = SendRecvProtocol.execute(&mut env).await?;
     println!("Party {my_id} output: {output}");
     Ok(())
 }

@@ -147,7 +147,7 @@ impl Protocol<GeneralEnv<SimNetwork>> for ChainedFirstStage {
         environment.network.close().await?;
 
         // Composition: call the next stage inline and use its typed result.
-        let output = ChainedSecondStage { received }.run(environment).await?;
+        let output = ChainedSecondStage { received }.execute(environment).await?;
         Ok(output)
     }
 

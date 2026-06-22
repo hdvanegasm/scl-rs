@@ -1,4 +1,5 @@
 use crate::net;
+use crate::net::simulation::event::Event;
 use crate::net::simulation::switchboard::{Recv, RecvAny, Switchboard};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use async_trait::async_trait;
@@ -79,5 +80,29 @@ impl Network for SimNetwork {
 
     async fn close(&mut self) -> net::Result<()> {
         Ok(())
+    }
+
+    fn record_protocol_begin(&mut self, protocol_name: &'static str) {
+        let mut switchboard = self.switchboard.lock().expect("lock must be free");
+        let timestamp = switchboard.clock_of(self.local);
+        switchboard.record_event(
+            self.local,
+            Event::ProtocolBegin {
+                timestamp,
+                protocol_name,
+            },
+        );
+    }
+
+    fn record_protocol_end(&mut self, protocol_name: &'static str) {
+        let mut switchboard = self.switchboard.lock().expect("lock must be free");
+        let timestamp = switchboard.clock_of(self.local);
+        switchboard.record_event(
+            self.local,
+            Event::ProtocolEnd {
+                timestamp,
+                protocol_name,
+            },
+        );
     }
 }
