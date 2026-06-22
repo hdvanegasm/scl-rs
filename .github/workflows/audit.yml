@@ -1,0 +1,28 @@
+name: Security audit
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Mondays 06:00 UTC: re-scan the unchanged lockfile so advisories filed
+    # against existing dependencies are caught even without a code change.
+    - cron: "0 6 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # `-D warnings` makes informational advisories (unmaintained, yanked) fail
+      # too, so new ones gate; known-unfixable advisories are listed in
+      # .cargo/audit.toml.
+      - run: cargo audit -D warnings

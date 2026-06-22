@@ -174,8 +174,11 @@ release rather than dribbling breaks out continuously.
 - [ ] **Constant-time review.** secp256k1 field sampling uses `random_mod_vartime`; audit field/curve
       ops for data-dependent timing on secret inputs. Either provide constant-time paths or document
       the absence of side-channel resistance precisely.
-- [ ] **Supply-chain hygiene.** Add `cargo-audit` (RUSTSEC advisories) and/or `cargo-deny` (licenses +
-      advisories + bans) to CI.
+- [x] **Supply-chain hygiene.** `cargo-audit` (RUSTSEC advisories) runs in CI via a dedicated
+      `Security audit` workflow (`.github/workflows/audit.yml`): on push/PR to `main` and a weekly
+      cron, with `-D warnings` so unmaintained/yanked advisories also gate. Known-unfixable advisories
+      are ignored in `.cargo/audit.toml` (currently only RUSTSEC-2023-0089, the target-conditional
+      `atomic-polyfill` pulled in via postcard → heapless 0.7). `cargo-deny` (license/bans) not added.
 - [ ] **Threat-model doc** stating what each primitive does and does not guarantee (ties to D-B).
 
 ## 7. Workstream
@@ -230,7 +233,8 @@ lints were cleared; `tests/simulator/` was flattened to a single `tests/simulato
 - [x] `cargo publish --dry-run` on tags — added in 0.4.0 (`.github/workflows/publish-dry-run.yml`,
       triggered on `v*` tags and manual dispatch). It also fails the job if any private-key/certificate
       material would be packaged.
-- [ ] Optional: coverage reporting; `cargo-audit`/`deny` (see §6).
+- [x] `cargo-audit` in CI (`.github/workflows/audit.yml`, `-D warnings`); see §6. _(Coverage
+      reporting and `cargo-deny` still optional/not added.)_
 
 ## 9. Workstream — Docs, examples & ecosystem
 

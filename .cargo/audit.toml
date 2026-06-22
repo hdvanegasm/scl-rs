@@ -1,0 +1,18 @@
+# Configuration for `cargo audit` (RustSec advisory scanning), used by the
+# "Security audit" CI workflow (.github/workflows/audit.yml).
+
+[advisories]
+# RUSTSEC-2023-0089 — `atomic-polyfill` is unmaintained.
+#
+# This is an *informational* advisory (an unmaintained crate, not a
+# vulnerability), and it reaches us only as a target-conditional transitive
+# dependency:
+#
+#     scl-rs -> postcard 1.x -> heapless 0.7 -> atomic-polyfill
+#
+# `atomic-polyfill` is pulled in by heapless 0.7 only on targets without native
+# atomics, so it is never even compiled on our supported targets. There is no
+# fix available to us: postcard 1.1.3 (the latest release) pins `heapless ^0.7`,
+# and atomic-polyfill was dropped only in heapless 0.8+. Revisit and remove this
+# entry once postcard accepts `heapless >= 0.8`.
+ignore = ["RUSTSEC-2023-0089"]
