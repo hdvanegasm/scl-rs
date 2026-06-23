@@ -86,10 +86,18 @@ fn index_read_and_write() {
 
 #[test]
 fn dot_known_value() {
-    let a: Vector<Mersenne61> =
-        Vector::from(vec![1, 2, 3].into_iter().map(Mersenne61::from).collect::<Vec<_>>());
-    let b: Vector<Mersenne61> =
-        Vector::from(vec![4, 5, 6].into_iter().map(Mersenne61::from).collect::<Vec<_>>());
+    let a: Vector<Mersenne61> = Vector::from(
+        vec![1, 2, 3]
+            .into_iter()
+            .map(Mersenne61::from)
+            .collect::<Vec<_>>(),
+    );
+    let b: Vector<Mersenne61> = Vector::from(
+        vec![4, 5, 6]
+            .into_iter()
+            .map(Mersenne61::from)
+            .collect::<Vec<_>>(),
+    );
     // 1*4 + 2*5 + 3*6 = 32
     assert_eq!(a.dot(&b).unwrap(), Mersenne61::from(32));
 }
@@ -103,12 +111,24 @@ fn ones_dot_is_length() {
 
 #[test]
 fn elementwise_mul_known() {
-    let a: Vector<Mersenne61> =
-        Vector::from(vec![2, 3].into_iter().map(Mersenne61::from).collect::<Vec<_>>());
-    let b: Vector<Mersenne61> =
-        Vector::from(vec![5, 7].into_iter().map(Mersenne61::from).collect::<Vec<_>>());
+    let a: Vector<Mersenne61> = Vector::from(
+        vec![2, 3]
+            .into_iter()
+            .map(Mersenne61::from)
+            .collect::<Vec<_>>(),
+    );
+    let b: Vector<Mersenne61> = Vector::from(
+        vec![5, 7]
+            .into_iter()
+            .map(Mersenne61::from)
+            .collect::<Vec<_>>(),
+    );
     let prod = (&a * &b).unwrap();
-    let expected: Vector<Mersenne61> =
-        Vector::from(vec![10, 21].into_iter().map(Mersenne61::from).collect::<Vec<_>>());
+    let expected: Vector<Mersenne61> = Vector::from(
+        vec![10, 21]
+            .into_iter()
+            .map(Mersenne61::from)
+            .collect::<Vec<_>>(),
+    );
     assert_eq!(prod, expected);
 }
