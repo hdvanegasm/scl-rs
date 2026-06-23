@@ -9,6 +9,21 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- An `examples/real_tls_send_recv.rs` example: the same `SendRecvProtocol` from
+  `simple_send_recv.rs` run over a **real two-party mutually-authenticated TLS (mTLS) deployment**
+  instead of the simulator, demonstrating that a protocol generic over `E: Environment` runs
+  unchanged on either backend. Committed `examples/config_p0.json` and `examples/config_p1.json`
+  configuration files, plus module-doc run instructions, make it runnable end to end. Launch with
+  `cargo run --example real_tls_send_recv -- <my_id> <config_path>`.
+
+## [0.5.1] - 2026-06-22
+
+### Fixed
+
+- Corrected code snippets in the documentation (no API or behavior change).
+
 ## [0.5.0] - 2026-06-22
 
 ### Changed
@@ -256,7 +271,9 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.3.0...v0.3.1

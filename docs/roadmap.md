@@ -2,9 +2,8 @@
 
 **Date:** 2026-06-22
 
-**Current version:** 0.5.0 (**prepared for release 2026-06-22** — version bumped and `CHANGELOG`
-dated; the `v0.5.0` tag and `cargo publish` are pending the maintainer). The previous release, 0.4.1,
-was published to crates.io on 2026-06-19.
+**Current version:** 0.5.1 (**published to crates.io 2026-06-22**, a docs-snippet patch on top of
+0.5.0, which shipped the same day). The previous minor, 0.4.1, was published on 2026-06-19.
 
 **0.5.0 contents:** an environment-trait redesign (`Protocol<E: Environment>`, `simulate<P, E>` with
 an environment factory, `GeneralEnv`), `Protocol::execute` with a nesting-aware brace-block trace
@@ -40,15 +39,15 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
   protocols deterministically and returns typed outputs + nesting-aware event traces.
 
-**Published and iterating** (see §4): releases `0.2.0`–`0.4.1` have shipped to crates.io. `Cargo.toml`
+**Published and iterating** (see §4): releases `0.2.0`–`0.5.1` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
-is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. A substantial breaking
-redesign is now staged unreleased on `main` for the next `0.x` (see the header note).
+is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. The `Environment`
+redesign that was staged for the next `0.x` shipped in `0.5.0` (see §11).
 
 **What remains** is mostly _productization_, not core features: finishing the §6 hardening
-(constant-time review — deferred; threat-model doc), §9 docs (`CONTRIBUTING.md`, a real-TLS example),
-and chosen §10 features. Those are the body of this roadmap — work that improves the `0.x` line, not a
+(constant-time review — deferred; threat-model doc), and chosen §10 features (`CONTRIBUTING.md` is
+deferred until there are outside contributors — see §9/§13). Those are the body of this roadmap — work that improves the `0.x` line, not a
 checklist gating a `1.0`.
 
 ---
@@ -141,8 +140,8 @@ Each item below is a breaking change. On `0.x` these stay relatively cheap, but 
 them, let the API **bake**, and then break only rarely — so do them deliberately and batch them per
 release rather than dribbling breaks out continuously.
 
-> **Note:** the items below record the API as settled at **0.4.0**. The unreleased `Environment`
-> redesign (staged for `0.5.0`) has since superseded two of them — `Protocol<N>` → `Protocol<E:
+> **Note:** the items below record the API as settled at **0.4.0**. The `Environment` redesign
+> shipped in **`0.5.0`** has since superseded two of them — `Protocol<N>` → `Protocol<E:
 > Environment>` and `simulate<P>` → `simulate<P, E>` with an environment factory — so where these
 > entries say "now," read it as "as of 0.4.0."
 
@@ -272,15 +271,18 @@ CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inceptio
 
 ## 9. Workstream — Docs, examples & ecosystem
 
-- [ ] **`examples/` directory** — _partially done._ Two examples exist: `simple_send_recv.rs` (a
-      simulator run) and `additive_shr_secure_sum.rs` (a secret-sharing round-trip on the simulator).
-      Still missing: (b) a runnable **real two-party TLS deployment** example (the binary sketched in
-      the crate docs).
+- [x] **`examples/` directory** — _done._ Three examples exist: `simple_send_recv.rs` (a simulator
+      run), `additive_shr_secure_sum.rs` (a secret-sharing round-trip on the simulator), and
+      `real_tls_send_recv.rs` (the same `SendRecvProtocol` run over a **real two-party mTLS
+      deployment**, with committed `config_p0.json`/`config_p1.json` configs and run instructions in
+      its module docs). The simulator and real-network backends are now both demonstrated end to end.
 - [x] **`CHANGELOG.md`** (Keep a Changelog format) from 0.1.0 onward.
 - [x] **`SECURITY.md`** added (status/posture + threat model & known limitations: variable-time
       sampling, non-CSPRNG `Rng` inputs, unaudited). Reporting channel is public GitHub issues for now
       (acceptable for a research tool); a private channel can be added if the posture changes.
-- [ ] **`CONTRIBUTING.md`**.
+- [ ] **`CONTRIBUTING.md`** — _deliberately deferred (decided 2026-06-22) until the project attracts
+      contributors beyond the sole maintainer._ A contribution guide has no audience while there is
+      one author; it will be written if/when outside contributors appear. See §13.
 - [x] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
       at the top. _(Done — the old checkbox list was replaced by the "Status and roadmap" section
       linking to this file; the two leftover specifics moved to §10 as "open README item"s.)_
@@ -310,8 +312,9 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.2.0**       | _Publishable & honest_ ✅ **PUBLISHED 2026-06-16** | §4 metadata/license/tokio features, the §7 `flush` fix, `SECURITY.md`, compiled doctests, `Network: Send`, factory `simulate`, §8 CI (fmt/clippy/test/doc), and corrected real-network docs. **First crates.io release**, tagged `v0.2.0`, an early `0.x` release. |
 | **0.3.0**       | _Correct & clean_ ✅ **PUBLISHED 2026-06-17**      | Mutual TLS (mTLS) — wire-incompatible with 0.2.0; MSRV 1.85.1 + MSRV CI job; typed `serde` config parsing (`deny_unknown_fields`, `base_port` range check); `channel_id` perspective bug resolved + regression test; mTLS handshake tests (positive + negative); `Network::recv_any` **simulator-only** (quorum primitive). Tagged `v0.3.0`.                  |
 | **0.4.0**       | _API stabilization_ ✅ **PUBLISHED 2026-06-19**    | §5 in full (Packet `Result` API, error sweep incl. `NetworkConfig::new` → crate error, `Protocol` consumes `self`, `Environment` clock, prelude, naming/visibility audit). Plus the §7 `TcpNetwork::recv_any` implementation (cancel-safe `FramedRead` + `StreamMap` multiplexing) and the `tls_public_api_correctness` real-TLS socket integration test, and the §8 `publish-dry-run` tag workflow. Tagged `v0.4.0`. |
-| **0.5.0** (releasing 2026-06-22) | _Composition & env redesign_       | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, the D10 `Link` unification (§7), and the `send_many` scatter primitive. Breaking, so a minor bump per §2. Prepared (version + `CHANGELOG`); `v0.5.0` tag + `cargo publish` pending. |
-| **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc), §9 docs (`CONTRIBUTING.md`, the real-TLS deployment example), and chosen §10 features.                                                                                                     |
+| **0.5.0**       | _Composition & env redesign_ ✅ **PUBLISHED 2026-06-22** | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, the D10 `Link` unification (§7), and the `send_many` scatter primitive. Breaking, so a minor bump per §2. Tagged `v0.5.0`. |
+| **0.5.1**       | _Docs patch_ ✅ **PUBLISHED 2026-06-22**            | Doc-snippet fixes on top of 0.5.0 (no API change). Tagged `v0.5.1`.                                                                                                                                                                                          |
+| **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
 ---
@@ -335,9 +338,9 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
       link unification are all done.)_
 - [x] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests on stable (build on MSRV
       1.85.1), `publish --dry-run`, and `cargo-audit`. _(All jobs present in `.github/workflows/`.)_
-- [ ] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
-      _(Partial — the simulator-run and secret-sharing examples exist and `CHANGELOG.md` is current; a
-      real-deployment TLS example is still missing.)_
+- [x] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
+      _(Done — `simple_send_recv.rs` (simulator), `additive_shr_secure_sum.rs` (secret sharing), and
+      `real_tls_send_recv.rs` (real mTLS deployment) are all present, and `CHANGELOG.md` is current.)_
 - [ ] `docs.rs` renders cleanly; README on-ramp is accurate end to end.
 
 ---
@@ -345,6 +348,8 @@ The bar for considering the `0.x` API "settled" — the steady state of §11, no
 ## 13. Deferred (later `0.x` or beyond)
 
 - Constant-time / side-channel hardening (§6) — deliberately deferred while prototyping.
+- `CONTRIBUTING.md` (§9) — deferred until the project attracts contributors beyond the sole
+  maintainer; a contribution guide has no audience with a single author.
 - Adversarial/reordering simulation harness (delay/drop/reorder deliveries) — a payoff of the
   explicit-blocking-state design (`Poll::Pending` = "party blocked on recv").
 - Packet loss / retransmission modeling in the event loop.
