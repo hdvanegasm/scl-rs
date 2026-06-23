@@ -1,9 +1,10 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-06-22
+**Date:** 2026-06-23
 
-**Current version:** 0.5.1 (**published to crates.io 2026-06-22**, a docs-snippet patch on top of
-0.5.0, which shipped the same day). The previous minor, 0.4.1, was published on 2026-06-19.
+**Current version:** 0.5.2 (**published to crates.io 2026-06-23**, a patch on top of 0.5.1 that fixes
+a `Matrix` non-square indexing bug and derives `Clone` for `FeldmanSS`; 0.5.1 and 0.5.0 both shipped
+2026-06-22). The previous minor, 0.4.1, was published on 2026-06-19.
 
 **0.5.0 contents:** an environment-trait redesign (`Protocol<E: Environment>`, `simulate<P, E>` with
 an environment factory, `GeneralEnv`), `Protocol::execute` with a nesting-aware brace-block trace
@@ -39,7 +40,7 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
   protocols deterministically and returns typed outputs + nesting-aware event traces.
 
-**Published and iterating** (see §4): releases `0.2.0`–`0.5.1` have shipped to crates.io. `Cargo.toml`
+**Published and iterating** (see §4): releases `0.2.0`–`0.5.2` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
 is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. The `Environment`
@@ -314,6 +315,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.4.0**       | _API stabilization_ ✅ **PUBLISHED 2026-06-19**    | §5 in full (Packet `Result` API, error sweep incl. `NetworkConfig::new` → crate error, `Protocol` consumes `self`, `Environment` clock, prelude, naming/visibility audit). Plus the §7 `TcpNetwork::recv_any` implementation (cancel-safe `FramedRead` + `StreamMap` multiplexing) and the `tls_public_api_correctness` real-TLS socket integration test, and the §8 `publish-dry-run` tag workflow. Tagged `v0.4.0`. |
 | **0.5.0**       | _Composition & env redesign_ ✅ **PUBLISHED 2026-06-22** | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, the D10 `Link` unification (§7), and the `send_many` scatter primitive. Breaking, so a minor bump per §2. Tagged `v0.5.0`. |
 | **0.5.1**       | _Docs patch_ ✅ **PUBLISHED 2026-06-22**            | Doc-snippet fixes on top of 0.5.0 (no API change). Tagged `v0.5.1`.                                                                                                                                                                                          |
+| **0.5.2**       | _Correctness patch_ ✅ **PUBLISHED 2026-06-23**     | Fixed a `Matrix` non-square indexing bug (`get`/`get_mut`/matrix×matrix and matrix×vector `mul` used the row count as the row stride; `get`/`get_mut` now bounds-check both axes), derived `Clone` for `FeldmanSS`, and expanded the test suite (Shamir, NAF, matrix, vector — the matrix tests are what caught the bug). Tagged `v0.5.2`. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
