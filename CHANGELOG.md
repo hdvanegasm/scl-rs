@@ -11,12 +11,25 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ### Added
 
+- `FeldmanSS` now derives `Clone`, so a Feldman share can be duplicated by value — useful for
+  rebuilding a share set (e.g. constructing test fixtures or fanning the same share to multiple
+  consumers).
 - An `examples/real_tls_send_recv.rs` example: the same `SendRecvProtocol` from
   `simple_send_recv.rs` run over a **real two-party mutually-authenticated TLS (mTLS) deployment**
   instead of the simulator, demonstrating that a protocol generic over `E: Environment` runs
   unchanged on either backend. Committed `examples/config_p0.json` and `examples/config_p1.json`
   configuration files, plus module-doc run instructions, make it runnable end to end. Launch with
   `cargo run --example real_tls_send_recv -- <my_id> <config_path>`.
+
+### Fixed
+
+- **`Matrix` indexing was wrong for non-square matrices.** `get`, `get_mut`, matrix×matrix
+  multiplication, and matrix×vector multiplication used a row count (`rows`) as the row stride
+  instead of the column count (`columns`), so for any matrix where `rows != columns` they read the
+  wrong element. The bug was masked by the existing square-only tests. `get`/`get_mut` now also
+  bounds-check the row and column indices independently and return `None` when either is out of
+  range (previously an out-of-range row could silently return a valid-looking element from another
+  row).
 
 ## [0.5.1] - 2026-06-22
 

@@ -129,12 +129,18 @@ where
 
     /// Get the field element in i-th row and j-th column.
     pub fn get(&self, i: usize, j: usize) -> Option<&T> {
-        self.elements.get(self.rows * i + j)
+        if i >= self.rows || j >= self.columns {
+            return None;
+        }
+        self.elements.get(self.columns * i + j)
     }
 
     /// Get the field element in i-th row and j-th column as a mutable reference.
     pub fn get_mut(&mut self, i: usize, j: usize) -> Option<&mut T> {
-        self.elements.get_mut(self.rows * i + j)
+        if i >= self.rows || j >= self.columns {
+            return None;
+        }
+        self.elements.get_mut(self.columns * i + j)
     }
 
     /// Return whether this matrix is compatible with another matrix for
@@ -236,7 +242,8 @@ where
                 let mut sum = T::ZERO;
                 for k in 0..interm {
                     sum = sum.add(
-                        &self.elements[self.rows * i + k].mul(&rhs.elements[rhs.rows * k + j]),
+                        &self.elements[self.columns * i + k]
+                            .mul(&rhs.elements[rhs.columns * k + j]),
                     );
                 }
                 matrix.elements.push(sum);
@@ -260,7 +267,7 @@ where
         for i in 0..self.rows {
             let mut sum = T::ZERO;
             for j in 0..self.columns {
-                sum = sum.add(&self.elements[self.rows * i + j].mul(&rhs[j]))
+                sum = sum.add(&self.elements[self.columns * i + j].mul(&rhs[j]))
             }
             elements.push(sum);
         }

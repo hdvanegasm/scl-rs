@@ -4,7 +4,7 @@ use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 /// Represents a Feldman Secret Sharing element.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 #[serde(bound(
     serialize = "C: Serialize, C::ScalarField: Serialize",
     deserialize = "C: Serialize, C::ScalarField: Serialize"
