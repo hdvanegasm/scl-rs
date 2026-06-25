@@ -1,3 +1,5 @@
+use crate::abbreviate::Abbreviate;
+
 use super::ring::Ring;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -63,6 +65,10 @@ where
         }
         Ok(result)
     }
+}
+
+impl<T> Abbreviate for Vector<T> {
+    const ABBREVIATION: &'static str = "vec";
 }
 
 impl<T> Index<usize> for Vector<T>

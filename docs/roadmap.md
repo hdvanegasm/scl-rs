@@ -1,10 +1,20 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-06-23
+**Date:** 2026-06-25
 
-**Current version:** 0.5.2 (**published to crates.io 2026-06-23**, a patch on top of 0.5.1 that fixes
-a `Matrix` non-square indexing bug and derives `Clone` for `FeldmanSS`; 0.5.1 and 0.5.0 both shipped
-2026-06-22). The previous minor, 0.4.1, was published on 2026-06-19.
+**Current version:** 0.6.0 (released 2026-06-25). A breaking minor on top of the 0.5.x line, whose
+last patch 0.5.2 shipped 2026-06-23 (a `Matrix` non-square indexing fix + `Clone` for `FeldmanSS`;
+0.5.1 and 0.5.0 both shipped 2026-06-22, 0.4.1 on 2026-06-19).
+
+**0.6.0 contents:** trace **element-type labels** — `SEND`/`RECV` lines now report a per-type
+breakdown of a packet's contents (e.g. `(1024 bytes: 1 EC elem., 4 field elem.)`), driven by a new
+`Abbreviate` trait (re-exported from the prelude) implemented by the built-in field/curve/poly/
+vector/share types; `Packet::write_labeled`/`write_many_labeled`/`composition` and the
+`content_count` field on the `SendData`/`ReceiveData` events. Plus two internal reorganizations: the
+`net::simulation::runtime` → `net::simulation::simulator` module rename and the extraction of the
+real-TLS backend into `net::tcp` (`TcpNetwork` still re-exported from `net`). Breaking (the module
+rename, `Packet`'s representation + now-private `Packet::new`, the new `Event` fields, and the
+removed legacy `Event::HasData`), so per the §2 policy it is a minor bump. See `CHANGELOG.md`.
 
 **0.5.0 contents:** an environment-trait redesign (`Protocol<E: Environment>`, `simulate<P, E>` with
 an environment factory, `GeneralEnv`), `Protocol::execute` with a nesting-aware brace-block trace
@@ -40,7 +50,7 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
   protocols deterministically and returns typed outputs + nesting-aware event traces.
 
-**Published and iterating** (see §4): releases `0.2.0`–`0.5.2` have shipped to crates.io. `Cargo.toml`
+**Published and iterating** (see §4): releases `0.2.0`–`0.6.0` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
 is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. The `Environment`
@@ -174,7 +184,7 @@ release rather than dribbling breaks out continuously.
       per-party **factory closure** instead of `Vec<(PartyId, P)>`. All parties still share one
       concrete type `P` (monomorphization), but the factory keeps the per-party construction seam —
       symmetric protocols are `|_| Proto`, and private inputs are `|pid| Proto { input: inputs[&pid] }`
-      — without `P: Clone` or per-party boilerplate. (`src/net/simulation/runtime.rs`.)
+      — without `P: Clone` or per-party boilerplate. (`src/net/simulation/simulator.rs`.)
 - [x] **Re-exports / prelude — added in 0.4.0.** A `prelude` module now re-exports the common path so
       users aren't deep-pathing.
 - [x] **Naming/visibility audit — done in 0.4.0.** Simulator internals demoted to `pub(crate)`
@@ -287,8 +297,17 @@ CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inceptio
 - [x] Refresh `README.md`'s "Missing features" into a link to this roadmap; keep the security banner
       at the top. _(Done — the old checkbox list was replaced by the "Status and roadmap" section
       linking to this file; the two leftover specifics moved to §10 as "open README item"s.)_
-- [ ] Optional rename `runtime.rs` → `simulator.rs` (cosmetic and breaking — module paths are public,
-      so batch it with other §5 breaks if done at all).
+- [x] **Rename `runtime.rs` → `simulator.rs` — done (0.6.0).** The simulator module is now
+      `net::simulation::simulator` (`simulate`/`SimulationOutcome` re-exported through the prelude, so
+      prelude users are unaffected; deep-path users update `net::simulation::runtime` →
+      `net::simulation::simulator`). Breaking, so a minor bump per §2. Bundled with the `net::tcp`
+      split below.
+- [x] **`TcpNetwork` extracted to `net::tcp` — done (0.6.0).** The real-TLS backend
+      (`TcpNetwork` + the private `PeerWriter`/`PacketStream`) moved out of the 876-LOC `net/mod.rs`
+      into its own `net::tcp` module, mirroring `net::simulation`. `net/mod.rs` now holds just the
+      shared contract (`PartyId`, `Packet`, `NetworkError`, `NetworkConfig`, `Network`). `TcpNetwork`
+      is re-exported from `net`, so `net::TcpNetwork` and the prelude are unchanged — no public API
+      change.
 
 ## 10. Workstream — Feature completeness (scope to taste)
 
@@ -316,6 +335,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.5.0**       | _Composition & env redesign_ ✅ **PUBLISHED 2026-06-22** | The `Environment` trait redesign (`Protocol<E>`, `simulate<P, E>`, `GeneralEnv`), `Protocol::execute` + nesting-aware brace-block trace `Display`, CSPRNG bounds on the secret-generation APIs (§6), the `cargo-audit` CI workflow (§6/§8), the straggler/virtual-time regression test, the D10 `Link` unification (§7), and the `send_many` scatter primitive. Breaking, so a minor bump per §2. Tagged `v0.5.0`. |
 | **0.5.1**       | _Docs patch_ ✅ **PUBLISHED 2026-06-22**            | Doc-snippet fixes on top of 0.5.0 (no API change). Tagged `v0.5.1`.                                                                                                                                                                                          |
 | **0.5.2**       | _Correctness patch_ ✅ **PUBLISHED 2026-06-23**     | Fixed a `Matrix` non-square indexing bug (`get`/`get_mut`/matrix×matrix and matrix×vector `mul` used the row count as the row stride; `get`/`get_mut` now bounds-check both axes), derived `Clone` for `FeldmanSS`, and expanded the test suite (Shamir, NAF, matrix, vector — the matrix tests are what caught the bug). Tagged `v0.5.2`. |
+| **0.6.0**       | _Trace element labels & reorg_ ✅ **RELEASED 2026-06-25** | Trace **element-type labels**: `SEND`/`RECV` lines report a per-type breakdown (`(1024 bytes: 1 EC elem., 4 field elem.)`) via a new `Abbreviate` trait (prelude-exported; implemented by the built-in field/curve/poly/vector/share types), `Packet::write_labeled`/`write_many_labeled`/`composition`, and a `content_count` field on `SendData`/`ReceiveData`. Plus two reorgs: `net::simulation::runtime` → `simulator` and the real-TLS backend extracted to `net::tcp` (`TcpNetwork` re-exported from `net`). Breaking (module rename, `Packet` representation + private `Packet::new`, new `Event` fields, removed legacy `Event::HasData`), so a minor bump per §2. Added `examples/send_different_types.rs`. Tagged `v0.6.0`. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 

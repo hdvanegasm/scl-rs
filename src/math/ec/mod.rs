@@ -1,6 +1,8 @@
 //! Contains traits to represent elliptic curves over finite fields.
 
 use super::field::FiniteField;
+use crate::abbreviate::Abbreviate;
+use crate::math::ec::secp256k1::Secp256k1;
 use serde::{Deserialize, Serialize};
 
 /// Implementation of the elliptic curve secp256k1.
@@ -37,3 +39,13 @@ pub trait EllipticCurve<const LIMBS: usize>:
     /// Returns the additive inverse of the point in the elliptic curve.
     fn negate(&self) -> Self;
 }
+
+macro_rules! impl_ec_abbreviation {
+    ($($t:ty),+ $(,)?) => {
+        $(impl Abbreviate for $t {
+            const ABBREVIATION: &'static str = "EC elem.";
+        })+
+    };
+}
+
+impl_ec_abbreviation!(Secp256k1);

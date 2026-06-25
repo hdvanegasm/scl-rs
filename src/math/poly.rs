@@ -1,7 +1,7 @@
 //! Implementation of polynomials over rings. These polynomials have serialization and deserialization compatible with the [`serde`] crate.
 
 use super::ring::Ring;
-use crate::math::field::FiniteField;
+use crate::{abbreviate::Abbreviate, math::field::FiniteField};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -77,6 +77,10 @@ impl<T: Ring> Polynomial<T> {
             Ok(Self(coef))
         }
     }
+}
+
+impl<T> Abbreviate for Polynomial<T> {
+    const ABBREVIATION: &'static str = "poly";
 }
 
 impl<T: Ring> Index<usize> for Polynomial<T> {

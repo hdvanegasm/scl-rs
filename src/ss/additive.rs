@@ -4,13 +4,17 @@
 
 use std::ops::Add;
 
-use crate::math::ring::Ring;
+use crate::{abbreviate::Abbreviate, math::ring::Ring};
 use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 /// Represents an additive share.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct AdditiveSS<T>(T);
+
+impl<T> Abbreviate for AdditiveSS<T> {
+    const ABBREVIATION: &'static str = "add. shr.";
+}
 
 impl<T> AdditiveSS<T>
 where

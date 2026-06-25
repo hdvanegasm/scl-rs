@@ -69,7 +69,7 @@ where
         let mut messages = Vec::with_capacity(n_parties);
         for (party_id, share) in env.network().party_ids().iter().zip(shares) {
             let mut packet = Packet::empty();
-            packet.write(&share)?;
+            packet.write_labeled(&share)?;
             messages.push((*party_id, packet));
         }
         env.network_mut().send_many(&messages).await?;
@@ -109,7 +109,7 @@ where
         // Reveal our own share by sending it to every party (ourselves included, as before) — the
         // same packet scattered to all of them in one call.
         let mut packet = Packet::empty();
-        packet.write(&self.share)?;
+        packet.write_labeled(&self.share)?;
         let messages: Vec<(PartyId, Packet)> = env
             .network()
             .party_ids()

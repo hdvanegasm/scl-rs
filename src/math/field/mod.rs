@@ -1,4 +1,13 @@
-use crate::math::ring;
+use crate::{
+    abbreviate::Abbreviate,
+    math::{
+        field::{
+            mersenne61::Mersenne61, secp256k1_prime::Secp256k1PrimeField,
+            secp256k1_scalar::Secp256k1ScalarField,
+        },
+        ring,
+    },
+};
 use crypto_bigint::{NonZero, Uint};
 use std::{fmt::Debug, ops::Div};
 use thiserror::Error;
@@ -36,3 +45,13 @@ pub trait FiniteField<const LIMBS: usize>:
     /// Computes the inverse of field element.
     fn inverse(&self) -> Result<Self, FieldError>;
 }
+
+macro_rules! impl_field_abbreviation {
+    ($($t:ty),+ $(,)?) => {
+        $(impl Abbreviate for $t {
+            const ABBREVIATION: &'static str = "field elem.";
+        })+
+    };
+}
+
+impl_field_abbreviation!(Mersenne61, Secp256k1ScalarField, Secp256k1PrimeField);

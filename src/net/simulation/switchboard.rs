@@ -20,7 +20,7 @@ use crate::net::{
 
 /// A hook that runs in reaction to events recorded during a simulation.
 ///
-/// Hooks are registered through [`simulate`](crate::net::simulation::runtime::simulate) and fire
+/// Hooks are registered through [`simulate`](crate::net::simulation::simulator::simulate) and fire
 /// as each event is appended to a party's trace. They are the extension point for observing or
 /// steering a run (for example, injecting a reply when a party receives a particular message).
 ///
@@ -113,6 +113,7 @@ impl Switchboard {
                 timestamp: now,
                 link,
                 size: packet.size(),
+                content_count: packet.composition(),
             },
         );
 
@@ -160,6 +161,7 @@ impl Switchboard {
                 timestamp,
                 link,
                 size: packet.size(),
+                content_count: packet.composition(),
             },
         );
         Some(packet)

@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// party (returns `Poll::Pending`), letting the executor advance virtual time to the next
 /// deliverable event.
 ///
-/// One `SimNetwork` is created per party by [`simulate`](crate::net::simulation::runtime::simulate);
+/// One `SimNetwork` is created per party by [`simulate`](crate::net::simulation::simulator::simulate);
 /// all parties share the same `Switchboard`. The `Mutex` is uncontended (the core is
 /// single-threaded) and exists only to satisfy the `Send` bound on the [`Network`] trait.
 pub struct SimNetwork {

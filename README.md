@@ -39,7 +39,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.5.2"
+scl-rs = "0.6.0"
 ```
 
 ### Releases vs. `main`
@@ -147,7 +147,7 @@ clock and returns a `SimulationOutcome` with each party's typed output and its e
 
 ```rust
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
-use scl_rs::net::simulation::runtime::simulate;
+use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::PartyId;
 use scl_rs::protocol::GeneralEnv;
 
@@ -179,6 +179,40 @@ Party 1 output: 0
 `SimpleNetworkConfig` uses instantaneous channels; supply your own `NetworkConfig` to model latency,
 bandwidth, and other parameters, and the reported timings will approximate a real deployment under
 those conditions.
+
+#### Event traces and element labels
+
+Each party's `SimulationTrace` (in `outcome.traces[&party]`) prints as an indented, per-party,
+virtual-time-ordered log via `Display`. `SEND` and `RECV` lines report not just the byte size but a
+breakdown of *what kind* of elements the packet carried:
+
+```text
+SEND    2 -> 0 (1024 bytes: 1 EC elem., 2 Shamir shr., 4 field elem.)
+RECV    2 <- 0 (1024 bytes: 1 EC elem., 2 Shamir shr., 4 field elem.)
+```
+
+On a `RECV` line the labels are the *sender's*, carried in-process by the simulator (which never
+serializes packets); they describe what was sent, not what the receiver chooses to deserialize each
+element into.
+
+The breakdown comes from how a protocol writes into a `Packet`. `Packet::write` records an element
+as `unknown elem.`; `Packet::write_labeled` tags it with the type's label, declared through the
+`Abbreviate` trait:
+
+```rust
+use scl_rs::abbreviate::Abbreviate;
+
+struct PublicKey;
+
+impl Abbreviate for PublicKey {
+    const ABBREVIATION: &'static str = "pub. key";
+}
+```
+
+The built-in field, curve, polynomial, vector, and secret-sharing types already implement
+`Abbreviate`. Labels are display-only metadata: they are never serialized onto the wire (so they
+cost no bandwidth and do not affect packet equality), and the breakdown is therefore available on
+the simulator, where packets are passed in-process.
 
 ### Running on a real network
 

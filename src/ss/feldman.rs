@@ -1,5 +1,8 @@
 use super::{shamir::ShamirSS, ShareError};
-use crate::math::{ec::EllipticCurve, ring::Ring};
+use crate::{
+    abbreviate::Abbreviate,
+    math::{ec::EllipticCurve, ring::Ring},
+};
 use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +17,10 @@ pub struct FeldmanSS<const LIMBS: usize, C: EllipticCurve<LIMBS>> {
     shamir_share: ShamirSS<LIMBS, C::ScalarField>,
     /// The commitment of this share.
     commitments: Vec<C>,
+}
+
+impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> Abbreviate for FeldmanSS<LIMBS, C> {
+    const ABBREVIATION: &'static str = "Feldman shr.";
 }
 
 impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {

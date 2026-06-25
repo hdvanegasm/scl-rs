@@ -9,9 +9,9 @@ use std::time::Duration;
 /// recording party's *virtual* time (see the network timing model in
 /// [`channel`](crate::net::simulation::channel)), not wall-clock time.
 ///
-/// Two variants ([`CloseChannel`](Event::CloseChannel) and [`HasData`](Event::HasData)) are
-/// retained for compatibility but are **not** produced by the current deterministic core: the
-/// event-loop model has no persistent channels to close and no `has_data` polling.
+/// One variant ([`CloseChannel`](Event::CloseChannel)) is retained for compatibility but is
+/// **not** produced by the current deterministic core: the event-loop model has no persistent
+/// channels to close.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     /// The party started its execution, before running any protocol.
@@ -54,6 +54,11 @@ pub enum Event {
         link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
+        /// Per-type breakdown of the packet's elements as `(label, count)` pairs, in first-appearance
+        /// order (from [`Packet::composition`](crate::net::Packet::composition)). Elements written
+        /// without a type label are grouped under `unknown elem.`. Rendered after the byte size in
+        /// the `SEND` line, e.g. `(1024 bytes: 1 EC elem., 4 field elem.)`.
+        content_count: Vec<(&'static str, usize)>,
     },
     /// The party received a packet from a peer.
     ReceiveData {
@@ -63,15 +68,13 @@ pub enum Event {
         link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
-    },
-    /// A peer's channel has data ready to be received.
-    ///
-    /// Legacy event, not produced by the current event-loop core (there is no `has_data` polling).
-    HasData {
-        /// Virtual time of the observation.
-        timestamp: Duration,
-        /// The directed link that has data available.
-        link: Link,
+        /// Per-type breakdown of the packet's elements as `(label, count)` pairs, in first-appearance
+        /// order (from [`Packet::composition`](crate::net::Packet::composition)). These are the
+        /// **sender's** labels, carried in-process by the simulator (which does not serialize
+        /// packets), not what the receiver will deserialize the elements into. Elements written
+        /// without a type label are grouped under `unknown elem.`. Rendered after the byte size in
+        /// the `RECV` line, e.g. `(1024 bytes: 1 EC elem., 4 field elem.)`.
+        content_count: Vec<(&'static str, usize)>,
     },
     /// The party slept (waited) for a fixed duration.
     Sleep {
@@ -114,7 +117,6 @@ impl Event {
             | Event::CloseChannel { timestamp, .. }
             | Event::SendData { timestamp, .. }
             | Event::ReceiveData { timestamp, .. }
-            | Event::HasData { timestamp, .. }
             | Event::Sleep { timestamp, .. }
             | Event::Output { timestamp, .. }
             | Event::ProtocolBegin { timestamp, .. }
@@ -135,7 +137,6 @@ impl Event {
             Event::CloseChannel { .. } => EventType::CloseChannel,
             Event::SendData { .. } => EventType::SendData,
             Event::ReceiveData { .. } => EventType::ReceiveData,
-            Event::HasData { .. } => EventType::HasData,
             Event::Sleep { .. } => EventType::Sleep,
             Event::Output { .. } => EventType::Output,
             Event::ProtocolBegin { .. } => EventType::ProtocolBegin,
@@ -149,6 +150,12 @@ impl Event {
 /// The format is `[<timestamp>s] <EVENT_NAME> <details>`. Links are shown from the recording
 /// party's perspective: `sender -> recipient` for outgoing operations and `recipient <- sender`
 /// for incoming ones, so the recording party is always on the left.
+///
+/// `SEND` and `RECV` lines additionally report the packet's per-type element breakdown after the
+/// byte size, e.g. `SEND  2 -> 0 (1024 bytes: 1 EC elem., 4 field elem.)`; elements written without
+/// a type label show up as `unknown elem.` (see
+/// [`Packet::write_labeled`](crate::net::Packet::write_labeled)). On `RECV` these are the sender's
+/// labels, carried in-process by the simulator.
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // The recording party is always shown on the left of the arrow, so the link reads from its
@@ -169,19 +176,40 @@ impl fmt::Display for Event {
             )
         };
 
+        // Renders the byte size followed by the per-type element breakdown, e.g.
+        // `1024 bytes: 1 EC elem., 4 field elem.`. Shared by the `SEND` and `RECV` lines.
+        let breakdown = |size: usize, content_count: &[(&'static str, usize)]| {
+            let mut count_content = String::new();
+            for (label, count) in content_count {
+                count_content += &format!("{count} {label}, ");
+            }
+            format!("{size} bytes: {}", count_content.trim_end_matches(", "))
+        };
+
         let (name, details) = match self {
             Event::Start { .. } => ("START", String::new()),
             Event::Stop { .. } => ("STOP", String::new()),
             Event::Killed { reason, .. } => ("KILLED", format!("reason: {reason}")),
             Event::Cancelled { .. } => ("CANCELLED", String::new()),
             Event::CloseChannel { link, .. } => ("CLOSE_CHANNEL", outgoing(link)),
-            Event::SendData { link, size, .. } => {
-                ("SEND", format!("{} ({size} bytes)", outgoing(link)))
-            }
-            Event::ReceiveData { link, size, .. } => {
-                ("RECV", format!("{} ({size} bytes)", incoming(link)))
-            }
-            Event::HasData { link, .. } => ("HAS_DATA", incoming(link)),
+            Event::SendData {
+                link,
+                size,
+                content_count,
+                ..
+            } => (
+                "SEND",
+                format!("{} ({})", outgoing(link), breakdown(*size, content_count)),
+            ),
+            Event::ReceiveData {
+                link,
+                size,
+                content_count,
+                ..
+            } => (
+                "RECV",
+                format!("{} ({})", incoming(link), breakdown(*size, content_count)),
+            ),
             Event::Sleep { duration, .. } => ("SLEEP", format!("for {duration:?}")),
             Event::Output { output, .. } => {
                 // Show small payloads in full; for larger ones show the first and last few bytes
@@ -244,8 +272,6 @@ pub enum EventType {
     SendData,
     /// See [`Event::ReceiveData`].
     ReceiveData,
-    /// See [`Event::HasData`].
-    HasData,
     /// See [`Event::Sleep`].
     Sleep,
     /// See [`Event::Output`].

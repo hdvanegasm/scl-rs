@@ -4,7 +4,7 @@ use scl_rs::net::simulation::channel::{
 };
 use scl_rs::net::simulation::event::{Event, EventType};
 use scl_rs::net::simulation::network::SimNetwork;
-use scl_rs::net::simulation::runtime::simulate;
+use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::simulation::switchboard::{Switchboard, TriggeredHook};
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
@@ -304,11 +304,13 @@ fn simulation_trace_renders_events_nicely() {
             timestamp: Duration::from_millis(100),
             link: channel,
             size: 8,
+            content_count: vec![("field elem.", 2), ("EC elem.", 4)],
         },
         Event::ReceiveData {
             timestamp: Duration::from_millis(200),
             link: channel,
             size: 16,
+            content_count: vec![("field elem.", 3), ("EC elem.", 1)],
         },
         Event::Stop {
             timestamp: Duration::from_millis(200),
@@ -323,9 +325,9 @@ fn simulation_trace_renders_events_nicely() {
     // shown as `0 -> 1`, while a receive on that same link is the receiver's view, `1 <- 0`.
     assert!(rendered.contains("START"));
     assert!(rendered.contains("SEND"));
-    assert!(rendered.contains("0 -> 1 (8 bytes)"));
+    assert!(rendered.contains("0 -> 1 (8 bytes: 2 field elem., 4 EC elem.)"));
     assert!(rendered.contains("RECV"));
-    assert!(rendered.contains("1 <- 0 (16 bytes)"));
+    assert!(rendered.contains("1 <- 0 (16 bytes: 3 field elem., 1 EC elem.)"));
     assert!(rendered.contains("STOP"));
 }
 

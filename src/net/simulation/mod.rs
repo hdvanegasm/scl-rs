@@ -24,7 +24,7 @@
 //!
 //! # Module layout
 //!
-//! Dependencies point one way (`runtime` → {`executor`, `switchboard`, `network`}; `executor` and
+//! Dependencies point one way (`simulator` → {`executor`, `switchboard`, `network`}; `executor` and
 //! `switchboard` are independent):
 //!
 //! - [`executor`](crate::net::simulation::executor) — the network-agnostic scheduler: a dumb pump
@@ -36,9 +36,9 @@
 //! - [`network`](crate::net::simulation::network) —
 //!   [`SimNetwork`](crate::net::simulation::network::SimNetwork), the simulated
 //!   [`Network`](crate::net::Network) implementation.
-//! - [`runtime`](crate::net::simulation::runtime) — the top-level
-//!   [`simulate`](crate::net::simulation::runtime::simulate) driver, returning a
-//!   [`SimulationOutcome`](crate::net::simulation::runtime::SimulationOutcome) of per-party outputs
+//! - [`simulator`](crate::net::simulation::simulator) — the top-level
+//!   [`simulate`](crate::net::simulation::simulator::simulate) driver, returning a
+//!   [`SimulationOutcome`](crate::net::simulation::simulator::SimulationOutcome) of per-party outputs
 //!   and traces.
 //! - [`channel`](crate::net::simulation::channel) — shared channel configuration
 //!   ([`ChannelConfig`](crate::net::simulation::channel::ChannelConfig),
@@ -54,7 +54,7 @@
 //!
 //! ```ignore
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
-//! use scl_rs::net::simulation::runtime::simulate;
+//! use scl_rs::net::simulation::simulator::simulate;
 //! use scl_rs::net::PartyId;
 //! use scl_rs::protocol::GeneralEnv;
 //!
@@ -78,9 +78,9 @@ use tokio::task::JoinError;
 /// Implementation of an executor for protocols.
 pub mod executor;
 
-/// Top-level simulation driver: [`runtime::simulate`] runs every party's protocol on the
+/// Top-level simulation driver: [`simulator::simulate`] runs every party's protocol on the
 /// deterministic core and returns their outputs and event traces.
-pub mod runtime;
+pub mod simulator;
 
 /// Switch board implementation.
 pub mod switchboard;

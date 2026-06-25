@@ -135,7 +135,7 @@
 //! # }
 //! #
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
-//! use scl_rs::net::simulation::runtime::simulate;
+//! use scl_rs::net::simulation::simulator::simulate;
 //! use scl_rs::net::PartyId;
 //!
 //! let p0 = PartyId::from(0_usize);
@@ -301,14 +301,15 @@
 /// [`Network`]: crate::net::Network
 /// [`Packet`]: crate::net::Packet
 /// [`PartyId`]: crate::net::PartyId
-/// [`simulate`]: crate::net::simulation::runtime::simulate
+/// [`simulate`]: crate::net::simulation::simulator::simulate
 /// [`GeneralEnv`]: crate::protocol::GeneralEnv
 pub mod prelude {
+    pub use crate::abbreviate::Abbreviate;
     pub use crate::math::{
         ec::EllipticCurve, field::FiniteField, matrix::Matrix, ring::Ring, vector::Vector,
     };
     pub use crate::net::{
-        simulation::runtime::simulate, simulation::runtime::SimulationOutcome, Network, Packet,
+        simulation::simulator::simulate, simulation::simulator::SimulationOutcome, Network, Packet,
         PartyId,
     };
     pub use crate::protocol::{Environment, Error, GeneralEnv, Protocol};
@@ -327,3 +328,5 @@ pub mod ss;
 
 /// Traits and structs to write and run protocols and manage their results.
 pub mod protocol;
+
+pub mod abbreviate;

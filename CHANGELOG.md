@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [Unreleased]
+
+## [0.6.0] - 2026-06-25
+
+### Added
+
+- **Element-type labels in event traces.** A simulation trace's `SEND` and `RECV` lines now report
+  a per-type breakdown of the packet's contents in addition to its byte size, e.g.
+  `SEND  2 -> 0 (1024 bytes: 1 EC elem., 2 Shamir shr., 4 field elem.)`. On a `RECV` line the labels
+  are the sender's, carried in-process by the simulator (which never serializes packets). The labels
+  are supplied by
+  a new `Abbreviate` trait (`scl_rs::abbreviate`, re-exported from the prelude) whose
+  `const ABBREVIATION: &'static str` gives a type its short display label. Built-in types
+  (the finite fields, polynomials, vectors, and additive/Shamir/Feldman shares) already implement
+  it. Protocols opt in per element via the new `Packet::write_labeled` (vs. `Packet::write`, which
+  records the element as `unknown elem.`); `Packet::composition` exposes the `(label, count)`
+  breakdown. Labels are display-only metadata: they are `#[serde(skip)]`, so they never cross the
+  wire (no bandwidth cost, no effect on packet equality) and the breakdown is available on the
+  simulator, which passes packets in-process.
+- **`Packet::write_many` and `Packet::write_many_labeled`** — write a slice of values as separate
+  packet entries in one call (the bulk counterparts of `write` / `write_labeled`).
+- An `examples/send_different_types.rs` example: a two-party protocol that builds a heterogeneous
+  packet (a scalar field element, a curve point, and a vector of additive shares), sends it, reads
+  the elements back, and prints the per-type-annotated trace. Run with
+  `cargo run --example send_different_types`.
+
+### Changed
+
+- **Breaking (module paths): the simulator module `net::simulation::runtime` was renamed to
+  `net::simulation::simulator`.** Code that deep-paths to `simulate`/`SimulationOutcome` (e.g.
+  `use scl_rs::net::simulation::runtime::simulate;`) must update the path to
+  `net::simulation::simulator`. Users importing through `scl_rs::prelude::*` are unaffected.
+- The real-TLS backend (`TcpNetwork` and its private `PeerWriter`/`PacketStream` helpers) moved out
+  of `net` into a dedicated `net::tcp` module, mirroring the existing `net::simulation` backend.
+  `TcpNetwork` is re-exported from `net`, so the `net::TcpNetwork` path (and the prelude) is
+  unchanged; this is an internal reorganization with no public API change.
+- **Breaking: `Packet`'s internal representation changed** from `Vec<Vec<u8>>` to a private
+  `Vec<Element>`, where each element pairs its payload bytes with an optional display-only label
+  (see "Added" above). The wire format is unchanged (the label is `#[serde(skip)]`). The previously
+  public `Packet::new` is now crate-internal, since constructing a packet goes through
+  `Packet::empty` + `write`/`write_labeled`; building from raw bytes is no longer part of the public
+  API.
+- **Breaking: the simulator's `Event::SendData` and `Event::ReceiveData` each gained a
+  `content_count` field** carrying the `(label, count)` breakdown rendered in the `SEND` / `RECV`
+  trace line. Code that constructs or exhaustively matches these variants must account for it.
+
+### Removed
+
+- The legacy `Event::HasData` variant (and the matching `EventType::HasData`) were deleted; they
+  were not produced by the current event-loop simulator (which has no `has_data` polling).
+
 ## [0.5.2] - 2026-06-23
 
 ### Added
@@ -98,7 +149,7 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `Protocol::execute`. They default to no-ops; the deterministic simulator overrides them to record
   `ProtocolBegin` / `ProtocolEnd` events, while real-network backends keep no trace and stay no-ops,
   so behavior there is unchanged.
-- **`Network::send_many`** — a *scatter* primitive that sends a batch of `(PartyId, Packet)` messages
+- **`Network::send_many`** — a _scatter_ primitive that sends a batch of `(PartyId, Packet)` messages
   in one round. It is a provided method that defaults to a sequential loop over `send_to`;
   `TcpNetwork` overrides it to drive the per-peer socket writes concurrently (within the task, via
   `try_join_all` — no spawning, so the deterministic simulator still drives it). On the simulator a
@@ -284,7 +335,9 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.2...v0.6.0
+[0.5.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.4.0...v0.4.1

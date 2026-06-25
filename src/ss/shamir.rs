@@ -1,6 +1,9 @@
-use crate::math::{
-    field::FiniteField,
-    poly::{interpolate_polynomial_at, Polynomial},
+use crate::{
+    abbreviate::Abbreviate,
+    math::{
+        field::FiniteField,
+        poly::{interpolate_polynomial_at, Polynomial},
+    },
 };
 use rand::CryptoRng;
 use serde::{Deserialize, Serialize};
@@ -15,6 +18,10 @@ pub struct ShamirSS<const LIMBS: usize, F> {
     share: F,
     /// The degree of the polynomial used to compute this share.
     degree: usize,
+}
+
+impl<const LIMBS: usize, F> Abbreviate for ShamirSS<LIMBS, F> {
+    const ABBREVIATION: &'static str = "Shamir shr.";
 }
 
 impl<const LIMBS: usize, F> ShamirSS<LIMBS, F>
