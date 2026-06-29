@@ -193,6 +193,10 @@ impl EllipticCurve<4> for Secp256k1 {
         )
     }
 
+    fn is_on_curve(&self) -> bool {
+        self.to_affine().is_valid()
+    }
+
     fn add(&self, rhs: &Self) -> Self {
         let b3 = Secp256k1PrimeField::from(3 * 7);
 
@@ -286,5 +290,49 @@ impl PartialEq for Secp256k1 {
     fn eq(&self, other: &Self) -> bool {
         self.x().mul(other.z()).eq(&other.x().mul(self.z()))
             && self.y().mul(other.z()).eq(&other.y().mul(self.z()))
+    }
+}
+
+#[cfg(test)]
+impl Secp256k1 {
+    /// Test-only constructor that builds a projective point from raw coordinates **without** the
+    /// on-curve validation enforced by the `TryFrom`/deserialization path. Adversarial tests (e.g.
+    /// Feldman commitment validation) need an off-curve point, which is otherwise unconstructible
+    /// through the public API.
+    pub(crate) fn from_coordinates_unchecked(
+        x: Secp256k1PrimeField,
+        y: Secp256k1PrimeField,
+        z: Secp256k1PrimeField,
+    ) -> Self {
+        Self(x, y, z)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generator_is_on_curve() {
+        assert!(Secp256k1::gen().is_on_curve());
+        assert!(Secp256k1::gen().to_affine().is_valid());
+    }
+
+    #[test]
+    fn off_curve_affine_point_is_invalid() {
+        // (1, 1) does not satisfy y^2 = x^3 + 7  (1 != 8).
+        let p = AffinePoint(Secp256k1PrimeField::ONE, Secp256k1PrimeField::ONE);
+        assert!(!p.is_valid());
+    }
+
+    #[test]
+    fn off_curve_projective_point_is_not_on_curve() {
+        // (1 : 1 : 1) in projective coordinates: y^2 z = 1, x^3 + 7 z^3 = 8, so it is off-curve.
+        let p = Secp256k1::from_coordinates_unchecked(
+            Secp256k1PrimeField::ONE,
+            Secp256k1PrimeField::ONE,
+            Secp256k1PrimeField::ONE,
+        );
+        assert!(!p.is_on_curve());
     }
 }

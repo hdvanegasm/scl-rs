@@ -9,6 +9,26 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- **`EllipticCurve::is_on_curve`** — a new required trait method that reports whether a point
+  satisfies the curve equation. Implemented for `Secp256k1` (via `to_affine().is_valid()`).
+
+### Changed
+
+- **Breaking: the `EllipticCurve<LIMBS>` trait gained a required `is_on_curve` method.** External
+  implementors of the trait must add it; the built-in `Secp256k1` already does, so users of the
+  built-in curve are unaffected.
+
+### Security
+
+- **Feldman VSS now rejects off-curve commitments.** `FeldmanSS::is_valid` validates that every
+  dealer-supplied commitment is on the curve (via the new `EllipticCurve::is_on_curve`) before it is
+  used in `scalar_mul`, so an adversarial dealer can no longer feed an off-curve point into the
+  verification equation; `secret_from_shares` surfaces this as `ShareError::InvalidShare`. Guarded by
+  new adversarial tests (off-curve commitment, tampered share, wrong commitment-vector length,
+  length mismatch) and point-level on-curve regression tests.
+
 ## [0.6.0] - 2026-06-25
 
 ### Added

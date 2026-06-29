@@ -38,6 +38,9 @@ pub trait EllipticCurve<const LIMBS: usize>:
 
     /// Returns the additive inverse of the point in the elliptic curve.
     fn negate(&self) -> Self;
+
+    /// Tells if the current point is on the curve.
+    fn is_on_curve(&self) -> bool;
 }
 
 macro_rules! impl_ec_abbreviation {
