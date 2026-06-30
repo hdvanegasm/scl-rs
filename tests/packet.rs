@@ -2,7 +2,10 @@ use scl_rs::math::ec::secp256k1::Secp256k1;
 use scl_rs::math::ec::EllipticCurve;
 use scl_rs::math::field::secp256k1_scalar::Secp256k1ScalarField;
 use scl_rs::math::ring::Ring;
-use scl_rs::{math::field::mersenne61::Mersenne61, net::Packet};
+use scl_rs::{
+    math::field::mersenne61::Mersenne61,
+    net::{NetworkError, Packet},
+};
 
 #[test]
 fn serialize_deserialize_one_object() {
@@ -29,6 +32,43 @@ fn serialize_deserialize_multiple_different_objects() {
     let scalar_unpacked = packet.pop().unwrap();
     assert_eq!(scalar, scalar_unpacked);
     assert_eq!(ec_element, ec_unpacked);
+}
+
+#[test]
+fn pop_on_empty_packet_is_rejected() {
+    let mut packet = Packet::empty();
+    let result = packet.pop::<Mersenne61>();
+    assert!(matches!(result, Err(NetworkError::EmptyPacket)));
+}
+
+#[test]
+fn read_out_of_range_index_is_rejected() {
+    let mut packet = Packet::empty();
+    packet.write(&Mersenne61::from(7)).unwrap();
+    // The packet holds a single element at index 0, so index 1 is out of range.
+    let result = packet.read::<Mersenne61>(1);
+    assert!(matches!(
+        result,
+        Err(NetworkError::WrongPacketIdx { idx: 1 })
+    ));
+}
+
+#[test]
+fn read_wrong_type_is_a_serialization_error() {
+    let mut packet = Packet::empty();
+    // A single byte is written; reading it back as a 32-byte array needs more bytes than the
+    // element holds, so postcard deserialization fails.
+    packet.write(&7u8).unwrap();
+    let result = packet.read::<[u8; 32]>(0);
+    assert!(matches!(result, Err(NetworkError::SerializationError(_))));
+}
+
+#[test]
+fn pop_wrong_type_is_a_serialization_error() {
+    let mut packet = Packet::empty();
+    packet.write(&7u8).unwrap();
+    let result = packet.pop::<[u8; 32]>();
+    assert!(matches!(result, Err(NetworkError::SerializationError(_))));
 }
 
 use proptest::prelude::*;

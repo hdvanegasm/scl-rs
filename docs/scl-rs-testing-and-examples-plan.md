@@ -143,8 +143,11 @@ that, not just the concrete `GeneralEnv<SimNetwork>` shape.
 
 ### Tier 6 — Cross-cutting gates (CI)
 
-- **MSRV job:** the roadmap's standing open item — `rust-version = "1.85.1"` is declared but no
-  CI matrix pins it. Add a `1.85.1` + `stable` matrix.
+- **MSRV job:** ✅ **done** (landed in 0.3.0). `.github/workflows/rust.yml` has a dedicated `msrv`
+  job pinned to `dtolnay/rust-toolchain@1.85.1` (kept in sync with `rust-version` in `Cargo.toml`)
+  that runs `cargo build --all-features`. It builds — rather than tests — on MSRV on purpose: that
+  compiles the library against 1.85.1 without dragging dev-dependencies (e.g. `proptest`, whose own
+  MSRV is newer) into the constraint. `stable` is covered by the `fmt`/`clippy`/`test`/`docs` jobs.
 - **Doctests:** the crate-doc protocol/simulator examples are compiled doctests; keep them green
   and add a doctest to each public constructor on `Packet`, `ShamirSS`, `FeldmanSS`.
 - Wire `cargo-deny`/`cargo-audit` (already roadmap §6/§8) once the above lands.

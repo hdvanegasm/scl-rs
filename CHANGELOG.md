@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-30
+
 ### Added
 
 - **`EllipticCurve::is_on_curve`** — a new required trait method that reports whether a point
@@ -21,12 +23,21 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   constant coefficient at `x = 0`); and `postcard` serialization round-trips for field elements,
   curve points, `ShamirSS`, `FeldmanSS`, and `Packet`. Reusable strategies live in a shared
   `tests/common/mod.rs`. Test-only — no library API change.
+- **Negative / adversarial tests for the error paths (testing-plan Tier 3).** `Packet` read/`pop`
+  rejections (`EmptyPacket`, `WrongPacketIdx`, and a `postcard` deserialize failure on the wrong
+  type — the 0.4.0 `Result` API had no coverage), and the new `interpolate_polynomial_at`
+  empty-input and length-mismatch error paths.
 
 ### Changed
 
 - **Breaking: the `EllipticCurve<LIMBS>` trait gained a required `is_on_curve` method.** External
   implementors of the trait must add it; the built-in `Secp256k1` already does, so users of the
   built-in curve are unaffected.
+- **`interpolate_polynomial_at` now returns errors instead of panicking on malformed input.** Empty
+  input and a node/evaluation length mismatch previously tripped `assert!`/`assert_eq!`; they now
+  return the new `poly::Error::EmptyInterpolation` and `poly::Error::LengthMismatch` variants, so all
+  three of the function's preconditions surface as recoverable errors (the distinct-nodes check
+  already did). `poly::Error` is `#[non_exhaustive]`, so the added variants are not breaking.
 
 ### Security
 
@@ -363,7 +374,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.0...v0.5.1

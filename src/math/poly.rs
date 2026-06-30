@@ -22,6 +22,19 @@ pub enum Error<T> {
     /// The polynomial has no coefficients.
     #[error("the polynomial has no coefficients")]
     EmptyCoefficients,
+
+    /// An interpolation was requested with no nodes.
+    #[error("the interpolation was called with no nodes")]
+    EmptyInterpolation,
+
+    /// The number of evaluations does not match the number of interpolation nodes.
+    #[error("interpolation length mismatch: {nodes} nodes but {evaluations} evaluations")]
+    LengthMismatch {
+        /// Number of interpolation nodes (the x-coordinates).
+        nodes: usize,
+        /// Number of evaluations (the y-coordinates).
+        evaluations: usize,
+    },
 }
 
 /// Specialized type for the [`enum@Error`] type.
@@ -152,16 +165,25 @@ fn all_different<T: Ring>(list: &[T]) -> bool {
 
 /// Computes the evaluation of the interpolated polynomial at `x` using the naive Lagrange formula.
 ///
-/// # Error
+/// # Errors
 ///
-/// If the lagrange basis is not computed correctly, the function returns an [`enum@Error`].
+/// Returns [`Error::EmptyInterpolation`] if `alphas` is empty, [`Error::LengthMismatch`] if `alphas`
+/// and `evaluations` have different lengths, and [`Error::NotAllDifferentInterpolation`] (via
+/// [`compute_lagrange_basis`]) if the nodes in `alphas` are not all distinct.
 pub fn interpolate_polynomial_at<const LIMBS: usize, T: FiniteField<LIMBS>>(
     evaluations: &[T],
     alphas: &[T],
     x: &T,
 ) -> Result<T, T> {
-    assert!(!alphas.is_empty());
-    assert_eq!(alphas.len(), evaluations.len());
+    if alphas.is_empty() {
+        return Err(Error::EmptyInterpolation);
+    }
+    if alphas.len() != evaluations.len() {
+        return Err(Error::LengthMismatch {
+            nodes: alphas.len(),
+            evaluations: evaluations.len(),
+        });
+    }
     let lagrange_basis = compute_lagrange_basis(alphas, x)?;
     let mut interpolation = T::ZERO;
     for (eval, basis) in evaluations.iter().zip(lagrange_basis) {
