@@ -40,6 +40,8 @@ pub trait EllipticCurve<const LIMBS: usize>:
     fn negate(&self) -> Self;
 
     /// Tells if the current point is on the curve.
+    ///
+    /// A point at infinity is considered to be on the curve.
     fn is_on_curve(&self) -> bool;
 }
 

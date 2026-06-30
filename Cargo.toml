@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
@@ -45,3 +45,5 @@ rand_chacha = "0.10.0"
 rcgen = "0.14.8"
 tempfile = "3.27.0"
 itertools = "0.15.0"
+proptest = "1.11.0"
+postcard = { version = "1", features = ["alloc"] }

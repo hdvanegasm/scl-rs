@@ -127,3 +127,19 @@ fn off_curve_point_is_rejected() {
     let bad = (*g.x(), Secp256k1PrimeField::from(123u64), *g.z());
     assert!(Secp256k1::try_from(bad).is_err());
 }
+
+use proptest::prelude::*;
+
+use crate::common::roundtrip;
+mod common;
+
+fn element() -> impl Strategy<Value = Secp256k1> {
+    common::curve_element()
+}
+
+proptest! {
+    #[test]
+    fn postcard_roundtrip(g in element()) {
+        roundtrip(g)?;
+    }
+}

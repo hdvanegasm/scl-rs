@@ -1,10 +1,21 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-06-25
+**Date:** 2026-06-29
 
 **Current version:** 0.6.0 (released 2026-06-25). A breaking minor on top of the 0.5.x line, whose
 last patch 0.5.2 shipped 2026-06-23 (a `Matrix` non-square indexing fix + `Clone` for `FeldmanSS`;
 0.5.1 and 0.5.0 both shipped 2026-06-22, 0.4.1 on 2026-06-19).
+
+**Staged for 0.7.0 (unreleased):** Feldman VSS hardening — a new required `EllipticCurve::is_on_curve`
+method, and `FeldmanSS::is_valid` now rejects off-curve dealer commitments before they reach
+`scalar_mul` (closing the adversarial-dealer gap the testing plan's Tier 3 flagged), surfaced as
+`ShareError::InvalidShare`. Adds the Tier-3 adversarial Feldman tests and point-level on-curve
+regression tests. Also completes testing-plan **Tier 2**: a `proptest` property-based suite
+(ring/field laws, Shamir subset-invariance over random `(secret, t, n)`, polynomial
+evaluate-then-interpolate recovery, and `postcard` serialization round-trips for fields, curve
+points, `ShamirSS`/`FeldmanSS`/`Packet`), with shared strategies in `tests/common/mod.rs`
+(test-only). Breaking (new trait method), so a minor bump per
+§2. See `CHANGELOG.md` `[Unreleased]`.
 
 **0.6.0 contents:** trace **element-type labels** — `SEND`/`RECV` lines now report a per-type
 breakdown of a packet's contents (e.g. `(1024 bytes: 1 EC elem., 4 field elem.)`), driven by a new
@@ -199,6 +210,14 @@ release rather than dribbling breaks out continuously.
       are now bound on `R: CryptoRng` (which, in rand 0.10, implies `RngCore`), so callers can't seed
       secret material from a predictable PRG. Lower-level, not-inherently-secret sampling
       (`Ring::random`, `Polynomial`/`Matrix`/`Vector::random`) deliberately still accepts any `Rng`.
+- [x] **Feldman commitment on-curve validation (staged for 0.7.0).** `FeldmanSS::is_valid` now
+      rejects dealer-supplied commitments that are not on the curve — via a new required
+      `EllipticCurve::is_on_curve` method (implemented for `Secp256k1`; the point at infinity
+      short-circuits to `true` rather than panicking through `to_affine`) — *before* they feed into
+      `scalar_mul`, closing the adversarial-dealer gap the testing plan's Tier 3 flagged. A tampered
+      or off-curve share surfaces as `ShareError::InvalidShare`. Guarded by adversarial tests
+      (off-curve commitment, tampered share, wrong commitment-vector length, length mismatch) and
+      point-level on-curve regression tests. Breaking (new trait method) → minor bump per §2.
 - [ ] **Constant-time review** — _deliberately deferred while the library is research/prototyping
       (decided 2026-06-22); not a near-term priority._ secp256k1 field sampling uses
       `random_mod_vartime`; a future audit would check field/curve ops for data-dependent timing on
@@ -315,8 +334,13 @@ These are not strictly required, but shape how "complete" the stable `0.x` surfa
 
 - [ ] **Arbitrary prime-`p` field** (open README item): a general `F_p` instead of only the
       hand-written Mersenne‑61 / secp256k1 fields.
-- [ ] **Test-coverage gap** (open README item): "write missing tests for all functionalities" —
-      especially `net` (real path), `matrix`/`poly` edge cases, and serialization round-trips.
+- [ ] **Test-coverage gap** (open README item): "write missing tests for all functionalities."
+      _Progress: `matrix`/`shamir`/`vector`/`naf` landed in 0.5.2; `ss::feldman` adversarial +
+      point-level on-curve tests staged for 0.7.0 (§6); testing-plan **Tier 2** complete
+      (staged for 0.7.0) — `proptest` ring/field laws, Shamir subset-invariance, polynomial
+      evaluate-then-interpolate recovery, and `postcard` serialization round-trips for
+      fields/curve points/`ShamirSS`/`FeldmanSS`/`Packet`, with shared strategies in
+      `tests/common/mod.rs`._ Still open: `net` (real path) and the remaining Tier 3–6 items.
 - [ ] Any additional MPC facilities you want in the stable surface (e.g. opening/reconstruction
       helpers, a Beaver-triple/multiplication example to showcase typed composition end-to-end).
 
@@ -336,6 +360,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.5.1**       | _Docs patch_ ✅ **PUBLISHED 2026-06-22**            | Doc-snippet fixes on top of 0.5.0 (no API change). Tagged `v0.5.1`.                                                                                                                                                                                          |
 | **0.5.2**       | _Correctness patch_ ✅ **PUBLISHED 2026-06-23**     | Fixed a `Matrix` non-square indexing bug (`get`/`get_mut`/matrix×matrix and matrix×vector `mul` used the row count as the row stride; `get`/`get_mut` now bounds-check both axes), derived `Clone` for `FeldmanSS`, and expanded the test suite (Shamir, NAF, matrix, vector — the matrix tests are what caught the bug). Tagged `v0.5.2`. |
 | **0.6.0**       | _Trace element labels & reorg_ ✅ **RELEASED 2026-06-25** | Trace **element-type labels**: `SEND`/`RECV` lines report a per-type breakdown (`(1024 bytes: 1 EC elem., 4 field elem.)`) via a new `Abbreviate` trait (prelude-exported; implemented by the built-in field/curve/poly/vector/share types), `Packet::write_labeled`/`write_many_labeled`/`composition`, and a `content_count` field on `SendData`/`ReceiveData`. Plus two reorgs: `net::simulation::runtime` → `simulator` and the real-TLS backend extracted to `net::tcp` (`TcpNetwork` re-exported from `net`). Breaking (module rename, `Packet` representation + private `Packet::new`, new `Event` fields, removed legacy `Event::HasData`), so a minor bump per §2. Added `examples/send_different_types.rs`. Tagged `v0.6.0`. |
+| **0.7.0** _(unreleased)_ | _Feldman VSS hardening + property tests_  | New required `EllipticCurve::is_on_curve` method; `FeldmanSS::is_valid` rejects off-curve dealer commitments before `scalar_mul` (§6), surfaced as `ShareError::InvalidShare`; Tier-3 adversarial Feldman tests (off-curve commitment, tampered share, wrong commitment-vector length, length mismatch) and point-level on-curve regression tests. Plus testing-plan **Tier 2** (complete): a `proptest` suite (ring/field laws, Shamir subset-invariance, polynomial evaluate-then-interpolate recovery, `postcard` serialization round-trips for fields/curve points/`ShamirSS`/`FeldmanSS`/`Packet`) with shared strategies in `tests/common/mod.rs`. Breaking (new trait method), so a minor bump per §2. See `CHANGELOG.md` `[Unreleased]`. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 

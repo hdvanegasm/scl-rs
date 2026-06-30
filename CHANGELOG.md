@@ -13,6 +13,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 - **`EllipticCurve::is_on_curve`** — a new required trait method that reports whether a point
   satisfies the curve equation. Implemented for `Secp256k1` (via `to_affine().is_valid()`).
+- **Property-based test suite (`proptest`).** Added `proptest` as a dev-dependency and a set of
+  property tests: ring/field laws (associativity, commutativity, distributivity, identities,
+  inverses, subtraction) for Mersenne61 and the secp256k1 prime/scalar fields; Shamir reconstruction
+  subset-invariance across random `(secret, t, n)`; polynomial interpolation recovery
+  (`interpolate_polynomial_at` agrees with Horner `evaluate` at random points, and recovers the
+  constant coefficient at `x = 0`); and `postcard` serialization round-trips for field elements,
+  curve points, `ShamirSS`, `FeldmanSS`, and `Packet`. Reusable strategies live in a shared
+  `tests/common/mod.rs`. Test-only — no library API change.
 
 ### Changed
 

@@ -194,6 +194,9 @@ impl EllipticCurve<4> for Secp256k1 {
     }
 
     fn is_on_curve(&self) -> bool {
+        if self.is_point_at_infinity() {
+            return true;
+        }
         self.to_affine().is_valid()
     }
 
@@ -323,6 +326,13 @@ mod tests {
         // (1, 1) does not satisfy y^2 = x^3 + 7  (1 != 8).
         let p = AffinePoint(Secp256k1PrimeField::ONE, Secp256k1PrimeField::ONE);
         assert!(!p.is_valid());
+    }
+
+    #[test]
+    fn point_at_infinity_is_on_curve_without_panicking() {
+        // `is_on_curve` must short-circuit infinity rather than route it through `to_affine`,
+        // whose `z != 0` assertion would otherwise panic.
+        assert!(Secp256k1::POINT_AT_INFINITY.is_on_curve());
     }
 
     #[test]
