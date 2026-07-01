@@ -31,7 +31,11 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         let mut rng = ChaCha20Rng::from_rng(&mut rand::rng());
         let rnd_scalar = Secp256k1ScalarField::random(&mut rng);
         let rnd_ec = Secp256k1::gen().scalar_mul(&rnd_scalar);
-        let shares = AdditiveSS::shares_from_secret(rnd_scalar, 2, &mut rng);
+        let shares = AdditiveSS::shares_from_secret(
+            rnd_scalar,
+            &[PartyId::from(0), PartyId::from(1)],
+            &mut rng,
+        );
 
         packet.write_labeled(&rnd_scalar)?;
         packet.write_labeled(&rnd_ec)?;
