@@ -118,15 +118,17 @@ that, not just the concrete `GeneralEnv<SimNetwork>` shape.
 
 - **Migrate `tests/simulator.rs` protocols to `impl<E: Environment> Protocol<E>`** with
   `env.network()/network_mut()`, matching the examples. This compiles the generic path and
-  catches capability-bound regressions the concrete tests miss.
+  catches capability-bound regressions the concrete tests miss. ✅ **done** — all `tests/simulator.rs`
+  protocols now `impl<E: Environment> Protocol<E>`.
 - **Determinism / reproducibility:** run the *same* `simulate(...)` twice and assert byte-equal
   outputs **and** identical event traces. This is the core promise of the deterministic
   executor and currently nothing asserts run-to-run stability (the `seq` tiebreaker exists
-  precisely for this — test it).
+  precisely for this — test it). ✅ **done** — `simulation_is_reproducible_across_runs`.
 - **A capability-carrying environment:** define a tiny test-only `Env` supertrait (e.g. a
   counter or a Δ value) and a protocol bounded on it, proving the "capabilities accumulate up
   the composition and the factory must supply them" claim from the CHANGELOG compiles and runs.
-  This is the dogfood for the MASCOT direction.
+  This is the dogfood for the MASCOT direction. ✅ **done** — `DeltaEnv` supertrait +
+  `DeltaExchange` protocol in `capability_env_supplies_extra_state_to_protocol`.
 - **Adversarial reordering harness** (roadmap "deferred to post-1.0", but the explicit-blocking
   state makes it cheap now): a `Switchboard` variant or hook that delays/reorders deliveries
   within the model, asserting a correct protocol still converges. Even a minimal version is a
@@ -136,10 +138,15 @@ that, not just the concrete `GeneralEnv<SimNetwork>` shape.
 
 - Fill `tests/net.rs` (or delete it and keep the inline ones — pick one home). If kept as an
   integration test, cover the multi-party (`n > 2`) `recv_any` path over real TLS, which the
-  current 2-party inline test doesn't reach.
+  current 2-party inline test doesn't reach. ✅ **done** — the empty `tests/net.rs` stub was
+  removed and the new tests live inline in `src/net/tcp.rs` (Option A), reusing the existing
+  cert/config helpers. `recv_any_collects_from_multiple_peers_over_tls` drives `recv_any`'s
+  `StreamMap` over three live mTLS sockets.
 - **Failure paths:** connection closed mid-recv → `ConnectionClosed`; malformed config JSON →
   `ConfigParse`; unloadable PEM → `InvalidPemFile`. These variants were added in 0.4.0 and are
-  untested.
+  untested. ✅ **done** — `recv_from_closed_peer_reports_connection_closed` (clean TLS shutdown →
+  `ConnectionClosed(Some(peer))`), `malformed_config_json_is_rejected`, and
+  `unloadable_pem_material_is_rejected`.
 
 ### Tier 6 — Cross-cutting gates (CI)
 

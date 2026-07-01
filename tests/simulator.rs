@@ -3,30 +3,29 @@ use scl_rs::net::simulation::channel::{
     SimpleNetworkConfig,
 };
 use scl_rs::net::simulation::event::{Event, EventType};
-use scl_rs::net::simulation::network::SimNetwork;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::simulation::switchboard::{Switchboard, TriggeredHook};
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Error, GeneralEnv, Protocol};
+use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol};
 
 pub struct SendRecvProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for SendRecvProtocol {
+impl<E: Environment> Protocol<E> for SendRecvProtocol {
     type Output = usize;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Error> {
         let mut packet = Packet::empty();
         packet
-            .write(&environment.network.local_party().as_usize())
+            .write(&environment.network().local_party().as_usize())
             .unwrap();
 
-        let other = environment.network.other()?;
-        environment.network.send_to(other, &packet).await?;
+        let other = environment.network().other()?;
+        environment.network_mut().send_to(other, &packet).await?;
 
-        let received_packet = environment.network.recv_from(other).await?;
-        environment.network.close().await?;
+        let received_packet = environment.network_mut().recv_from(other).await?;
+        environment.network_mut().close().await?;
 
         let their_id: usize = received_packet.read(0).unwrap();
         Ok(their_id)
@@ -76,28 +75,28 @@ fn send_recv_simulation() {
 pub struct PingPongProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for PingPongProtocol {
+impl<E: Environment> Protocol<E> for PingPongProtocol {
     type Output = Vec<usize>;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
-        let other = environment.network.other()?;
-        let me = environment.network.local_party().as_usize();
+    async fn run(self, environment: &mut E) -> Result<Vec<usize>, Error> {
+        let other = environment.network().other()?;
+        let me = environment.network().local_party().as_usize();
 
         // Send two messages in order.
         for i in 0..2 {
             let mut packet = Packet::empty();
             packet.write(&(me * 10 + i)).unwrap();
-            environment.network.send_to(other, &packet).await?;
+            environment.network_mut().send_to(other, &packet).await?;
         }
 
         // Receive both, preserving arrival order.
         let mut received = Vec::new();
         for _ in 0..2 {
-            let packet = environment.network.recv_from(other).await?;
+            let packet = environment.network_mut().recv_from(other).await?;
             let value: usize = packet.read(0).unwrap();
             received.push(value);
         }
-        environment.network.close().await?;
+        environment.network_mut().close().await?;
 
         Ok(received)
     }
@@ -132,19 +131,24 @@ fn ping_pong_preserves_message_order() {
 pub struct ChainedFirstStage;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for ChainedFirstStage {
+impl<E: Environment> Protocol<E> for ChainedFirstStage {
     type Output = usize;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
-        let other = environment.network.other()?;
-        let me = environment.network.local_party().as_usize();
+    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+        let other = environment.network().other()?;
+        let me = environment.network().local_party().as_usize();
 
         let mut packet = Packet::empty();
         packet.write(&me).unwrap();
-        environment.network.send_to(other, &packet).await?;
+        environment.network_mut().send_to(other, &packet).await?;
 
-        let received: usize = environment.network.recv_from(other).await?.read(0).unwrap();
-        environment.network.close().await?;
+        let received: usize = environment
+            .network_mut()
+            .recv_from(other)
+            .await?
+            .read(0)
+            .unwrap();
+        environment.network_mut().close().await?;
 
         // Composition: call the next stage inline and use its typed result.
         let output = ChainedSecondStage { received }.execute(environment).await?;
@@ -163,10 +167,10 @@ pub struct ChainedSecondStage {
 }
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for ChainedSecondStage {
+impl<E: Environment> Protocol<E> for ChainedSecondStage {
     type Output = usize;
 
-    async fn run(self, _environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
+    async fn run(self, _environment: &mut E) -> Result<usize, Error> {
         Ok(self.received + 100)
     }
 
@@ -227,18 +231,18 @@ const BULK_PAYLOAD_LEN: usize = 200_000;
 pub struct BulkTransferProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for BulkTransferProtocol {
+impl<E: Environment> Protocol<E> for BulkTransferProtocol {
     type Output = Vec<u8>;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Vec<u8>, Error> {
-        let other = environment.network.other()?;
+    async fn run(self, environment: &mut E) -> Result<Vec<u8>, Error> {
+        let other = environment.network().other()?;
 
         let mut packet = Packet::empty();
         packet.write(&vec![0u8; BULK_PAYLOAD_LEN]).unwrap();
-        environment.network.send_to(other, &packet).await?;
+        environment.network_mut().send_to(other, &packet).await?;
 
-        let received = environment.network.recv_from(other).await?;
-        environment.network.close().await?;
+        let received = environment.network_mut().recv_from(other).await?;
+        environment.network_mut().close().await?;
 
         let payload: Vec<u8> = received.read(0).unwrap();
         Ok(payload)
@@ -377,21 +381,21 @@ fn trace_arrows_reflect_each_party_perspective() {
 pub struct OneWayProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for OneWayProtocol {
+impl<E: Environment> Protocol<E> for OneWayProtocol {
     type Output = Option<usize>;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<Option<usize>, Error> {
-        let other = environment.network.other()?;
-        if environment.network.local_party().as_usize() == 0 {
+    async fn run(self, environment: &mut E) -> Result<Option<usize>, Error> {
+        let other = environment.network().other()?;
+        if environment.network().local_party().as_usize() == 0 {
             let mut packet = Packet::empty();
             packet.write(&42usize).unwrap();
-            environment.network.send_to(other, &packet).await?;
-            environment.network.close().await?;
+            environment.network_mut().send_to(other, &packet).await?;
+            environment.network_mut().close().await?;
             Ok(None)
         } else {
             // Party 1 receives without ever having sent on this channel.
-            let packet = environment.network.recv_from(other).await?;
-            environment.network.close().await?;
+            let packet = environment.network_mut().recv_from(other).await?;
+            environment.network_mut().close().await?;
             let value: usize = packet.read(0).unwrap();
             Ok(Some(value))
         }
@@ -431,11 +435,11 @@ const BROADCAST_VALUE: usize = 7;
 pub struct BroadcastProtocol;
 
 #[async_trait::async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for BroadcastProtocol {
+impl<E: Environment> Protocol<E> for BroadcastProtocol {
     type Output = usize;
 
-    async fn run(self, environment: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
-        let me = environment.network.local_party();
+    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+        let me = environment.network().local_party();
 
         if me.as_usize() == 0 {
             // Party 0 sends the same message to every party, including itself.
@@ -443,7 +447,7 @@ impl Protocol<GeneralEnv<SimNetwork>> for BroadcastProtocol {
             packet.write(&BROADCAST_VALUE).unwrap();
             for receiver in 0..BROADCAST_N_PARTIES {
                 environment
-                    .network
+                    .network_mut()
                     .send_to(PartyId::from(receiver), &packet)
                     .await?;
             }
@@ -451,10 +455,10 @@ impl Protocol<GeneralEnv<SimNetwork>> for BroadcastProtocol {
 
         // Every party (party 0 included) receives its copy from party 0.
         let received = environment
-            .network
+            .network_mut()
             .recv_from(PartyId::from(0_usize))
             .await?;
-        environment.network.close().await?;
+        environment.network_mut().close().await?;
 
         let value: usize = received.read(0).unwrap();
         Ok(value)
@@ -540,18 +544,18 @@ use async_trait::async_trait;
 struct SendRecv;
 
 #[async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for SendRecv {
+impl<E: Environment> Protocol<E> for SendRecv {
     type Output = usize;
 
-    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
-        let other = env.network.other()?;
-        let me = env.network.local_party();
+    async fn run(self, env: &mut E) -> Result<usize, Error> {
+        let other = env.network().other()?;
+        let me = env.network().local_party();
 
         let mut packet = Packet::empty();
         packet.write(&me.as_usize()).unwrap();
-        env.network.send_to(other, &packet).await?;
+        env.network_mut().send_to(other, &packet).await?;
 
-        let received = env.network.recv_from(other).await?;
+        let received = env.network_mut().recv_from(other).await?;
         let their_id_received: usize = received.read(0).unwrap();
 
         Ok(their_id_received)
@@ -639,17 +643,17 @@ struct QuorumCollect {
 }
 
 #[async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for QuorumCollect {
+impl<E: Environment> Protocol<E> for QuorumCollect {
     /// For the collector: the sorted ids it heard from. For everyone else: empty.
     type Output = Vec<usize>;
 
-    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
-        let me = env.network.local_party().as_usize();
+    async fn run(self, env: &mut E) -> Result<Vec<usize>, Error> {
+        let me = env.network().local_party().as_usize();
 
         if me == self.collector {
             let mut heard = Vec::new();
             for _ in 0..self.quorum {
-                let (packet, sender) = env.network.recv_any().await?;
+                let (packet, sender) = env.network_mut().recv_any().await?;
                 // Each sender writes its own id as the payload, so the payload must match
                 // the `PartyId` that `recv_any` reports alongside it.
                 let payload: usize = packet.read(0).unwrap();
@@ -660,20 +664,20 @@ impl Protocol<GeneralEnv<SimNetwork>> for QuorumCollect {
                 );
                 heard.push(sender.as_usize());
             }
-            env.network.close().await?;
+            env.network_mut().close().await?;
             heard.sort_unstable();
             Ok(heard)
         } else if self.senders.contains(&me) {
             let mut packet = Packet::empty();
             packet.write(&me).unwrap();
-            env.network
+            env.network_mut()
                 .send_to(PartyId::from(self.collector), &packet)
                 .await?;
-            env.network.close().await?;
+            env.network_mut().close().await?;
             Ok(Vec::new())
         } else {
             // A silent party: it never sends, but must still terminate cleanly.
-            env.network.close().await?;
+            env.network_mut().close().await?;
             Ok(Vec::new())
         }
     }
@@ -794,21 +798,21 @@ struct StragglerScenario {
 }
 
 #[async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
+impl<E: Environment> Protocol<E> for StragglerScenario {
     /// Collector: the sorted ids it heard. Late receiver: the straggler id it eventually got.
     /// Everyone else: empty.
     type Output = Vec<usize>;
 
-    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<Vec<usize>, Error> {
-        let me = env.network.local_party();
+    async fn run(self, env: &mut E) -> Result<Vec<usize>, Error> {
+        let me = env.network().local_party();
 
         if me == self.collector {
             let mut heard = Vec::new();
             for _ in 0..self.quorum {
-                let (_packet, sender) = env.network.recv_any().await?;
+                let (_packet, sender) = env.network_mut().recv_any().await?;
                 heard.push(sender.as_usize());
             }
-            env.network.close().await?;
+            env.network_mut().close().await?;
             heard.sort_unstable();
             Ok(heard)
         } else if me == self.straggler {
@@ -816,25 +820,27 @@ impl Protocol<GeneralEnv<SimNetwork>> for StragglerScenario {
             // are slow, so both messages arrive well after the collector's quorum.
             let mut packet = Packet::empty();
             packet.write(&me.as_usize()).unwrap();
-            env.network.send_to(self.collector, &packet).await?;
-            env.network.send_to(self.late_receiver, &packet).await?;
-            env.network.close().await?;
+            env.network_mut().send_to(self.collector, &packet).await?;
+            env.network_mut()
+                .send_to(self.late_receiver, &packet)
+                .await?;
+            env.network_mut().close().await?;
             Ok(Vec::new())
         } else if self.fast_senders.contains(&me) {
             let mut packet = Packet::empty();
             packet.write(&me.as_usize()).unwrap();
-            env.network.send_to(self.collector, &packet).await?;
-            env.network.close().await?;
+            env.network_mut().send_to(self.collector, &packet).await?;
+            env.network_mut().close().await?;
             Ok(Vec::new())
         } else if me == self.late_receiver {
             // Waits only for the straggler, keeping the simulation alive until the straggler's slow
             // messages have been delivered.
-            let packet = env.network.recv_from(self.straggler).await?;
-            env.network.close().await?;
+            let packet = env.network_mut().recv_from(self.straggler).await?;
+            env.network_mut().close().await?;
             let value: usize = packet.read(0).unwrap();
             Ok(vec![value])
         } else {
-            env.network.close().await?;
+            env.network_mut().close().await?;
             Ok(Vec::new())
         }
     }
@@ -927,16 +933,16 @@ fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
 struct ScatterProtocol;
 
 #[async_trait]
-impl Protocol<GeneralEnv<SimNetwork>> for ScatterProtocol {
+impl<E: Environment> Protocol<E> for ScatterProtocol {
     /// Party 0: 0. Every other party: the value it received from party 0.
     type Output = usize;
 
-    async fn run(self, env: &mut GeneralEnv<SimNetwork>) -> Result<usize, Error> {
-        let me = env.network.local_party().as_usize();
+    async fn run(self, env: &mut E) -> Result<usize, Error> {
+        let me = env.network().local_party().as_usize();
 
         if me == 0 {
             let messages: Vec<(PartyId, Packet)> = env
-                .network
+                .network()
                 .party_ids()
                 .into_iter()
                 .filter(|party| party.as_usize() != 0)
@@ -946,12 +952,12 @@ impl Protocol<GeneralEnv<SimNetwork>> for ScatterProtocol {
                     (party, packet)
                 })
                 .collect();
-            env.network.send_many(&messages).await?;
-            env.network.close().await?;
+            env.network_mut().send_many(&messages).await?;
+            env.network_mut().close().await?;
             Ok(0)
         } else {
-            let packet = env.network.recv_from(PartyId::from(0)).await?;
-            env.network.close().await?;
+            let packet = env.network_mut().recv_from(PartyId::from(0)).await?;
+            env.network_mut().close().await?;
             Ok(packet.read(0).unwrap())
         }
     }
@@ -976,5 +982,132 @@ fn send_many_scatters_distinct_messages_to_each_peer() {
     assert_eq!(outcome.outputs[&PartyId::from(0)], 0);
     for peer in [1usize, 2, 3] {
         assert_eq!(outcome.outputs[&PartyId::from(peer)], peer * 10);
+    }
+}
+
+#[test]
+fn simulation_is_reproducible_across_runs() {
+    // Reproducibility is the core promise of the deterministic executor: the same inputs must
+    // yield the same outputs *and* the same event traces, run to run. The `seq` tiebreaker in the
+    // executor exists precisely to make the ordering of simultaneous events stable — this test is
+    // what pins that guarantee. The broadcast scenario is chosen because it fans one sender out to
+    // several receivers, producing multiple events whose ordering a non-deterministic core could
+    // scramble.
+    let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
+    let run = || {
+        simulate(
+            SimpleNetworkConfig,
+            parties.clone(),
+            |_| BroadcastProtocol,
+            |_, net| GeneralEnv::new(net),
+            vec![],
+        )
+    };
+
+    let first = run();
+    let second = run();
+
+    for party in &parties {
+        // Byte-equal outputs: the protocol result is identical for every party across runs.
+        assert_eq!(
+            first.outputs[party],
+            second.outputs[party],
+            "party {} output must be reproducible run-to-run",
+            party.as_usize()
+        );
+        // Identical event traces: not just the same event *kinds*, but the same rendered trace —
+        // same events, same order, same virtual timestamps.
+        assert_eq!(
+            first.traces[party].to_string(),
+            second.traces[party].to_string(),
+            "party {} trace must be identical across runs",
+            party.as_usize()
+        );
+    }
+}
+
+/// A test-only capability layered on top of [`Environment`]. In addition to the network, it exposes
+/// a per-party `delta` value that a protocol can read without touching the network. This dogfoods
+/// the composition claim that capabilities accumulate up the environment and the factory must
+/// supply them: a protocol bounded on [`DeltaEnv`] compiles only if the environment carries the
+/// extra capability, and [`simulate`]'s `make_env` factory is what must construct one that does.
+trait DeltaEnv: Environment {
+    /// The extra capability: a per-party value carried through every composition layer.
+    fn delta(&self) -> u64;
+}
+
+/// Concrete capability-carrying environment: like [`GeneralEnv`], but it also holds a `delta`.
+struct GeneralDeltaEnv<N: Network> {
+    network: N,
+    delta: u64,
+}
+
+impl<N: Network> Environment for GeneralDeltaEnv<N> {
+    type Net = N;
+
+    fn network(&self) -> &Self::Net {
+        &self.network
+    }
+
+    fn network_mut(&mut self) -> &mut Self::Net {
+        &mut self.network
+    }
+}
+
+impl<N: Network> DeltaEnv for GeneralDeltaEnv<N> {
+    fn delta(&self) -> u64 {
+        self.delta
+    }
+}
+
+/// Protocol bounded on the extra capability rather than on the concrete environment. Each party
+/// reads its own `delta` from the environment, exchanges it with the other party, and returns the
+/// sum. It compiles only because `E` is bounded on [`DeltaEnv`], proving a protocol can consume a
+/// capability the base [`Environment`] does not provide.
+struct DeltaExchange;
+
+#[async_trait]
+impl<E: DeltaEnv> Protocol<E> for DeltaExchange {
+    type Output = u64;
+
+    async fn run(self, env: &mut E) -> Result<u64, Error> {
+        let my_delta = env.delta();
+        let other = env.network().other()?;
+
+        let mut packet = Packet::empty();
+        packet.write(&my_delta).unwrap();
+        env.network_mut().send_to(other, &packet).await?;
+
+        let received = env.network_mut().recv_from(other).await?;
+        env.network_mut().close().await?;
+
+        let their_delta: u64 = received.read(0).unwrap();
+        Ok(my_delta + their_delta)
+    }
+
+    fn name(&self) -> &'static str {
+        "DeltaExchange"
+    }
+}
+
+#[test]
+fn capability_env_supplies_extra_state_to_protocol() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![p0, p1],
+        |_| DeltaExchange,
+        // The factory must supply the extra capability: party i carries `delta = 10 * (i + 1)`.
+        |party, net| GeneralDeltaEnv {
+            network: net,
+            delta: 10 * (party.as_usize() as u64 + 1),
+        },
+        vec![],
+    );
+
+    // delta(0) = 10, delta(1) = 20; each party exchanges and returns the sum, 30.
+    for party in [p0, p1] {
+        assert_eq!(outcome.outputs[&party], 30);
     }
 }

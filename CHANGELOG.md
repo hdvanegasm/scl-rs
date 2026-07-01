@@ -9,6 +9,24 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- Tier 4 protocol-layer tests: a reproducibility test asserting that two runs of the same
+  simulation produce byte-equal outputs and identical event traces (pinning the deterministic
+  executor's run-to-run stability), and a capability-carrying environment test that defines a
+  test-only supertrait of `Environment` and a protocol bounded on it, exercising the
+  composition capability path.
+- Tier 5 real-network tests (inline in `src/net/tcp.rs`): a multi-party (`n > 2`) `recv_any`
+  test over real mTLS sockets, plus failure-path coverage for the error variants added in
+  0.4.0 — connection closed mid-receive (`ConnectionClosed`), malformed configuration JSON
+  (`ConfigParse`), and unloadable PEM material (`InvalidPemFile`).
+
+### Changed
+
+- Migrated the `tests/simulator.rs` protocols from the concrete `Protocol<GeneralEnv<SimNetwork>>`
+  to the generic `impl<E: Environment> Protocol<E>`, using `env.network()`/`env.network_mut()`.
+  This compiles and exercises the generic environment path the refactor was built around.
+
 ## [0.7.0] - 2026-06-30
 
 ### Added

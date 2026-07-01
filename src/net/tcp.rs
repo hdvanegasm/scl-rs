@@ -562,4 +562,133 @@ mod tests {
             "server accepted a client with no certificate"
         );
     }
+
+    /// Loads the configuration for party `i` from the files written into `dir`.
+    fn load_config(dir: &TempDir, i: usize) -> NetworkConfig<'static> {
+        NetworkConfig::new(dir.path().join(format!("net_config_p{i}.json")).as_path()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn recv_any_collects_from_multiple_peers_over_tls() {
+        // Three parties over real mTLS: party 0 is the collector, parties 1 and 2 each send their
+        // own id to it. The collector gathers both with `recv_any`, never naming a sender. Unlike
+        // the two-party `tls_public_api_correctness` test, this drives `recv_any`'s `StreamMap`
+        // over more than two live sockets, which is where fairness across peers actually matters.
+        const N_PARTIES: usize = 3;
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_party_certs(&temp_dir, N_PARTIES);
+        write_config_files(&temp_dir, N_PARTIES, free_base_port());
+
+        let (mut net0, net1, net2) = try_join!(
+            TcpNetwork::create(0, load_config(&temp_dir, 0)),
+            TcpNetwork::create(1, load_config(&temp_dir, 1)),
+            TcpNetwork::create(2, load_config(&temp_dir, 2)),
+        )
+        .unwrap();
+
+        // The collector gathers two messages from whichever peers respond first. It only borrows
+        // its network for the duration of the collection — tearing it down here would race the
+        // senders' own teardown, so all closing is deferred until after everyone is done.
+        let collector = async {
+            let mut heard = Vec::new();
+            for _ in 0..2 {
+                let (packet, sender) = net0.recv_any().await.unwrap();
+                // Each sender writes its own id, so the payload must match the reported sender.
+                let payload: usize = packet.read(0).unwrap();
+                assert_eq!(payload, sender.as_usize());
+                heard.push(sender.as_usize());
+            }
+            heard.sort_unstable();
+            heard
+        };
+        // Each sender reports its own id to the collector and hands its network back for teardown.
+        let send_from = |mut net: TcpNetwork, me: usize| async move {
+            let mut packet = Packet::empty();
+            packet.write(&me).unwrap();
+            net.send_to(PartyId::from(0), &packet).await.unwrap();
+            net
+        };
+
+        let (heard, net1, net2) = tokio::join!(collector, send_from(net1, 1), send_from(net2, 2));
+
+        // The collector heard from exactly the two senders, without ever naming them.
+        assert_eq!(heard, vec![1, 2]);
+
+        // Everyone has finished; tear the sockets down. A peer may already be gone by the time a
+        // given close runs, so a broken-pipe here is benign and deliberately not asserted on.
+        let mut net1 = net1;
+        let mut net2 = net2;
+        let _ = net0.close().await;
+        let _ = net1.close().await;
+        let _ = net2.close().await;
+    }
+
+    #[tokio::test]
+    async fn recv_from_closed_peer_reports_connection_closed() {
+        // A peer that shuts down cleanly mid-session must surface as `ConnectionClosed` on the
+        // other side's next receive, rather than hanging or reporting a generic I/O error.
+        const N_PARTIES: usize = 2;
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_party_certs(&temp_dir, N_PARTIES);
+        write_config_files(&temp_dir, N_PARTIES, free_base_port());
+
+        let (mut net0, mut net1) = try_join!(
+            TcpNetwork::create(0, load_config(&temp_dir, 0)),
+            TcpNetwork::create(1, load_config(&temp_dir, 1)),
+        )
+        .unwrap();
+
+        // Party 0 shuts down its write half cleanly (TLS close-notify), so party 1's stream from it
+        // reaches end-of-input rather than erroring.
+        net0.close().await.unwrap();
+
+        let result = net1.recv_from(PartyId::from(0)).await;
+        assert!(
+            matches!(&result, Err(NetworkError::ConnectionClosed(Some(peer))) if *peer == PartyId::from(0)),
+            "expected ConnectionClosed(Some(0)), got {result:?}"
+        );
+
+        net1.close().await.unwrap();
+    }
+
+    #[test]
+    fn malformed_config_json_is_rejected() {
+        // The file exists and is readable, but its contents are not valid JSON, so the loader must
+        // report a `ConfigParse` error rather than an I/O error.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("bad_config.json");
+        fs::write(&path, "{ this is not valid json ]").unwrap();
+
+        match NetworkConfig::new(&path) {
+            Err(NetworkError::ConfigParse(_)) => {}
+            other => panic!("expected ConfigParse, got {:?}", other.err()),
+        }
+    }
+
+    #[test]
+    fn unloadable_pem_material_is_rejected() {
+        // A structurally valid config whose private-key path points at a file that exists but is
+        // not PEM. The JSON parses fine; loading the PEM material is what fails, so the loader must
+        // report `InvalidPemFile` rather than `ConfigParse` or an I/O error.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let garbage = temp_dir.path().join("not_a_key.pem");
+        fs::write(&garbage, b"this is not PEM material").unwrap();
+
+        let raw = NetworkConfigFile {
+            base_port: 5000,
+            timeout: 5000,
+            sleep_time: 300,
+            peer_ips: vec!["127.0.0.1".parse().unwrap()],
+            server_cert: garbage.clone(),
+            priv_key: garbage.clone(),
+            trusted_certs: vec![garbage.clone()],
+        };
+        let config_path = temp_dir.path().join("config.json");
+        fs::write(&config_path, serde_json::to_string_pretty(&raw).unwrap()).unwrap();
+
+        match NetworkConfig::new(&config_path) {
+            Err(NetworkError::InvalidPemFile(_)) => {}
+            other => panic!("expected InvalidPemFile, got {:?}", other.err()),
+        }
+    }
 }

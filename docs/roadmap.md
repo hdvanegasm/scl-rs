@@ -345,8 +345,14 @@ These are not strictly required, but shape how "complete" the stable `0.x` surfa
       `tests/common/mod.rs`. Testing-plan **Tier 3** (shipped in 0.7.0) — Feldman off-curve rejection
       (§6), `Packet` read/`pop` rejection tests, and `interpolate_polynomial_at` now erroring (rather
       than panicking) on empty/length-mismatch input._ The remaining Tier 3 item (the CSPRNG-bound doc
-      test) is **deferred** alongside the broader CSPRNG/constant-time hardening. Still open: `net`
-      (real path) and the remaining Tier 4–6 items.
+      test) is **deferred** alongside the broader CSPRNG/constant-time hardening. Testing-plan **Tier 4**
+      (in progress, post-0.7.0): the `tests/simulator.rs` protocols are migrated to generic
+      `impl<E: Environment> Protocol<E>`, plus a run-to-run reproducibility test and a
+      capability-carrying-environment test; the adversarial reordering harness remains the one open
+      Tier 4 item. Testing-plan **Tier 5** (post-0.7.0): real-network tests landed inline in
+      `src/net/tcp.rs` — multi-party (`n > 2`) `recv_any` over real mTLS, plus failure paths for
+      `ConnectionClosed` (closed mid-receive), `ConfigParse` (malformed config JSON), and
+      `InvalidPemFile` (unloadable PEM). Still open: the Tier 6 gates and the Tier 4 reordering harness.
 - [ ] Any additional MPC facilities you want in the stable surface (e.g. opening/reconstruction
       helpers, a Beaver-triple/multiplication example to showcase typed composition end-to-end).
 
