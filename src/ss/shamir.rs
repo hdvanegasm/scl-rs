@@ -29,6 +29,21 @@ where
     F: FiniteField<LIMBS>,
 {
     /// Creates a new Shamir secret share.
+    ///
+    /// This is the low-level constructor from an explicit share value and its polynomial degree.
+    /// Most callers instead deal shares from a secret with
+    /// [`shares_from_secret`](ShamirSS::shares_from_secret).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use scl_rs::math::field::mersenne61::Mersenne61;
+    /// use scl_rs::ss::shamir::ShamirSS;
+    ///
+    /// let share = ShamirSS::<1, Mersenne61>::new(Mersenne61::from(42u64), 3);
+    /// assert_eq!(*share.share(), Mersenne61::from(42u64));
+    /// assert_eq!(share.degree(), 3);
+    /// ```
     pub fn new(share: F, degree: usize) -> Self {
         Self { share, degree }
     }
@@ -39,6 +54,25 @@ where
     /// [`CryptoRng`] to keep callers from sampling those coefficients with a predictable
     /// (non-cryptographic) generator. Pass a cryptographically secure source such as `rand::rng()`
     /// or a `ChaCha20Rng` seeded from OS entropy.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use scl_rs::math::field::mersenne61::Mersenne61;
+    /// use scl_rs::ss::shamir::ShamirSS;
+    ///
+    /// let mut rng = rand::rng();
+    /// let secret = Mersenne61::from(1234u64);
+    /// let degree = 2;
+    /// let indexes: Vec<Mersenne61> = (1..=5u64).map(Mersenne61::from).collect();
+    ///
+    /// let (shares, _polynomial) = ShamirSS::shares_from_secret(secret, degree, &indexes, &mut rng);
+    ///
+    /// // Any `degree + 1` shares reconstruct the secret.
+    /// let recovered =
+    ///     ShamirSS::secret_from_shares(&shares[..degree + 1], &indexes[..degree + 1]).unwrap();
+    /// assert_eq!(recovered, secret);
+    /// ```
     pub fn shares_from_secret(
         secret: F,
         degree: usize,

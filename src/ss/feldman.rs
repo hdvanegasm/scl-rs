@@ -25,6 +25,25 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> Abbreviate for FeldmanSS<LIMBS
 
 impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     /// Creates a new Feldman Secret Sharing element.
+    ///
+    /// This is the low-level constructor pairing a Shamir share with the dealer's commitment
+    /// vector. Most callers instead deal shares from a secret with
+    /// [`shares_from_secret`](FeldmanSS::shares_from_secret), which builds the commitments for them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use scl_rs::math::ec::secp256k1::Secp256k1;
+    /// use scl_rs::math::field::secp256k1_scalar::Secp256k1ScalarField;
+    /// use scl_rs::prelude::{EllipticCurve, Ring};
+    /// use scl_rs::ss::{feldman::FeldmanSS, shamir::ShamirSS};
+    ///
+    /// let share = ShamirSS::<4, Secp256k1ScalarField>::new(Secp256k1ScalarField::ONE, 1);
+    /// let commitments = vec![Secp256k1::gen(), Secp256k1::gen()];
+    /// let feldman = FeldmanSS::new(share, commitments);
+    ///
+    /// assert_eq!(feldman.shamir_share().degree(), 1);
+    /// ```
     pub fn new(shamir_share: ShamirSS<LIMBS, C::ScalarField>, commitments: Vec<C>) -> Self {
         Self {
             shamir_share,
@@ -62,6 +81,33 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     /// `rng` is bound on [`CryptoRng`] to keep callers from generating secret material with a
     /// predictable (non-cryptographic) generator. Pass a cryptographically secure source such as
     /// `rand::rng()` or a `ChaCha20Rng` seeded from OS entropy.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use scl_rs::math::ec::secp256k1::Secp256k1;
+    /// use scl_rs::math::field::secp256k1_scalar::Secp256k1ScalarField;
+    /// use scl_rs::prelude::Ring;
+    /// use scl_rs::ss::feldman::FeldmanSS;
+    ///
+    /// let mut rng = rand::rng();
+    /// let secret = Secp256k1ScalarField::random(&mut rng);
+    /// let degree = 2;
+    /// let indexes: Vec<Secp256k1ScalarField> =
+    ///     (1..=5u64).map(Secp256k1ScalarField::from).collect();
+    ///
+    /// let shares: Vec<FeldmanSS<4, Secp256k1>> =
+    ///     FeldmanSS::shares_from_secret(secret, degree, &indexes, &mut rng);
+    ///
+    /// // Every share verifies against the dealer's published commitments...
+    /// for (share, idx) in shares.iter().zip(&indexes) {
+    ///     assert!(share.is_valid(*idx));
+    /// }
+    /// // ...and any `degree + 1` of them reconstruct the secret.
+    /// let recovered =
+    ///     FeldmanSS::secret_from_shares(&shares[..degree + 1], &indexes[..degree + 1]).unwrap();
+    /// assert_eq!(recovered, secret);
+    /// ```
     pub fn shares_from_secret(
         secret: C::ScalarField,
         degree: usize,

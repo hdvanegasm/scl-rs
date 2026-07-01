@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-30
+
 ### Added
 
 - Tier 4 protocol-layer tests: a reproducibility test asserting that two runs of the same
@@ -20,6 +22,9 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   test over real mTLS sockets, plus failure-path coverage for the error variants added in
   0.4.0 — connection closed mid-receive (`ConnectionClosed`), malformed configuration JSON
   (`ConfigParse`), and unloadable PEM material (`InvalidPemFile`).
+- Per-constructor documentation examples (compiled doctests) on `Packet::empty`,
+  `ShamirSS::{new, shares_from_secret}`, and `FeldmanSS::{new, shares_from_secret}`; the
+  share/reconstruct examples double as executable round-trip smoke tests.
 
 ### Changed
 
@@ -392,7 +397,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.1...v0.5.2

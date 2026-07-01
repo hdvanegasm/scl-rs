@@ -2,9 +2,19 @@
 
 **Date:** 2026-06-30
 
-**Current version:** 0.7.0 (released 2026-06-30). A breaking minor on top of 0.6.0 (released
-2026-06-25), whose last patch 0.5.2 shipped 2026-06-23 (a `Matrix` non-square indexing fix +
-`Clone` for `FeldmanSS`; 0.5.1 and 0.5.0 both shipped 2026-06-22, 0.4.1 on 2026-06-19).
+**Current version:** 0.7.1 (released 2026-06-30) — a test- and documentation-only patch on top of
+0.7.0 (released the same day), itself a breaking minor on top of 0.6.0 (released 2026-06-25), whose
+last patch 0.5.2 shipped 2026-06-23 (a `Matrix` non-square indexing fix + `Clone` for `FeldmanSS`;
+0.5.1 and 0.5.0 both shipped 2026-06-22, 0.4.1 on 2026-06-19).
+
+**0.7.1 contents:** test- and documentation-only, no library API change. Completes the testing
+plan: Tier 4 (all `tests/simulator.rs` protocols migrated to generic `impl<E: Environment>
+Protocol<E>`, plus a run-to-run reproducibility test and a capability-carrying-environment test),
+Tier 5 (real-network tests inline in `src/net/tcp.rs` — multi-party `recv_any` over mTLS and the
+`ConnectionClosed`/`ConfigParse`/`InvalidPemFile` failure paths), and Tier 6 doctests
+(per-constructor examples on `Packet`/`ShamirSS`/`FeldmanSS`). The Tier 4 reordering harness and
+`cargo-deny` were both declined; the CSPRNG-bound doctest and constant-time work remain deferred.
+See `CHANGELOG.md` `[0.7.1]`.
 
 **0.7.0 contents:** Feldman VSS hardening — a new required `EllipticCurve::is_on_curve`
 method, and `FeldmanSS::is_valid` now rejects off-curve dealer commitments before they reach
@@ -346,13 +356,19 @@ These are not strictly required, but shape how "complete" the stable `0.x` surfa
       (§6), `Packet` read/`pop` rejection tests, and `interpolate_polynomial_at` now erroring (rather
       than panicking) on empty/length-mismatch input._ The remaining Tier 3 item (the CSPRNG-bound doc
       test) is **deferred** alongside the broader CSPRNG/constant-time hardening. Testing-plan **Tier 4**
-      (in progress, post-0.7.0): the `tests/simulator.rs` protocols are migrated to generic
+      (shipped in 0.7.1): the `tests/simulator.rs` protocols are migrated to generic
       `impl<E: Environment> Protocol<E>`, plus a run-to-run reproducibility test and a
-      capability-carrying-environment test; the adversarial reordering harness remains the one open
-      Tier 4 item. Testing-plan **Tier 5** (post-0.7.0): real-network tests landed inline in
+      capability-carrying-environment test; the adversarial reordering harness was declined (below).
+      Testing-plan **Tier 5** (shipped in 0.7.1): real-network tests landed inline in
       `src/net/tcp.rs` — multi-party (`n > 2`) `recv_any` over real mTLS, plus failure paths for
       `ConnectionClosed` (closed mid-receive), `ConfigParse` (malformed config JSON), and
-      `InvalidPemFile` (unloadable PEM). Still open: the Tier 6 gates and the Tier 4 reordering harness.
+      `InvalidPemFile` (unloadable PEM). Testing-plan **Tier 6** (shipped in 0.7.1): per-constructor doctests
+      landed on `Packet::empty` and `ShamirSS`/`FeldmanSS`'s `new`/`shares_from_secret` (the MSRV job
+      shipped earlier in 0.3.0). `cargo-deny` was considered and **declined** (2026-06-30): its
+      advisory check duplicates the wired `cargo-audit`, and its extra license/bans/sources checks
+      don't justify a second tool for this dependency set. The Tier 4 adversarial reordering harness
+      was **declined** (2026-06-30) and left out of the test suite, which closes out the testing plan:
+      all remaining items are shipped or deliberately deferred/declined.
 - [ ] Any additional MPC facilities you want in the stable surface (e.g. opening/reconstruction
       helpers, a Beaver-triple/multiplication example to showcase typed composition end-to-end).
 
@@ -373,6 +389,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.5.2**       | _Correctness patch_ ✅ **PUBLISHED 2026-06-23**     | Fixed a `Matrix` non-square indexing bug (`get`/`get_mut`/matrix×matrix and matrix×vector `mul` used the row count as the row stride; `get`/`get_mut` now bounds-check both axes), derived `Clone` for `FeldmanSS`, and expanded the test suite (Shamir, NAF, matrix, vector — the matrix tests are what caught the bug). Tagged `v0.5.2`. |
 | **0.6.0**       | _Trace element labels & reorg_ ✅ **RELEASED 2026-06-25** | Trace **element-type labels**: `SEND`/`RECV` lines report a per-type breakdown (`(1024 bytes: 1 EC elem., 4 field elem.)`) via a new `Abbreviate` trait (prelude-exported; implemented by the built-in field/curve/poly/vector/share types), `Packet::write_labeled`/`write_many_labeled`/`composition`, and a `content_count` field on `SendData`/`ReceiveData`. Plus two reorgs: `net::simulation::runtime` → `simulator` and the real-TLS backend extracted to `net::tcp` (`TcpNetwork` re-exported from `net`). Breaking (module rename, `Packet` representation + private `Packet::new`, new `Event` fields, removed legacy `Event::HasData`), so a minor bump per §2. Added `examples/send_different_types.rs`. Tagged `v0.6.0`. |
 | **0.7.0**       | _Feldman VSS hardening + property tests_ ✅ **RELEASED 2026-06-30** | New required `EllipticCurve::is_on_curve` method; `FeldmanSS::is_valid` rejects off-curve dealer commitments before `scalar_mul` (§6), surfaced as `ShareError::InvalidShare`; Tier-3 adversarial Feldman tests (off-curve commitment, tampered share, wrong commitment-vector length, length mismatch) and point-level on-curve regression tests. Plus testing-plan **Tier 2** (complete): a `proptest` suite (ring/field laws, Shamir subset-invariance, polynomial evaluate-then-interpolate recovery, `postcard` serialization round-trips for fields/curve points/`ShamirSS`/`FeldmanSS`/`Packet`) with shared strategies in `tests/common/mod.rs`. Tier-3 progress: `Packet` read/`pop` rejection tests (the 0.4.0 `Result` API), and `interpolate_polynomial_at` now returns `poly::Error::EmptyInterpolation`/`LengthMismatch` instead of panicking on malformed input (additive, `#[non_exhaustive]`). Breaking (new trait method), so a minor bump per §2. See `CHANGELOG.md` `[0.7.0]`. |
+| **0.7.1**       | _Testing plan completion_ ✅ **RELEASED 2026-06-30** | Test- and documentation-only, no library API change (a patch per §2). Testing-plan **Tier 4** (generic `impl<E: Environment> Protocol<E>` migration of `tests/simulator.rs`, run-to-run reproducibility test, capability-carrying-environment test), **Tier 5** (real-network tests inline in `src/net/tcp.rs`: multi-party `recv_any` over mTLS, plus `ConnectionClosed`/`ConfigParse`/`InvalidPemFile` failure paths), and **Tier 6** per-constructor doctests on `Packet`/`ShamirSS`/`FeldmanSS`. The Tier 4 reordering harness and `cargo-deny` were declined. See `CHANGELOG.md` `[0.7.1]`. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 

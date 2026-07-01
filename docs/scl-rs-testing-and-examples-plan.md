@@ -132,7 +132,8 @@ that, not just the concrete `GeneralEnv<SimNetwork>` shape.
 - **Adversarial reordering harness** (roadmap "deferred to post-1.0", but the explicit-blocking
   state makes it cheap now): a `Switchboard` variant or hook that delays/reorders deliveries
   within the model, asserting a correct protocol still converges. Even a minimal version is a
-  strong robustness signal and exercises `recv_any` under reorder.
+  strong robustness signal and exercises `recv_any` under reorder. ❌ **out of scope** (declined
+  2026-06-30): deliberately left out of the test suite.
 
 ### Tier 5 — Real network, failure injection
 
@@ -156,8 +157,14 @@ that, not just the concrete `GeneralEnv<SimNetwork>` shape.
   compiles the library against 1.85.1 without dragging dev-dependencies (e.g. `proptest`, whose own
   MSRV is newer) into the constraint. `stable` is covered by the `fmt`/`clippy`/`test`/`docs` jobs.
 - **Doctests:** the crate-doc protocol/simulator examples are compiled doctests; keep them green
-  and add a doctest to each public constructor on `Packet`, `ShamirSS`, `FeldmanSS`.
-- Wire `cargo-deny`/`cargo-audit` (already roadmap §6/§8) once the above lands.
+  and add a doctest to each public constructor on `Packet`, `ShamirSS`, `FeldmanSS`. ✅ **done** —
+  per-constructor doctests on `Packet::empty`, `ShamirSS::{new, shares_from_secret}`, and
+  `FeldmanSS::{new, shares_from_secret}` (the share/reconstruct ones double as executable
+  round-trip smoke tests). `Packet::new` is private, so `empty` is its only public constructor.
+- `cargo-audit` is wired (`.github/workflows/audit.yml`, `cargo audit -D warnings`). `cargo-deny`
+  was considered and **declined** (2026-06-30): its `advisories` check duplicates `cargo-audit`,
+  and the incremental `licenses`/`bans`/`sources` checks don't justify a second tool plus a
+  `deny.toml` to maintain for a dependency set this small.
 
 ---
 

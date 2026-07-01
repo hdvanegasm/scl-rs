@@ -160,6 +160,23 @@ impl PartialEq<Packet> for Arc<Packet> {
 
 impl Packet {
     /// Creates an empty [`Packet`].
+    ///
+    /// This is the entry point for building a packet: start empty, then append values with
+    /// [`write`](Packet::write) (or [`write_labeled`](Packet::write_labeled)) and read them back
+    /// by index with [`read`](Packet::read).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use scl_rs::net::Packet;
+    ///
+    /// let mut packet = Packet::empty();
+    /// packet.write(&42u32).unwrap();
+    /// packet.write(&"hello".to_string()).unwrap();
+    ///
+    /// assert_eq!(packet.read::<u32>(0).unwrap(), 42);
+    /// assert_eq!(packet.read::<String>(1).unwrap(), "hello");
+    /// ```
     pub fn empty() -> Self {
         Self(Vec::new())
     }
