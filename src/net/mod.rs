@@ -31,7 +31,7 @@ use tokio_rustls::rustls::server::VerifierBuilderError;
 use tokio_rustls::rustls::RootCertStore;
 
 /// Represents a party ID in the protocol.
-#[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Ord, Eq, Default, Serialize, Deserialize)]
 pub struct PartyId(usize);
 
 impl From<PartyId> for usize {

@@ -15,7 +15,10 @@ It offers:
 - **Elliptic curves** — secp256k1 in affine coordinates.
 - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
 - **Linear algebra** — matrices and vectors over arbitrary rings.
-- **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing.
+- **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing, unified by a
+  `LinearShare` trait that exposes their local, communication-free linear operations (adding two
+  shares, and adding or multiplying by public constants) — the arithmetic layer MPC protocols build
+  on.
 - **Networking** — point-to-point channels over TCP, secured with **mutual TLS** (mTLS, via
   `tokio-rustls`): each party authenticates the other's certificate, not just the server's.
 - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols

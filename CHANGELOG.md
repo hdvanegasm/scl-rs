@@ -9,6 +9,30 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- **`LinearShare` trait (`ss::LinearShare`)** — a common abstraction over *linear* secret sharing
+  schemes, so a protocol can be written once and run over any of them. It requires the local,
+  communication-free operations as operator bounds — `[x] ± [y]` and `-[x]` (share-wise), and
+  `[x] ± c` / `c · [x]` (public constant/scalar) — plus `encode_party` (the canonical, injective
+  party → field-point map), `shares_from_secret`, and `secret_from_shares` (positional in `parties`,
+  returning a `Result`). Implemented for `ShamirSS` and `AdditiveSS`. Multiplying two shares is
+  deliberately excluded: it is non-linear and needs an interactive protocol (e.g. Beaver
+  multiplication).
+- **Local linear operators on the share types.** `ShamirSS` and `AdditiveSS` now implement `Add` /
+  `Sub` / `Neg` (share-wise) and `Add` / `Sub` / `Mul` by a public constant, matching the
+  `LinearShare` contract; share-wise operations debug-assert compatible metadata.
+
+### Changed
+
+- **Breaking: `AdditiveSS<T>` now stores its holding party and a leader flag** (it was a bare newtype
+  over the value). A public constant is absorbed by a single designated party — the one with the
+  smallest id, chosen at dealing time and stamped on every share — so public-constant add/subtract is
+  correct for any party numbering. Its inherent `shares_from_secret` consequently takes
+  `parties: &[PartyId]` instead of a party count, and `new` takes the party and leader flag.
+- **Breaking: `PartyId` now derives `Serialize`, `Deserialize`, and `Ord`** (needed to carry it
+  inside an additive share and to select the leader).
+
 ## [0.7.1] - 2026-06-30
 
 ### Added

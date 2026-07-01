@@ -60,7 +60,8 @@ where
         // `Send` CSPRNG, so it can be held across the `.await`s below (a `ThreadRng` cannot, as it is
         // `!Send`). Seed it from `rand::rng()`, which is itself a CSPRNG seeded from OS entropy.
         let mut rng = ChaCha20Rng::from_rng(&mut rand::rng());
-        let shares = AdditiveSS::shares_from_secret(self.secret, n_parties, &mut rng);
+        let shares =
+            AdditiveSS::shares_from_secret(self.secret, &env.network().party_ids(), &mut rng);
 
         // Hand share `i` to party `i`. We send to *every* party, including ourselves (a party
         // sending to itself is just an in-process delivery, which keeps this uniform). Building the
@@ -159,8 +160,9 @@ where
         // Step 2: locally add the shares we hold. Because additive sharing is linear, this sum is a
         // valid share of the sum of all the inputs — computed with no communication at all.
         let share_sum = shares
-            .iter()
-            .fold(AdditiveSS::new(R::ZERO), |acc, elem| acc + elem);
+            .into_iter()
+            .reduce(|acc, elem| acc + &elem)
+            .expect("there is at least one share to sum");
 
         // Step 3: reconstruct the sum from everyone's summed share.
         let result = ReconstrAdditiveShr { share: share_sum }
