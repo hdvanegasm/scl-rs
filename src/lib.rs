@@ -14,11 +14,15 @@
 //! - **Elliptic curves** — secp256k1 in affine coordinates.
 //! - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
 //! - **Linear algebra** — matrices and vectors over arbitrary rings.
-//! - **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing.
+//! - **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing, unified by a
+//!   `LinearShare` trait that exposes their local, communication-free linear operations (adding two
+//!   shares, and adding or multiplying by public constants) — the arithmetic layer MPC protocols
+//!   build on.
 //! - **Networking** — point-to-point channels over TCP, secured with **mutual TLS** (mTLS, via
 //!   `tokio-rustls`): each party authenticates the other's certificate, not just the server's.
 //! - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols
-//!   compose by calling one another and using each other's *typed* return values.
+//!   compose by calling one another and using each other's *typed* return values. Ships with
+//!   generic protocols for dealing and opening shares that work over any `LinearShare` scheme.
 //! - **A deterministic, discrete-event simulator** — run protocols on a virtual clock with configurable
 //!   latency and bandwidth, get reproducible results and per-party event traces, with no sockets or
 //!   threads. The simulator and a real deployment share one `Network` trait, so a protocol written for

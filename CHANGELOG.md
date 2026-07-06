@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
-## [Unreleased]
+## [0.8.0] - 2026-07-06
+
+### Added
+
+- **`LinearShare` trait (`ss::LinearShare`)** — a common abstraction over *linear* secret sharing
+  schemes, so a protocol can be written once and run over any of them. It requires the local,
+  communication-free operations as operator bounds — `[x] ± [y]` and `-[x]` (share-wise), and
+  `[x] ± c` / `c · [x]` (public constant/scalar) — plus `encode_party` (the canonical, injective
+  party → field-point map; Shamir places party `i` at the field point `i + 1`, so the usual
+  `0`-based network ids never touch the secret's point `0`), `shares_from_secret`, and
+  `secret_from_shares` (positional in `parties`, returning a `Result`). Shares are bound
+  `Send + Sync + Serialize + DeserializeOwned` so they can travel in `Packet`s inside async
+  protocols. Implemented for `ShamirSS` and `AdditiveSS`. Multiplying two shares is deliberately
+  excluded: it is non-linear and needs an interactive protocol (e.g. Beaver multiplication).
+- **Local linear operators on the share types.** `ShamirSS` and `AdditiveSS` now implement `Add` /
+  `Sub` / `Neg` (share-wise) and `Add` / `Sub` / `Mul` by a public constant, matching the
+  `LinearShare` contract; share-wise operations debug-assert compatible metadata.
+- **Generic deal and open protocols (`protocol::share`)** — the first interactive protocols built
+  on `LinearShare`, working over any linear scheme. All assume a **passive (semi-honest)
+  adversary** — every party follows the protocol and always sends — reflected in their `Passive*`
+  names (receive timeouts and malicious-model variants are roadmap follow-ons): `PassiveDealShr`
+  (a designated dealer splits a secret and distributes one share per receiver; receivers are
+  constructed without a secret), `PassiveOpenShr` (every party reveals its share to everyone,
+  collects one share from each peer, and reconstructs), and `PassiveOpenToParty` (the parties
+  reveal their shares towards a single designated party — the common MPC output pattern; only the
+  receiver's output is `Some(secret)`). The `protocol` module became a directory (`protocol/`) to
+  host them; existing paths are unchanged.
+- **New `protocol::Error` variants**: `Share` (a type-erased, boxed `ShareError<T>`, so the
+  `Protocol` trait stays independent of any particular ring; downcast to recover the structured
+  error) and `Input` (the protocol was constructed with input that does not match its role).
+- End-to-end integration tests for the deal/open protocols (`tests/protocol_share.rs`): a
+  deal→open roundtrip, an affine `a·[x] + b` computed locally on the shares and then opened, and
+  an open-towards-one-party check (`Some(secret)` only at the receiver) — each run on the
+  deterministic simulator over both `AdditiveSS` and `ShamirSS`.
+
+### Changed
+
+- **Breaking: `AdditiveSS<T>` now stores its holding party and a leader flag** (it was a bare newtype
+  over the value). A public constant is absorbed by a single designated party — the one with the
+  smallest id, chosen at dealing time and stamped on every share — so public-constant add/subtract is
+  correct for any party numbering. Its inherent `shares_from_secret` consequently takes
+  `parties: &[PartyId]` instead of a party count, and `new` takes the party and leader flag.
+- **Breaking: `PartyId` now derives `Serialize`, `Deserialize`, and `Ord`** (needed to carry it
+  inside an additive share and to select the leader).
+- `ShareError::InvalidShare` now formats the offending party index with `Debug` instead of
+  `Display` (rings are not required to implement `Display`), so the `protocol::Error` share-error
+  conversion — and therefore the open protocols — work with every field type in the crate.
 
 ## [0.7.1] - 2026-06-30
 
@@ -397,7 +443,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.5.2...v0.6.0

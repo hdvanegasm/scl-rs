@@ -6,6 +6,11 @@
 //! - Shamir secret sharing scheme.
 //!
 //! For more information about how the schemes work, please refer to each module.
+//!
+//! The additive and Shamir schemes are *linear*: they implement the [`LinearShare`](crate::ss::LinearShare) trait, which
+//! exposes the local, communication-free operations MPC protocols build on — adding two shares, and
+//! adding, subtracting, or multiplying a share by a public constant — so a protocol can be written
+//! generically over any linear scheme.
 
 /// Implements additive secret sharing scheme.
 pub mod additive;
@@ -16,9 +21,12 @@ pub mod feldman;
 /// Implements Shamir secret sharing scheme.
 pub mod shamir;
 
-use crate::math::ring::Ring;
+use std::ops::{Add, Mul, Neg, Sub};
+
+use crate::{math::ring::Ring, net::PartyId};
 
 use super::math::poly;
+use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
 /// Errors that occur when operating with shares.
@@ -51,7 +59,7 @@ pub enum ShareError<T: Ring> {
         shares_len: usize,
     },
     /// The share is not valid.
-    #[error("invalid share from party {party_idx}")]
+    #[error("invalid share from party {party_idx:?}")]
     InvalidShare {
         /// The index of the party owning the invalid share.
         party_idx: T,
@@ -59,4 +67,118 @@ pub enum ShareError<T: Ring> {
     /// One of the parties has index zero when computing the shares.
     #[error("one of the parties has index zero when computing the shares")]
     ZeroPartyId,
+}
+
+/// A share in a **linear secret sharing scheme**.
+///
+/// A secret sharing scheme is *linear* when a party can combine the shares it holds — using the
+/// scheme's own arithmetic and public constants — to obtain a share of a linear combination of the
+/// underlying secrets, **without any communication between the parties**. This local homomorphism
+/// is what MPC protocols build on: additions, subtractions and multiplications by public constants
+/// are free (no rounds), while only multiplying two secret-shared values requires interaction.
+///
+/// Writing `[x]` for one party's share of a secret `x` in [`Value`](LinearShare::Value) and `c` for
+/// a public constant, every implementor supports these local operations, expressed as the
+/// [`Add`], [`Sub`], [`Mul`] and [`Neg`] bounds on the trait:
+///
+/// | Expression   | Operation                    | Resulting share |
+/// | ------------ | ---------------------------- | --------------- |
+/// | `&[x] + &[y]` | add two shares               | `[x + y]`       |
+/// | `&[x] - &[y]` | subtract two shares          | `[x - y]`       |
+/// | `-[x]`        | negate a share               | `[-x]`          |
+/// | `&[x] + &c`   | add a public constant        | `[x + c]`       |
+/// | `&[x] - &c`   | subtract a public constant   | `[x - c]`       |
+/// | `&[x] * &c`   | multiply by a public scalar  | `[c · x]`       |
+///
+/// **Multiplying two shares (`[x] · [y]`) is deliberately *not* part of this trait**: it is not a
+/// linear operation (in polynomial-based schemes it doubles the sharing degree) and cannot be done
+/// locally, so it is provided by a separate interactive protocol (e.g. Beaver multiplication)
+/// rather than an operator.
+///
+/// The trait is implemented on the *share* type — the single value a party holds — so a protocol
+/// written generically over `S: LinearShare` runs unchanged on any linear scheme. The built-in
+/// implementors are [`ShamirSS`](shamir::ShamirSS) and [`AdditiveSS`](additive::AdditiveSS); other
+/// linear schemes (e.g. replicated secret sharing) can be added by implementing this trait.
+///
+/// This module covers only the *local* side of a shared computation. The interactive ends —
+/// distributing shares from a dealer over the network and opening a shared secret — are provided
+/// by the generic protocols in [`crate::protocol::share`], themselves written over
+/// `S: LinearShare`.
+///
+/// Throughout, `shares` and `parties` are **positional**: `shares[i]` is the share held by
+/// `parties[i]`, and both slices must have the same length.
+///
+/// # Examples
+///
+/// Code written against `S: LinearShare` runs over any linear scheme. For instance, an affine
+/// combination `a · [x] + b` of a share with public constants — computed locally, no communication:
+///
+/// ```
+/// use scl_rs::ss::LinearShare;
+///
+/// fn affine<S: LinearShare>(share: S, a: &S::Value, b: &S::Value) -> S {
+///     share * a + b
+/// }
+/// ```
+pub trait LinearShare:
+    Sized
+    + Send
+    + Sync
+    + Clone
+    + Serialize
+    + DeserializeOwned
+    + for<'a> Add<&'a Self, Output = Self>
+    + for<'a> Add<&'a Self::Value, Output = Self>
+    + for<'a> Sub<&'a Self, Output = Self>
+    + for<'a> Sub<&'a Self::Value, Output = Self>
+    + for<'a> Mul<&'a Self::Value, Output = Self>
+    + for<'a> Neg<Output = Self>
+{
+    /// The secret domain: the ring (or field) the shared value and the public constants live in.
+    type Value: Ring;
+
+    /// Maps a party to its point in [`Value`](LinearShare::Value).
+    ///
+    /// Some schemes locate each party at a distinct point of the secret domain — Shamir sharing,
+    /// for instance, evaluates the sharing polynomial at a unique x-coordinate per party. This is
+    /// the canonical, scheme-defined encoding of that point. Because
+    /// [`shares_from_secret`](LinearShare::shares_from_secret) and
+    /// [`secret_from_shares`](LinearShare::secret_from_shares) both call it internally, the same
+    /// mapping is always used to deal and to reconstruct, so the two can never disagree. Schemes
+    /// that do not place parties in the field (e.g. additive sharing) never consult it and may
+    /// return any value.
+    ///
+    /// Implementations must be **injective** (distinct parties map to distinct points) and must
+    /// never map a party to the zero element ([`Ring::ZERO`]), which polynomial schemes reserve for
+    /// the secret itself.
+    fn encode_party(party: PartyId) -> Self::Value;
+
+    /// Reconstructs the secret from a full set of shares.
+    ///
+    /// Combines the `shares` held by the corresponding `parties` back into the secret they encode,
+    /// using [`encode_party`](LinearShare::encode_party) to place each party in the field. The two
+    /// slices are positional (`shares[i]` belongs to `parties[i]`) and must have equal length; the
+    /// set of shares must be large enough for the scheme to reconstruct (for a threshold scheme, at
+    /// least `t + 1`). This is the inverse of
+    /// [`shares_from_secret`](LinearShare::shares_from_secret): sharing a secret and then
+    /// reconstructing from a valid subset yields the original value.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ShareError`] if the shares are inconsistent or insufficient to reconstruct — for
+    /// example mismatched `shares`/`parties` lengths, shares of differing degree, or fewer than the
+    /// scheme's reconstruction threshold.
+    fn secret_from_shares(
+        shares: &[Self],
+        parties: &[PartyId],
+    ) -> Result<Self::Value, ShareError<Self::Value>>;
+
+    /// Splits `secret` into one share per party.
+    ///
+    /// Returns a share for each entry of `parties`, positionally: the `i`-th returned share belongs
+    /// to `parties[i]`, placed in the field via [`encode_party`](LinearShare::encode_party). The
+    /// sharing is randomized, so repeated calls on the same secret produce different (equally valid)
+    /// shares; any qualifying subset reconstructs the secret via
+    /// [`secret_from_shares`](LinearShare::secret_from_shares).
+    fn shares_from_secret(secret: Self::Value, parties: &[PartyId]) -> Vec<Self>;
 }
