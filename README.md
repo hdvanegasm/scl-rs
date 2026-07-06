@@ -43,7 +43,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.7.1"
+scl-rs = "0.8.0"
 ```
 
 ### Releases vs. `main`
@@ -188,14 +188,14 @@ those conditions.
 
 Each party's `SimulationTrace` (in `outcome.traces[&party]`) prints as an indented, per-party,
 virtual-time-ordered log via `Display`. `SEND` and `RECV` lines report not just the byte size but a
-breakdown of *what kind* of elements the packet carried:
+breakdown of _what kind_ of elements the packet carried:
 
 ```text
 SEND    2 -> 0 (1024 bytes: 1 EC elem., 2 Shamir shr., 4 field elem.)
 RECV    2 <- 0 (1024 bytes: 1 EC elem., 2 Shamir shr., 4 field elem.)
 ```
 
-On a `RECV` line the labels are the *sender's*, carried in-process by the simulator (which never
+On a `RECV` line the labels are the _sender's_, carried in-process by the simulator (which never
 serializes packets); they describe what was sent, not what the receiver chooses to deserialize each
 element into.
 
