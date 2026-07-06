@@ -44,6 +44,9 @@ pub struct Switchboard {
     events: BinaryHeap<Reverse<DeliveryEvent>>,
     /// Per party logical times.
     clocks: HashMap<PartyId, Duration>,
+    /// The arrival time of the last message scheduled on each link, used to keep per-link
+    /// delivery FIFO (see [`send`](Switchboard::send)).
+    last_arrivals: HashMap<Link, Duration>,
     /// The delay model for this switchboard.
     delay: Box<dyn Delay>,
     /// Sequential counter for delivery events.
@@ -64,6 +67,7 @@ impl Switchboard {
             parked: HashMap::new(),
             events: BinaryHeap::new(),
             clocks: HashMap::new(),
+            last_arrivals: HashMap::new(),
             delay: Box::new(delay),
             hooks,
             seq: 0,
@@ -102,6 +106,12 @@ impl Switchboard {
     ///
     /// Schedules a delivery event at the sender's current virtual time plus the link delay; the
     /// event loop (`deliver_next`) delivers it and wakes the recipient later.
+    ///
+    /// Deliveries on the same link are kept **FIFO**: a message never arrives before one sent
+    /// earlier on the same link, even when the size-dependent delay model would give the later
+    /// (smaller) message a shorter transit time. This mirrors the real backend — a `TcpNetwork`
+    /// link is a single TCP stream, where bytes cannot overtake each other — so protocols observe
+    /// the same per-link ordering on both backends.
     pub(crate) fn send(&mut self, from: PartyId, to: PartyId, packet: Packet) {
         let link = Link::new(from, to);
 
@@ -117,7 +127,13 @@ impl Switchboard {
             },
         );
 
-        let arrival_time = now + self.delay.delay(link, packet.size());
+        // Clamp the arrival so it is not earlier than the previously scheduled arrival on this
+        // link (per-link FIFO); ties are broken by `seq`, which preserves the send order.
+        let mut arrival_time = now + self.delay.delay(link, packet.size());
+        if let Some(&last_arrival) = self.last_arrivals.get(&link) {
+            arrival_time = arrival_time.max(last_arrival);
+        }
+        self.last_arrivals.insert(link, arrival_time);
         let seq = self.next_seq();
         self.events.push(Reverse(DeliveryEvent {
             arrival: arrival_time,

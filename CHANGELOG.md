@@ -7,11 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.8.1] - 2026-07-06
+
+### Fixed
+
+- **Simulator: per-link deliveries are now FIFO.** The switchboard scheduled every delivery at
+  `send time + delay(packet size)` and delivered from a global time-ordered queue, so under a
+  size-dependent delay model a _later but smaller_ message could overtake an _earlier but larger_
+  one **on the same link** — something a real TCP stream (one connection per peer, as in
+  `TcpNetwork`) can never do, so the two backends disagreed. This surfaced as a flaky
+  `tests/protocol_share.rs` failure: `postcard`'s varint encoding makes a share's packet size
+  value-dependent (a uniform Mersenne-61 element encodes shorter with probability ≈ 1/32), and
+  when the dealer's open-share overtook its deal-share, the receiver paired shares with the wrong
+  parties and Shamir reconstruction returned a wrong value (additive sharing, being a sum, was
+  immune). `Switchboard::send` now clamps each arrival to be no earlier than the previously
+  scheduled arrival on the same link (ties keep send order via the sequence number), and a
+  regression test pins that a smaller later message does not overtake a larger earlier one.
+
 ## [0.8.0] - 2026-07-06
 
 ### Added
 
-- **`LinearShare` trait (`ss::LinearShare`)** — a common abstraction over *linear* secret sharing
+- **`LinearShare` trait (`ss::LinearShare`)** — a common abstraction over _linear_ secret sharing
   schemes, so a protocol can be written once and run over any of them. It requires the local,
   communication-free operations as operator bounds — `[x] ± [y]` and `-[x]` (share-wise), and
   `[x] ± c` / `c · [x]` (public constant/scalar) — plus `encode_party` (the canonical, injective

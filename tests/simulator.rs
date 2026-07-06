@@ -125,6 +125,64 @@ fn ping_pong_preserves_message_order() {
     }
 }
 
+/// Protocol where party 0 sends a *large* message followed by a *small* one to party 1, which
+/// reports the sizes of the payloads in arrival order. Regression test for per-link FIFO under a
+/// size-dependent delay model: the small message gets a shorter transit time, but it must not
+/// overtake the large one sent earlier on the same link (a real TCP stream cannot reorder), so
+/// party 1 must see the large payload first.
+pub struct SizedFifoProtocol;
+
+#[async_trait::async_trait]
+impl<E: Environment> Protocol<E> for SizedFifoProtocol {
+    type Output = Vec<usize>;
+
+    async fn run(self, environment: &mut E) -> Result<Vec<usize>, Error> {
+        let other = environment.network().other()?;
+        let me = environment.network().local_party().as_usize();
+
+        let mut received = Vec::new();
+        if me == 0 {
+            // Send a large payload, then immediately a small one, on the same link.
+            let mut big = Packet::empty();
+            big.write(&vec![7u8; 4096]).unwrap();
+            environment.network_mut().send_to(other, &big).await?;
+
+            let mut small = Packet::empty();
+            small.write(&vec![7u8; 1]).unwrap();
+            environment.network_mut().send_to(other, &small).await?;
+        } else {
+            for _ in 0..2 {
+                let packet = environment.network_mut().recv_from(other).await?;
+                let payload: Vec<u8> = packet.read(0).unwrap();
+                received.push(payload.len());
+            }
+        }
+        environment.network_mut().close().await?;
+
+        Ok(received)
+    }
+
+    fn name(&self) -> &'static str {
+        "SizedFifoProtocol"
+    }
+}
+
+#[test]
+fn smaller_later_message_does_not_overtake_on_same_link() {
+    let p0 = PartyId::from(0_usize);
+    let p1 = PartyId::from(1_usize);
+    let outcome = simulate(
+        SimpleNetworkConfig,
+        vec![p0, p1],
+        |_| SizedFifoProtocol,
+        |_, net| GeneralEnv::new(net),
+        vec![],
+    );
+
+    // Send order, not transit time, dictates arrival order on a link.
+    assert_eq!(outcome.outputs[&p1], vec![4096, 1]);
+}
+
 /// First stage of a chained protocol. It exchanges party ids over the network and then calls a
 /// second-stage protocol inline, using its typed result as its own output. Used to check that a
 /// protocol can call another protocol and consume its typed return directly.
