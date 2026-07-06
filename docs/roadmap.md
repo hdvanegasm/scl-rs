@@ -89,8 +89,10 @@ one deliberately-chosen **core-feature** workstream: the §11 **MPC protocol lib
 arithmetic layer that lets protocols _compute on shares_ (opening, Beaver multiplication, shared
 randomness, broadcast, …), the bridge between the crate's existing primitives and its
 typed-composition core. That is the natural next direction now that 0.7.x is stabilizing, and its
-Tier-1 slice is the proposed `0.8.0` (§12). Both halves are the body of this roadmap — work that
-improves the `0.x` line, not a checklist gating a `1.0`.
+first Tier-1 slice — the `LinearShare` arithmetic seam plus the passive deal/open protocols —
+shipped as `0.8.0` (§12); the Tier-1 remainder (Beaver multiplication, `open_many`,
+error-detecting reconstruction) follows in a later `0.x`. Both halves are the body of this
+roadmap — work that improves the `0.x` line, not a checklist gating a `1.0`.
 
 ---
 
@@ -447,17 +449,41 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
     doctests, `clippy --all-targets`). _Non-breaking library-API-wise except the `AdditiveSS`
     representation + its inherent `shares_from_secret(count)` → `(parties)` change and the `PartyId`
     derives — batch into the next minor per §2._
-- [ ] **`open` / reconstruct *protocols*** (interactive — distinct from the existing *local*
-      `reconstruct` that already takes a full share vector). These are `Protocol<E>` impls that do the
-      network round:
-  - `open_to_all(share) -> F` — every party `send_many`s its share to all others, collects `t+1`
-    (Shamir) or `n` (additive) via `recv_any`/`recv_from`, and reconstructs. Returns the cleartext to
-    everyone.
-  - `open_to(party, share)` — reveal only to a single output party (the others `send_to` that party;
-    it reconstructs). The common output pattern.
-  - `open_many` — batch/vectorized opening of a `Vec<Shared<F>>` in one round, to amortize latency
-    (one `Packet` per peer carrying all values, reusing `write_many`).
-      _Non-breaking (new protocols)._
+- [x] **Deal / `open` protocols (passive-adversary versions) — DONE.** Shipped in
+      `protocol::share` (the `protocol` module became a directory to host them), all generic over
+      `S: LinearShare` and all **explicitly passive (semi-honest)** — every party follows the
+      protocol and always sends, so blocking receives are safe and the message pattern is exactly
+      balanced (no leftover packets to poison a later `recv_any`). The `Passive*` names carry the
+      model:
+  - `PassiveDealShr` — a designated dealer splits a secret (`LinearShare::shares_from_secret`) and
+    scatters one share per receiver via `send_many`; receivers are constructed *without* a secret
+    (dealer-only input behind an `Option`, misuse surfaced as `protocol::Error::Input`). The
+    dealer must list itself among its receivers.
+  - `PassiveOpenShr` (the `open_to_all` sketch) — every party `send_many`s its share to all others
+    and collects one share from *every* peer via `recv_any` (arrival order, paired with sender ids
+    for `encode_party`), then reconstructs. The earlier `shares_needed`/`t+1` parameter was
+    dropped: waiting for a quorum leaves the stragglers' packets queued (a composition hazard),
+    and under the passive assumption all `n` shares always arrive.
+  - `PassiveOpenToParty` (the `open_to` sketch) — reveal only to a single output party; the
+    receiver reconstructs (`Some(secret)`), everyone else sends one message and outputs `None`.
+      Also added the `protocol::Error::{Share, Input}` variants — `Share` boxes a type-erased
+      `ShareError<T>` so the `Protocol` trait stays ring-independent. _Non-breaking (new
+      protocols)._
+  - [ ] `open_many` — batch/vectorized opening of a `Vec` of shares in one round, to amortize
+    latency (one `Packet` per peer carrying all values, reusing `write_many`).
+- [ ] **Malicious-model receives: `recv_timeout` + active variants of deal/open.** The `Passive*`
+      protocols block forever on a party that crashes or withholds its share — sound only under the
+      passive assumption. Lifting it needs two pieces: (1) a **`recv_timeout` /
+      `recv_any_timeout`** primitive on the `Network` trait, so a receiver can bound how long it
+      waits and *identify* the silent party (returning e.g. a `Timeout(PartyId)` error) — this is
+      the §14 "in-protocol timeout / deadline primitive (**virtual-time**)" item: under the
+      deterministic simulator the deadline must be a virtual-clock event scheduled on the
+      switchboard (not `tokio::time::timeout` wall time), so simulated and real deployments keep
+      identical semantics; and (2)
+      **active variants of the deal/open protocols** built on it (abort-with-culprit on timeout;
+      combine with the error-detecting reconstruction item below for tampered — not just missing —
+      shares). _Non-breaking (new trait method with a default? more likely a breaking `Network`
+      change — decide when designed)._
 - [ ] **Error-detecting / robust reconstruction (Shamir).** A stricter `open` variant that uses the
       code's redundancy: reconstruct from `t+1` shares, then check the remaining shares lie on the same
       degree-`t` polynomial and surface `ShareError::InvalidShare` (reusing the enum) if not. This is
@@ -480,9 +506,13 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       Ship with a worked `examples/` protocol (e.g. secure multiply, an inner product, or a small
       arithmetic circuit) that runs on the simulator and prints the nesting-aware trace. _Non-breaking._
 
-**Recommended first release (a coherent `0.8.0`):** Tier 1 as a unit — `Shared<F>` + the `open`
-protocols + trusted-dealer Beaver `mul`, plus the worked example. It is self-contained, every later
-tier depends on it, and it cashes in `send_many`/`recv_any`/typed composition in one visible slice.
+**Recommended first release (a coherent `0.8.0`):** the two shipped Tier-1 items — the
+`LinearShare` trait (with the local operators) and the passive deal/open protocols. That is a
+self-contained, honest slice: the arithmetic seam plus the interactive ends that let a protocol
+share, compute linearly, and open. The Tier-1 remainder — `open_many`, error-detecting
+reconstruction, and trusted-dealer Beaver `mul` with its worked example — is deliberately **not**
+in `0.8.0` and ships in a later `0.x` slice, together with (or after) the malicious-model
+`recv_timeout` work above.
 
 ### 11.2 Tier 2 — randomness & agreement
 
@@ -556,7 +586,10 @@ deliberate decision:
 ### 11.6 Dependency summary
 
 ```
-Tier 1  Shared<F>  ──►  open protocols  ──►  Beaver mul  ──►  [0.8.0 slice]
+Tier 1  LinearShare  ──►  passive deal/open  ──►  [0.8.0 slice]
+   │                         │
+   │                         ▼
+   │       open_many / error-detecting open ──► Beaver mul  ──► [future 0.x slice]
    │                         │                    │
    ▼                         ▼                    ▼
 Tier 2  rand_shared/bit ─► coin-toss     linear algebra (Tier 3)
@@ -585,7 +618,8 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.6.0**       | _Trace element labels & reorg_ ✅ **RELEASED 2026-06-25** | Trace **element-type labels**: `SEND`/`RECV` lines report a per-type breakdown (`(1024 bytes: 1 EC elem., 4 field elem.)`) via a new `Abbreviate` trait (prelude-exported; implemented by the built-in field/curve/poly/vector/share types), `Packet::write_labeled`/`write_many_labeled`/`composition`, and a `content_count` field on `SendData`/`ReceiveData`. Plus two reorgs: `net::simulation::runtime` → `simulator` and the real-TLS backend extracted to `net::tcp` (`TcpNetwork` re-exported from `net`). Breaking (module rename, `Packet` representation + private `Packet::new`, new `Event` fields, removed legacy `Event::HasData`), so a minor bump per §2. Added `examples/send_different_types.rs`. Tagged `v0.6.0`. |
 | **0.7.0**       | _Feldman VSS hardening + property tests_ ✅ **RELEASED 2026-06-30** | New required `EllipticCurve::is_on_curve` method; `FeldmanSS::is_valid` rejects off-curve dealer commitments before `scalar_mul` (§6), surfaced as `ShareError::InvalidShare`; Tier-3 adversarial Feldman tests (off-curve commitment, tampered share, wrong commitment-vector length, length mismatch) and point-level on-curve regression tests. Plus testing-plan **Tier 2** (complete): a `proptest` suite (ring/field laws, Shamir subset-invariance, polynomial evaluate-then-interpolate recovery, `postcard` serialization round-trips for fields/curve points/`ShamirSS`/`FeldmanSS`/`Packet`) with shared strategies in `tests/common/mod.rs`. Tier-3 progress: `Packet` read/`pop` rejection tests (the 0.4.0 `Result` API), and `interpolate_polynomial_at` now returns `poly::Error::EmptyInterpolation`/`LengthMismatch` instead of panicking on malformed input (additive, `#[non_exhaustive]`). Breaking (new trait method), so a minor bump per §2. See `CHANGELOG.md` `[0.7.0]`. |
 | **0.7.1**       | _Testing plan completion_ ✅ **RELEASED 2026-06-30** | Test- and documentation-only, no library API change (a patch per §2). Testing-plan **Tier 4** (generic `impl<E: Environment> Protocol<E>` migration of `tests/simulator.rs`, run-to-run reproducibility test, capability-carrying-environment test), **Tier 5** (real-network tests inline in `src/net/tcp.rs`: multi-party `recv_any` over mTLS, plus `ConnectionClosed`/`ConfigParse`/`InvalidPemFile` failure paths), and **Tier 6** per-constructor doctests on `Packet`/`ShamirSS`/`FeldmanSS`. The Tier 4 reordering harness and `cargo-deny` were declined. See `CHANGELOG.md` `[0.7.1]`. |
-| **0.8.0** _(proposed)_ | _MPC arithmetic layer_                       | §11 **Tier 1** as a coherent slice: a `Shared<F>` value type with local-op overloads, interactive `open`/`open_to`/`open_many` (+ error-detecting Shamir reconstruction), and trusted-dealer **Beaver-triple `mul`**, plus a worked `examples/` circuit on the simulator. Additive new surface (a new `mpc` module), so likely a minor bump per §2. Turns the crate into "real MPC." |
+| **0.8.0**       | _MPC arithmetic layer_ ✅ **RELEASED 2026-07-06**  | The first §11 **Tier 1** slice: the **`LinearShare` trait** on the share types (local-op overloads, `encode_party` — Shamir maps party `i` to field point `i + 1`, keeping `0`-based network ids off the secret's point — trait-level deal/reconstruct; the reshaped `AdditiveSS` and `PartyId` derives are the batched breaking changes per §2) plus the **passive-adversary deal/open protocols** (`protocol::share`: `PassiveDealShr`, `PassiveOpenShr`, `PassiveOpenToParty`), the `protocol::Error::{Share, Input}` variants, and end-to-end simulator tests over both schemes (`tests/protocol_share.rs`). See `CHANGELOG.md` `[0.8.0]`. |
+| **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the malicious-model `recv_timeout` + active deal/open variants. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed) — plus the §14 virtual-time timeout the partially-synchronous protocols need. Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
@@ -639,7 +673,8 @@ The bar for considering the `0.x` API "settled" — the steady state of §12, no
   `tokio::time::timeout` on a real deployment). The only protocol-facing capability with no
   executor-agnostic workaround today — surfaced during the `send_many`/concurrency design.
 - Broader MPC protocol library on top of the typed-composition core. **Now a concrete, tiered plan
-  in §11** (`Shared<F>` arithmetic layer, opening/Beaver multiplication, shared randomness/broadcast,
-  linear algebra/comparison/commitments, and additional sharing schemes), with a proposed `0.8.0`
-  Tier-1 slice in the §12 release sequence. OT/OLE, garbled circuits, and malicious-security
-  extensions are the parts still deferred (see §11.5).
+  in §11** (`LinearShare` arithmetic layer, opening/Beaver multiplication, shared
+  randomness/broadcast, linear algebra/comparison/commitments, and additional sharing schemes),
+  with a proposed `0.8.0` Tier-1 slice (`LinearShare` + passive deal/open) in the §12 release
+  sequence. OT/OLE, garbled circuits, and malicious-security extensions are the parts still
+  deferred (see §11.5).

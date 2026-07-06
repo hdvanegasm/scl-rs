@@ -22,7 +22,8 @@ It offers:
 - **Networking** — point-to-point channels over TCP, secured with **mutual TLS** (mTLS, via
   `tokio-rustls`): each party authenticates the other's certificate, not just the server's.
 - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols
-  compose by calling one another and using each other's _typed_ return values.
+  compose by calling one another and using each other's _typed_ return values. Ships with generic
+  protocols for dealing and opening shares that work over any `LinearShare` scheme.
 - **A deterministic, discrete-event simulator** — run protocols on a virtual clock with configurable
   latency and bandwidth, get reproducible results and per-party event traces, with no sockets or
   threads. The simulator and a real deployment share one `Network` trait, so a protocol written for

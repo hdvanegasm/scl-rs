@@ -26,6 +26,7 @@ use std::ops::{Add, Mul, Neg, Sub};
 use crate::{math::ring::Ring, net::PartyId};
 
 use super::math::poly;
+use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
 /// Errors that occur when operating with shares.
@@ -58,7 +59,7 @@ pub enum ShareError<T: Ring> {
         shares_len: usize,
     },
     /// The share is not valid.
-    #[error("invalid share from party {party_idx}")]
+    #[error("invalid share from party {party_idx:?}")]
     InvalidShare {
         /// The index of the party owning the invalid share.
         party_idx: T,
@@ -99,6 +100,11 @@ pub enum ShareError<T: Ring> {
 /// implementors are [`ShamirSS`](shamir::ShamirSS) and [`AdditiveSS`](additive::AdditiveSS); other
 /// linear schemes (e.g. replicated secret sharing) can be added by implementing this trait.
 ///
+/// This module covers only the *local* side of a shared computation. The interactive ends —
+/// distributing shares from a dealer over the network and opening a shared secret — are provided
+/// by the generic protocols in [`crate::protocol::share`], themselves written over
+/// `S: LinearShare`.
+///
 /// Throughout, `shares` and `parties` are **positional**: `shares[i]` is the share held by
 /// `parties[i]`, and both slices must have the same length.
 ///
@@ -116,7 +122,11 @@ pub enum ShareError<T: Ring> {
 /// ```
 pub trait LinearShare:
     Sized
+    + Send
+    + Sync
     + Clone
+    + Serialize
+    + DeserializeOwned
     + for<'a> Add<&'a Self, Output = Self>
     + for<'a> Add<&'a Self::Value, Output = Self>
     + for<'a> Sub<&'a Self, Output = Self>

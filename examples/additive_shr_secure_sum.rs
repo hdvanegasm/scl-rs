@@ -21,6 +21,13 @@
 //! Like every protocol in scl-rs, these are written generic over `N: Network` (here through the
 //! `Environment` trait), so the very same code runs on the deterministic simulator used in `main`
 //! and over a real TLS deployment, unchanged.
+//!
+//! The two sub-protocols are written by hand here to show how protocols are built and composed.
+//! scl-rs also ships generic, scheme-agnostic versions of these building blocks in
+//! `scl_rs::protocol::share` — `PassiveDealShr` (a single dealer distributes shares of its
+//! secret) and `PassiveOpenShr` (the parties reveal their shares and reconstruct, as
+//! `ReconstrAdditiveShr` does below) — which work over any `LinearShare` scheme, not just
+//! additive sharing.
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;

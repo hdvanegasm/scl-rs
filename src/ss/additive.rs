@@ -241,7 +241,10 @@ impl<T: Ring> Neg for AdditiveSS<T> {
     }
 }
 
-impl<T: Ring> LinearShare for AdditiveSS<T> {
+impl<T: Ring> LinearShare for AdditiveSS<T>
+where
+    T: Send + Sync,
+{
     type Value = T;
 
     /// Additive sharing does not place parties in the field, so this is never consulted and simply

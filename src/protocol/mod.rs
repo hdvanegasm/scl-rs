@@ -1,4 +1,11 @@
-use crate::net::{Network, NetworkError};
+/// Generic secret-sharing protocols (dealing and opening) over any [`LinearShare`](crate::ss::LinearShare) scheme.
+pub mod share;
+
+use crate::{
+    net::{Network, NetworkError},
+    prelude::Ring,
+    ss::ShareError,
+};
 use async_trait::async_trait;
 use thiserror::Error;
 
@@ -9,6 +16,28 @@ pub enum Error {
     /// A network operation failed during the protocol.
     #[error("network error: {0:?}")]
     Network(#[from] NetworkError),
+    /// A secret-sharing operation (dealing or reconstructing) failed during the protocol.
+    ///
+    /// The boxed source is a [`ShareError<T>`](crate::ss::ShareError) with the ring type erased, so
+    /// that this enum — and therefore the [`Protocol`] trait — stays independent of any particular
+    /// ring. Callers that need the structured error can downcast the box to the concrete
+    /// `ShareError<T>`.
+    #[error("share error: {0}")]
+    Share(Box<dyn std::error::Error + Send + Sync>),
+    /// The protocol was constructed with input that does not match the role it is asked to play —
+    /// for example, running as the dealer of [`PassiveDealShr`](share::deal::PassiveDealShr)
+    /// without providing a secret.
+    #[error("the input is not well formed for the current protocol")]
+    Input,
+}
+
+impl<T> From<ShareError<T>> for Error
+where
+    T: Ring + Send + Sync + 'static,
+{
+    fn from(value: ShareError<T>) -> Self {
+        Error::Share(Box::new(value))
+    }
 }
 
 /// Represents a protocol.

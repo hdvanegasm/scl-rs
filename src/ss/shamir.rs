@@ -226,15 +226,16 @@ impl<const LIMBS: usize, F: Ring> Neg for ShamirSS<LIMBS, F> {
 
 impl<const LIMBS: usize, F> LinearShare for ShamirSS<LIMBS, F>
 where
-    F: FiniteField<LIMBS> + From<u64>,
+    F: FiniteField<LIMBS> + From<u64> + Send + Sync,
 {
     type Value = F;
 
-    /// Places party `i` at the field point `i`, using the field's `u64` conversion. This is
-    /// injective for party ids below the field modulus, and party id `0` maps to `F::ZERO` (the
-    /// secret's own point), so party ids must start at `1`.
+    /// Places party `i` at the field point `i + 1`, using the field's `u64` conversion. The shift
+    /// keeps the mapping injective (for party ids below the field modulus) while never touching
+    /// `F::ZERO` — the secret's own evaluation point — so the usual `0`-based network party ids
+    /// are safe.
     fn encode_party(party: PartyId) -> F {
-        F::from(party.as_usize() as u64)
+        F::from(party.as_usize() as u64 + 1)
     }
 
     fn secret_from_shares(shares: &[Self], parties: &[PartyId]) -> Result<F, ShareError<F>> {
