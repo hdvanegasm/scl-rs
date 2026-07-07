@@ -1,9 +1,10 @@
 use crate::net;
 use crate::net::simulation::event::Event;
-use crate::net::simulation::switchboard::{Recv, RecvAny, Switchboard};
+use crate::net::simulation::switchboard::{Recv, RecvAny, RecvTimeout, Switchboard};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// The [`Network`] implementation backed by the deterministic simulator.
 ///
@@ -63,6 +64,16 @@ impl Network for SimNetwork {
 
     async fn recv_from(&mut self, party_id: PartyId) -> net::Result<Packet> {
         let packet = Recv::new(self.switchboard.clone(), party_id, self.local).await;
+        Ok(packet)
+    }
+
+    async fn recv_from_with_timeout(
+        &mut self,
+        party_id: PartyId,
+        timeout: Duration,
+    ) -> net::Result<Packet> {
+        let packet =
+            RecvTimeout::new(self.switchboard.clone(), party_id, self.local, timeout).await?;
         Ok(packet)
     }
 

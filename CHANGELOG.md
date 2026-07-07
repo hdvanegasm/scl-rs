@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [Unreleased]
+
+### Added
+
+- Added a `recv_from_with_timeout` function in which the receiver waits for a message within
+  a timeout. If the message does not arrive in time, the protocol returns a `NetworkError::Timeout`
+  with the ID of the delayed party.
+
 ## [0.8.1] - 2026-07-06
 
 ### Fixed
@@ -460,7 +468,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.6.0...v0.7.0

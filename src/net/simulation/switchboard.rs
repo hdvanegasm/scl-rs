@@ -15,7 +15,7 @@ use crate::net::{
         executor::Idle,
         SimulationTrace,
     },
-    Packet, PartyId,
+    NetworkError, Packet, PartyId,
 };
 
 /// A hook that runs in reaction to events recorded during a simulation.
@@ -34,6 +34,12 @@ pub trait TriggeredHook: Send + Sync {
     fn run(&self, party_id: PartyId, event: &Event, switchboard: &mut Switchboard);
 }
 
+enum TimedRecvOut {
+    Some(Packet),
+    Timeout,
+    None,
+}
+
 /// In-memory message router shared by all party tasks on the scheduler thread.
 pub struct Switchboard {
     /// Messages in each link between two parties.
@@ -41,7 +47,7 @@ pub struct Switchboard {
     /// Waker for a link.
     parked: HashMap<Link, Waker>,
     /// Enqueued events that are ready to be taken.
-    events: BinaryHeap<Reverse<DeliveryEvent>>,
+    events: BinaryHeap<Reverse<ScheduledEvent>>,
     /// Per party logical times.
     clocks: HashMap<PartyId, Duration>,
     /// The arrival time of the last message scheduled on each link, used to keep per-link
@@ -49,7 +55,7 @@ pub struct Switchboard {
     last_arrivals: HashMap<Link, Duration>,
     /// The delay model for this switchboard.
     delay: Box<dyn Delay>,
-    /// Sequential counter for delivery events.
+    /// Sequential counter for scheduled events.
     seq: usize,
     /// Per-party event traces recorded during the run.
     traces: HashMap<PartyId, SimulationTrace>,
@@ -135,11 +141,25 @@ impl Switchboard {
         }
         self.last_arrivals.insert(link, arrival_time);
         let seq = self.next_seq();
-        self.events.push(Reverse(DeliveryEvent {
+        self.events.push(Reverse(ScheduledEvent {
             arrival: arrival_time,
             seq,
             link,
-            packet,
+            kind: EventKind::Delivery(packet),
+        }));
+    }
+
+    /// Schedules a wake-up on a link at the virtual instant `deadline`.
+    ///
+    /// If the awaited packet wins the race, the timer goes stale but stays in the heap; popping it
+    /// later is harmless (see `deliver_next`), so no cancellation is needed.
+    fn schedule_timer(&mut self, link: Link, deadline: Duration) {
+        let seq = self.next_seq();
+        self.events.push(Reverse(ScheduledEvent {
+            arrival: deadline,
+            seq,
+            link,
+            kind: EventKind::Timer,
         }));
     }
 
@@ -148,11 +168,18 @@ impl Switchboard {
             Some(Reverse(event)) => {
                 let recipient_clock = self.clocks.entry(event.link.recipient()).or_default();
                 // Update the recipient clock for the event. The event may be behind in time.
+                //
+                // This advance is sound even for a *stale* timer (one whose timed receive already
+                // resolved): `deliver_next` only runs once every task is finished or parked, so a
+                // party whose clock jumps here is genuinely idle through this instant — anything
+                // it still waits for fires later than this event.
                 *recipient_clock = (*recipient_clock).max(event.arrival);
-                self.msg_queues
-                    .entry(event.link)
-                    .or_default()
-                    .push_back(event.packet);
+                if let EventKind::Delivery(packet) = event.kind {
+                    self.msg_queues
+                        .entry(event.link)
+                        .or_default()
+                        .push_back(packet);
+                }
                 if let Some(waker) = self.parked.remove(&event.link) {
                     waker.wake();
                 }
@@ -181,6 +208,42 @@ impl Switchboard {
             },
         );
         Some(packet)
+    }
+
+    /// Tries to receive a packet, giving up once the recipient's clock reaches `deadline`.
+    ///
+    /// The queue is checked *before* the deadline so that a packet delivered exactly at the
+    /// deadline instant wins the tie, matching `tokio::time::timeout` on the real backend (which
+    /// polls the inner future before checking the deadline). A packet arriving strictly after the
+    /// deadline can never be returned here: its delivery event pops after the timer event, so the
+    /// timed receive has already resolved to `Timeout` by then (the late packet stays queued for a
+    /// later receive, as the bytes would on a real TCP stream).
+    fn try_recv_with_deadline(&mut self, link: Link, deadline: Duration) -> TimedRecvOut {
+        let timestamp = self.clock_of(link.recipient());
+        if let Some(packet) = self
+            .msg_queues
+            .get_mut(&link)
+            .and_then(|queue| queue.pop_front())
+        {
+            self.record_event(
+                link.recipient(),
+                Event::ReceiveData {
+                    timestamp,
+                    link,
+                    size: packet.size(),
+                    content_count: packet.composition(),
+                },
+            );
+            return TimedRecvOut::Some(packet);
+        }
+        // The timer event sets the recipient's clock to *exactly* `deadline`, so this check must
+        // be inclusive; a strict comparison would park the task again with no event left to wake
+        // it.
+        if timestamp >= deadline {
+            TimedRecvOut::Timeout
+        } else {
+            TimedRecvOut::None
+        }
     }
 
     /// Parks a waker.
@@ -310,6 +373,63 @@ impl Future for Recv {
     }
 }
 
+pub(crate) struct RecvTimeout {
+    switchboard: Arc<Mutex<Switchboard>>,
+    link: Link,
+    timeout: Duration,
+    /// Deadline for the timeout.
+    ///
+    /// Any time past this deadline is considered a timeout. This deadline is computed as the
+    /// virtual instant at which the receive is first polled plus the timeout.
+    deadline: Option<Duration>,
+}
+
+impl RecvTimeout {
+    /// Creates a future that resolves with the next packet `recipient` receives from `sender`,
+    /// suspending the task until one is available on that link.
+    pub(crate) fn new(
+        switchboard: Arc<Mutex<Switchboard>>,
+        sender: PartyId,
+        recipient: PartyId,
+        timeout: Duration,
+    ) -> Self {
+        Self {
+            switchboard,
+            link: Link::new(sender, recipient),
+            timeout,
+            deadline: None,
+        }
+    }
+}
+
+impl Future for RecvTimeout {
+    type Output = Result<Packet, NetworkError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let mut switchboard = this.switchboard.lock().expect("the lock must be free");
+        let deadline = match this.deadline {
+            Some(d) => d,
+            // Here we are dealing with the first call to recv.
+            None => {
+                let deadline = switchboard.clock_of(this.link.recipient()) + this.timeout;
+                switchboard.schedule_timer(this.link, deadline);
+                this.deadline = Some(deadline);
+                deadline
+            }
+        };
+        match switchboard.try_recv_with_deadline(this.link, deadline) {
+            TimedRecvOut::Some(packet) => Poll::Ready(Ok(packet)),
+            TimedRecvOut::Timeout => Poll::Ready(Err(NetworkError::Timeout(this.link.sender()))),
+            TimedRecvOut::None => {
+                // There is no packet available in the queue, hence you need to wait, i.e. park.
+                switchboard.park(this.link, cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
+}
+
 /// Computes a network delay over a link.
 pub trait Delay: Send {
     /// The delay for the link.
@@ -341,19 +461,28 @@ where
     }
 }
 
-/// A delivery event when a packet is sent to a given link.
-struct DeliveryEvent {
-    /// Arrival time of the event.
-    arrival: Duration,
-    /// A sequential tie breaker in case two events arrive at the same time.
-    seq: usize,
-    /// The link associated to the delay.
-    link: Link,
-    /// The delivered packet.
-    packet: Packet,
+/// What a [`ScheduledEvent`] does when it fires.
+enum EventKind {
+    /// Delivers a packet on the link.
+    Delivery(Packet),
+    /// Wakes a timed receive parked on the link so it can observe that its deadline passed.
+    Timer,
 }
 
-impl Ord for DeliveryEvent {
+/// An event scheduled on the switchboard's virtual timeline: a packet delivery or a
+/// recv-timeout deadline on a link.
+struct ScheduledEvent {
+    /// Virtual instant at which the event fires (a packet's arrival, or a timer's deadline).
+    arrival: Duration,
+    /// A sequential tie breaker in case two events fire at the same time.
+    seq: usize,
+    /// The link the event fires on.
+    link: Link,
+    /// What happens when the event fires.
+    kind: EventKind,
+}
+
+impl Ord for ScheduledEvent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.arrival
             .cmp(&other.arrival)
@@ -361,16 +490,16 @@ impl Ord for DeliveryEvent {
     }
 }
 
-impl PartialOrd for DeliveryEvent {
+impl PartialOrd for ScheduledEvent {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for DeliveryEvent {
+impl PartialEq for ScheduledEvent {
     fn eq(&self, other: &Self) -> bool {
         self.arrival == other.arrival && self.seq == other.seq
     }
 }
 
-impl Eq for DeliveryEvent {}
+impl Eq for ScheduledEvent {}

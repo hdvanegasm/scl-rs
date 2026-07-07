@@ -211,9 +211,18 @@ fn main() {
 
     // Each party's event trace and its typed output (the sum) are available on the outcome. All
     // three outputs are equal, which is exactly the correctness property of secure summation.
-    println!("=== P0 trace: ===\n{}", outcome.traces[&p0]);
-    println!("=== P1 trace: ===\n{}", outcome.traces[&p1]);
-    println!("=== P2 trace: ===\n{}", outcome.traces[&p2]);
+    println!(
+        "==================== P0 trace: ====================\n{}",
+        outcome.traces[&p0]
+    );
+    println!(
+        "==================== P1 trace: ====================\n{}",
+        outcome.traces[&p1]
+    );
+    println!(
+        "==================== P2 trace: ====================\n{}",
+        outcome.traces[&p2]
+    );
     println!("P0 output: {:?}", outcome.outputs[&p0]);
     println!("P1 output: {:?}", outcome.outputs[&p1]);
     println!("P2 output: {:?}", outcome.outputs[&p2]);

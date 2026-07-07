@@ -104,6 +104,9 @@ pub enum NetworkError {
     /// Encapsulates sending errors to a `tokio` channel.
     #[error("error sending to the tokio channel")]
     SendError(#[from] SendError<Packet>),
+    /// The party waited to receive a message and reached the timeout.
+    #[error("timed out waiting for a packet from party {0:?}")]
+    Timeout(PartyId),
 }
 
 /// Special type for the network error.
@@ -456,18 +459,35 @@ pub trait Network: Send {
 
     /// Receives a `packet` from the party with ID `party_id`.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
+
     /// Receives a `packet` from any party returning also the party ID of the sender.
     async fn recv_any(&mut self) -> Result<(Packet, PartyId)>;
+
+    /// Receives a `packet` from a party within a `timeout`.
+    ///
+    /// # Errors
+    ///
+    /// If the current party does not receive the message within the provided `timeout`, the
+    /// function will return a [`NetworkError::Timeout`] with the ID of the delayed party.
+    async fn recv_from_with_timeout(
+        &mut self,
+        party_id: PartyId,
+        timeout: Duration,
+    ) -> Result<Packet>;
+
     /// Closes the connection with the network.
     async fn close(&mut self) -> Result<()>;
+
     /// Returns the ID of the party executing the current node.
     fn local_party(&self) -> PartyId;
+
     /// Method used in a **two-party** protocol to get the other party.
     ///
     /// # Errors
     ///
     /// This function returns an error if the protocol that is being executed is not a two party protocol.
     fn other(&self) -> Result<PartyId>;
+
     /// Returns the party IDs of the parties connected to the network.
     fn party_ids(&self) -> Vec<PartyId>;
 

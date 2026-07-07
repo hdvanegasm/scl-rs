@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncWriteExt, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::UnboundedSender;
@@ -303,6 +304,23 @@ impl Network for TcpNetwork {
         });
         try_join_all(sends).await?;
         Ok(())
+    }
+
+    async fn recv_from_with_timeout(
+        &mut self,
+        party_id: PartyId,
+        timeout: Duration,
+    ) -> Result<Packet> {
+        let (_, reader) = self
+            .receivers
+            .iter_mut()
+            .find(|(id, _)| *id == party_id)
+            .ok_or(NetworkError::PartyNotFound(party_id))?;
+
+        match tokio::time::timeout(timeout, reader.next()).await {
+            Ok(result) => result.ok_or(NetworkError::ConnectionClosed(Some(party_id)))?,
+            Err(_) => return Err(NetworkError::Timeout(party_id)),
+        }
     }
 
     /// Receives a packet from a given party.
