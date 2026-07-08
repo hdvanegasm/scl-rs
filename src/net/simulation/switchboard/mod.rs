@@ -1,10 +1,21 @@
+//! In-memory message router and virtual-time scheduler shared by every party in a simulation.
+//!
+//! A single [`Switchboard`](crate::net::simulation::switchboard::Switchboard) backs all parties on
+//! the simulator's single-threaded core. It owns the per-link message queues, the parked wakers of
+//! suspended receives, and a priority queue of scheduled events ordered by virtual time. `send`
+//! enqueues a delivery at the sender's clock plus a link delay (see
+//! [`Delay`](crate::net::simulation::switchboard::Delay)), and the executor calls `deliver_next`
+//! whenever no party can make progress, advancing virtual time to the next event and waking the
+//! receiver.
+//!
+//! The receive-side futures that suspend a party until a packet (or a timeout) arrives live in the
+//! `recv` submodule; they drive the switchboard through its internal try-receive/park API.
+
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap, VecDeque},
-    future::Future,
-    pin::Pin,
-    sync::{Arc, Mutex},
-    task::{Context, Poll, Waker},
+    sync::Arc,
+    task::Waker,
     time::Duration,
 };
 
@@ -15,8 +26,10 @@ use crate::net::{
         executor::Idle,
         SimulationTrace,
     },
-    NetworkError, Packet, PartyId,
+    Packet, PartyId,
 };
+
+pub(crate) mod recv;
 
 /// A hook that runs in reaction to events recorded during a simulation.
 ///
@@ -34,9 +47,15 @@ pub trait TriggeredHook: Send + Sync {
     fn run(&self, party_id: PartyId, event: &Event, switchboard: &mut Switchboard);
 }
 
+/// Outcome of one try-receive attempt under a deadline. Shared by the single-link and any-link
+/// receives: a successful receive always carries the sender (the single-link caller ignores it),
+/// so both use the same shape.
 enum TimedRecvOut {
-    Some(Packet),
+    /// A packet was ready, together with the party that sent it.
+    Some((PartyId, Packet)),
+    /// No packet was ready and the recipient's clock has reached the deadline.
     Timeout,
+    /// No packet yet, deadline not reached; the caller should park.
     None,
 }
 
@@ -234,7 +253,7 @@ impl Switchboard {
                     content_count: packet.composition(),
                 },
             );
-            return TimedRecvOut::Some(packet);
+            return TimedRecvOut::Some((link.sender(), packet));
         }
         // The timer event sets the recipient's clock to *exactly* `deadline`, so this check must
         // be inclusive; a strict comparison would park the task again with no event left to wake
@@ -258,11 +277,7 @@ impl Switchboard {
     /// sender id is chosen, which keeps the result deterministic and reproducible.
     /// Returns the packet together with the sender it came from, or `None` if no link
     /// has a packet ready.
-    pub(crate) fn try_recv_any(
-        &mut self,
-        local: PartyId,
-        senders: &[PartyId],
-    ) -> Option<(Packet, PartyId)> {
+    fn try_recv_any(&mut self, local: PartyId, senders: &[PartyId]) -> Option<(PartyId, Packet)> {
         let sender = senders
             .iter()
             .copied()
@@ -279,153 +294,47 @@ impl Switchboard {
         }
         let packet = self.try_recv(Link::new(sender, local))?;
 
-        Some((packet, sender))
+        Some((sender, packet))
+    }
+
+    fn try_recv_any_with_deadline(
+        &mut self,
+        local: PartyId,
+        senders: &[PartyId],
+        deadline: Duration,
+    ) -> TimedRecvOut {
+        let sender = match senders
+            .iter()
+            .copied()
+            .filter(|&sender| {
+                self.msg_queues
+                    .get(&Link::new(sender, local))
+                    .is_some_and(|queue| !queue.is_empty())
+            })
+            .min_by_key(PartyId::as_usize)
+        {
+            Some(s) => s,
+            None => {
+                return if self.clock_of(local) >= deadline {
+                    TimedRecvOut::Timeout
+                } else {
+                    TimedRecvOut::None
+                }
+            }
+        };
+
+        for &peer in senders {
+            self.parked.remove(&Link::new(peer, local));
+        }
+
+        self.try_recv_with_deadline(Link::new(sender, local), deadline)
     }
 
     /// Parks `waker` on every link delivering to `local`, so that a send from any of
     /// `senders` wakes the task. Used by [`RecvAny`] to suspend until any peer sends.
-    pub(crate) fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
+    fn park_any(&mut self, local: PartyId, senders: &[PartyId], waker: Waker) {
         for &sender in senders {
             self.parked.insert(Link::new(sender, local), waker.clone());
-        }
-    }
-}
-
-/// Suspension primitive that suspends until any party sends a message.
-///
-/// It is similar to [`Recv`], where the difference is that instead of waiting on a link, it waits
-/// on all the links delivering messages to `local`. This future resolves imediately after a link
-/// gets a message.
-pub(crate) struct RecvAny {
-    switchboard: Arc<Mutex<Switchboard>>,
-    local: PartyId,
-    senders: Vec<PartyId>,
-}
-
-impl RecvAny {
-    /// Creates a new future resolving to a `(packet, sender)` that local receives from any party in
-    /// `senders`.
-    pub(crate) fn new(
-        switchboard: Arc<Mutex<Switchboard>>,
-        local: PartyId,
-        senders: Vec<PartyId>,
-    ) -> Self {
-        Self {
-            switchboard,
-            local,
-            senders,
-        }
-    }
-}
-
-impl Future for RecvAny {
-    type Output = (Packet, PartyId);
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut switchboard = self.switchboard.lock().expect("the lock must be free");
-        match switchboard.try_recv_any(self.local, &self.senders) {
-            Some(result) => Poll::Ready(result),
-            None => {
-                switchboard.park_any(self.local, &self.senders, cx.waker().clone());
-                Poll::Pending
-            }
-        }
-    }
-}
-
-/// Suspension primitive on receive.
-///
-/// This primitive waits in a receive instruction, and then resumes when the send is
-/// performed. Each link has the possibility to halt until there is some packet available to poll.
-pub(crate) struct Recv {
-    switchboard: Arc<Mutex<Switchboard>>,
-    link: Link,
-}
-
-impl Recv {
-    /// Creates a future that resolves with the next packet `recipient` receives from `sender`,
-    /// suspending the task until one is available on that link.
-    pub(crate) fn new(
-        switchboard: Arc<Mutex<Switchboard>>,
-        sender: PartyId,
-        recipient: PartyId,
-    ) -> Self {
-        Self {
-            switchboard,
-            link: Link::new(sender, recipient),
-        }
-    }
-}
-
-impl Future for Recv {
-    type Output = Packet;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut switchboard = self.switchboard.lock().expect("the lock must be free");
-        match switchboard.try_recv(self.link) {
-            Some(packet) => Poll::Ready(packet),
-            None => {
-                // There is no packet available in the queue, hence you need to wait, i.e. park.
-                switchboard.park(self.link, cx.waker().clone());
-                Poll::Pending
-            }
-        }
-    }
-}
-
-pub(crate) struct RecvTimeout {
-    switchboard: Arc<Mutex<Switchboard>>,
-    link: Link,
-    timeout: Duration,
-    /// Deadline for the timeout.
-    ///
-    /// Any time past this deadline is considered a timeout. This deadline is computed as the
-    /// virtual instant at which the receive is first polled plus the timeout.
-    deadline: Option<Duration>,
-}
-
-impl RecvTimeout {
-    /// Creates a future that resolves with the next packet `recipient` receives from `sender`,
-    /// suspending the task until one is available on that link.
-    pub(crate) fn new(
-        switchboard: Arc<Mutex<Switchboard>>,
-        sender: PartyId,
-        recipient: PartyId,
-        timeout: Duration,
-    ) -> Self {
-        Self {
-            switchboard,
-            link: Link::new(sender, recipient),
-            timeout,
-            deadline: None,
-        }
-    }
-}
-
-impl Future for RecvTimeout {
-    type Output = Result<Packet, NetworkError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        let mut switchboard = this.switchboard.lock().expect("the lock must be free");
-        let deadline = match this.deadline {
-            Some(d) => d,
-            // Here we are dealing with the first call to recv.
-            None => {
-                let deadline = switchboard.clock_of(this.link.recipient()) + this.timeout;
-                switchboard.schedule_timer(this.link, deadline);
-                this.deadline = Some(deadline);
-                deadline
-            }
-        };
-        match switchboard.try_recv_with_deadline(this.link, deadline) {
-            TimedRecvOut::Some(packet) => Poll::Ready(Ok(packet)),
-            TimedRecvOut::Timeout => Poll::Ready(Err(NetworkError::Timeout(this.link.sender()))),
-            TimedRecvOut::None => {
-                // There is no packet available in the queue, hence you need to wait, i.e. park.
-                switchboard.park(this.link, cx.waker().clone());
-                Poll::Pending
-            }
         }
     }
 }

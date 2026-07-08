@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.9.0] - 2026-07-08
+
+### Added
+
+- **`Network::recv_any_with_timeout`** — completes the timeout primitive started in 0.8.2: waits
+  for the next packet from *any* party and returns it together with the sender's ID, or fails with
+  `NetworkError::Timeout(None)` once the deadline passes (no single party can be blamed for an
+  any-party timeout). On the simulator the deadline is the same virtual-clock timer event on the
+  switchboard used by `recv_from_with_timeout` — a packet arriving exactly at the deadline wins
+  the tie, and a packet arriving later is *not* returned by the timed call (it stays queued for a
+  later receive, as the bytes would on a real TCP stream) — so simulated and real deployments keep
+  identical semantics; `TcpNetwork` maps the call to `tokio::time::timeout`. Regression tests
+  cover the all-silent, late-packet, and prompt-sender cases (`tests/recv_timeout.rs`).
+- Module-level documentation for the simulation internals (`channel`, `event`, `executor`,
+  `simulator`, `network`, `switchboard`). The switchboard also became a directory module with the
+  receive futures in a `recv` submodule — an internal reorganization only (the futures were
+  already crate-private; no public path changed).
+
+### Changed
+
+- **Breaking: `NetworkError::Timeout` now carries an `Option<PartyId>`.** `recv_from_with_timeout`
+  reports `Some(id)`, identifying the silent party as before; `recv_any_with_timeout` reports
+  `None`. Code matching `Timeout(party)` must now match `Timeout(Some(party))`; the error message
+  renders both forms ("… from party PartyId(1)" / "… from any party").
+- **Breaking: `Network::recv_any` now returns `(PartyId, Packet)`** instead of `(Packet, PartyId)`,
+  so the sender-and-packet pair has the same shape across `recv_any` and `recv_any_with_timeout`.
+- **Breaking: the `Network` trait gained the required `recv_any_with_timeout` method.** External
+  implementors of the trait must add it; the built-in backends (`SimNetwork`, `TcpNetwork`)
+  already do, so users of the built-ins are unaffected.
+
 ## [0.8.2] - 2026-07-07
 
 ### Added
@@ -468,7 +498,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.7.1...v0.8.0

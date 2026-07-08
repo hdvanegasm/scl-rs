@@ -711,7 +711,7 @@ impl<E: Environment> Protocol<E> for QuorumCollect {
         if me == self.collector {
             let mut heard = Vec::new();
             for _ in 0..self.quorum {
-                let (packet, sender) = env.network_mut().recv_any().await?;
+                let (sender, packet) = env.network_mut().recv_any().await?;
                 // Each sender writes its own id as the payload, so the payload must match
                 // the `PartyId` that `recv_any` reports alongside it.
                 let payload: usize = packet.read(0).unwrap();
@@ -867,7 +867,7 @@ impl<E: Environment> Protocol<E> for StragglerScenario {
         if me == self.collector {
             let mut heard = Vec::new();
             for _ in 0..self.quorum {
-                let (_packet, sender) = env.network_mut().recv_any().await?;
+                let (sender, _packet) = env.network_mut().recv_any().await?;
                 heard.push(sender.as_usize());
             }
             env.network_mut().close().await?;

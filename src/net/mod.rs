@@ -105,8 +105,21 @@ pub enum NetworkError {
     #[error("error sending to the tokio channel")]
     SendError(#[from] SendError<Packet>),
     /// The party waited to receive a message and reached the timeout.
-    #[error("timed out waiting for a packet from party {0:?}")]
-    Timeout(PartyId),
+    ///
+    /// For a receive from a specific party, the inner value is `Some(id)`, identifying the
+    /// silent party; for a receive from *any* party it is `None`, as no single peer can be
+    /// blamed for the timeout.
+    #[error("timed out waiting for a packet from {}", fmt_timeout_party(.0))]
+    Timeout(Option<PartyId>),
+}
+
+/// Renders the awaited party of a [`NetworkError::Timeout`] for its error message: the specific
+/// party when one was awaited, or "any party" for a timed-out receive from any party.
+fn fmt_timeout_party(party: &Option<PartyId>) -> String {
+    match party {
+        Some(party) => format!("party {party:?}"),
+        None => String::from("any party"),
+    }
 }
 
 /// Special type for the network error.
@@ -461,7 +474,7 @@ pub trait Network: Send {
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
 
     /// Receives a `packet` from any party returning also the party ID of the sender.
-    async fn recv_any(&mut self) -> Result<(Packet, PartyId)>;
+    async fn recv_any(&mut self) -> Result<(PartyId, Packet)>;
 
     /// Receives a `packet` from a party within a `timeout`.
     ///
@@ -474,6 +487,16 @@ pub trait Network: Send {
         party_id: PartyId,
         timeout: Duration,
     ) -> Result<Packet>;
+
+    /// Receives a `packet` from any party within a `timeout`, returning also the party ID of the
+    /// sender.
+    ///
+    /// # Errors
+    ///
+    /// If no message arrives from any party within the provided `timeout`, the function will
+    /// return a [`NetworkError::Timeout`] carrying `None`, as no single party can be identified
+    /// as the cause of the timeout.
+    async fn recv_any_with_timeout(&mut self, timeout: Duration) -> Result<(PartyId, Packet)>;
 
     /// Closes the connection with the network.
     async fn close(&mut self) -> Result<()>;

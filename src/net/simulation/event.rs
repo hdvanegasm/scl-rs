@@ -1,3 +1,12 @@
+//! Trace records describing what happened during a simulation.
+//!
+//! An [`Event`] captures a single moment in a party's run — start/stop, a send or receive, a
+//! protocol boundary, a produced output — stamped with the party's *virtual* time. Events are
+//! appended to a [`SimulationTrace`](crate::net::simulation::SimulationTrace) as the protocol runs,
+//! and each renders to a compact human-readable line through its [`Display`](std::fmt::Display) impl.
+//! [`EventType`] is the data-less discriminant, used to filter traces and to declare which event a
+//! [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) reacts to.
+
 use crate::net::simulation::channel::Link;
 use std::fmt;
 use std::time::Duration;

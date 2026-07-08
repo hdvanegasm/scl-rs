@@ -471,19 +471,27 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       protocols)._
   - [ ] `open_many` — batch/vectorized opening of a `Vec` of shares in one round, to amortize
     latency (one `Packet` per peer carrying all values, reusing `write_many`).
-- [ ] **Malicious-model receives: `recv_timeout` + active variants of deal/open.** The `Passive*`
-      protocols block forever on a party that crashes or withholds its share — sound only under the
-      passive assumption. Lifting it needs two pieces: (1) a **`recv_timeout` /
-      `recv_any_timeout`** primitive on the `Network` trait, so a receiver can bound how long it
-      waits and *identify* the silent party (returning e.g. a `Timeout(PartyId)` error) — this is
-      the §14 "in-protocol timeout / deadline primitive (**virtual-time**)" item: under the
-      deterministic simulator the deadline must be a virtual-clock event scheduled on the
-      switchboard (not `tokio::time::timeout` wall time), so simulated and real deployments keep
-      identical semantics; and (2)
-      **active variants of the deal/open protocols** built on it (abort-with-culprit on timeout;
-      combine with the error-detecting reconstruction item below for tampered — not just missing —
-      shares). _Non-breaking (new trait method with a default? more likely a breaking `Network`
-      change — decide when designed)._
+- [x] **Malicious-model receives, piece (1): the `recv_timeout` primitive — DONE (0.8.2).** The
+      `Passive*` protocols block forever on a party that crashes or withholds its share — sound
+      only under the passive assumption. The network half of lifting that shipped in 0.8.2:
+      **`Network::recv_from_with_timeout(party, timeout)`**, which bounds how long a receiver waits
+      and *identifies* the silent party via a new `NetworkError::Timeout(PartyId)`. This is the §14
+      "in-protocol timeout / deadline primitive (**virtual-time**)" item: under the deterministic
+      simulator the deadline is a **virtual-clock timer event scheduled on the switchboard** (the
+      deadline is captured on first poll as `recipient clock + timeout`; a packet arriving exactly
+      at the deadline wins the race, matching `tokio::time::timeout` semantics), so simulated and
+      real deployments keep identical behavior — `TcpNetwork` maps it to `tokio::time::timeout`.
+      Regression tests in `tests/recv_timeout.rs` pin both outcomes (silent party → `Timeout` with
+      the culprit's id; prompt sender → packet). The **`recv_any_with_timeout`** variant shipped
+      in 0.9.0 (same timer design, one timer per call; `Timeout(None)`, since no single party can
+      be blamed), completing the primitive. _The "default method or breaking change?"
+      question resolved itself the hard way: it shipped as a **required** trait method in patch
+      0.8.2 — technically breaking for external `Network` implementors, accepted as a deliberate
+      one-time exception to the §2 convention._
+- [ ] **Malicious-model receives, piece (2): active variants of the deal/open protocols**, built on
+      the 0.8.2 `recv_from_with_timeout` (abort-with-culprit on timeout; combine with the
+      error-detecting reconstruction item below for tampered — not just missing — shares).
+      _Non-breaking (new protocols)._
 - [ ] **Error-detecting / robust reconstruction (Shamir).** A stricter `open` variant that uses the
       code's redundancy: reconstruct from `t+1` shares, then check the remaining shares lie on the same
       degree-`t` polynomial and surface `ShareError::InvalidShare` (reusing the enum) if not. This is
@@ -512,7 +520,7 @@ self-contained, honest slice: the arithmetic seam plus the interactive ends that
 share, compute linearly, and open. The Tier-1 remainder — `open_many`, error-detecting
 reconstruction, and trusted-dealer Beaver `mul` with its worked example — is deliberately **not**
 in `0.8.0` and ships in a later `0.x` slice, together with (or after) the malicious-model
-`recv_timeout` work above.
+`recv_timeout` work above _(the network primitive half of which has since shipped in 0.8.2)_.
 
 ### 11.2 Tier 2 — randomness & agreement
 
@@ -535,7 +543,8 @@ Prerequisites for most higher protocols; all build directly on Tier 1.
       (round-based, honest-majority) and a simple **reliable broadcast** (Bracha-style: send → echo →
       ready, deliver on quorum), both as `Protocol<E>` impls that wait for the first `k`-of-`n` via
       `recv_any` and never block on silent parties. These are also the natural first consumer of the
-      §14 virtual-time timeout primitive once it exists. _Non-breaking._
+      §14 virtual-time timeout primitive (complete since 0.9.0: `recv_from_with_timeout` and
+      `recv_any_with_timeout`). _Non-breaking._
 
 ### 11.3 Tier 3 — richer computation
 
@@ -562,11 +571,11 @@ Prerequisites for most higher protocols; all build directly on Tier 1.
       hand-written Mersenne-61 / secp256k1 fields, so all of the above can run over a caller-chosen
       modulus. This is the one item likely to interact with existing trait bounds
       (`FiniteField<const LIMBS>`), so scope its API impact deliberately — possibly a **minor** bump.
-- [ ] **Virtual-time timeout / deadline primitive** (also tracked in §14). Not an MPC utility per se,
-      but the one protocol-facing capability with no executor-agnostic workaround today, and the
-      partially-synchronous broadcast/BFT protocols in Tier 2 need it. See §14 for the design (a
-      virtual-time event on the switchboard that races a message, not `tokio::time::timeout`). _Likely
-      a minor bump (new `Network`/`Environment` capability)._
+- [x] **Virtual-time timeout / deadline primitive — DONE (0.8.2 + 0.9.0)** (also tracked in §14).
+      Shipped as `Network::recv_from_with_timeout` (0.8.2) and `Network::recv_any_with_timeout`
+      (0.9.0): a virtual-time timer event on the switchboard that races the message
+      deterministically on the simulator, mapped to `tokio::time::timeout` on `TcpNetwork`. See
+      the §11.1 item for details.
 
 ### 11.5 Explicitly out of scope (for now)
 
@@ -595,7 +604,7 @@ Tier 1  LinearShare  ──►  passive deal/open  ──►  [0.8.0 slice]
 Tier 2  rand_shared/bit ─► coin-toss     linear algebra (Tier 3)
    │        PRSS             │
    ▼                         ▼
-Tier 2  broadcast (recv_any) ─────────────► needs §14 timeout (Tier 4)
+Tier 2  broadcast (recv_any) ─────────────► needs §14 timeout ✅ [0.9.0]
 Tier 3  commitments ─► coin-toss ; bit-decomp ─► comparison (needs rand_bit)
 Tier 4  replicated / packed SS ─► reuse Shared trait ; F_p ─► general modulus
 ```
@@ -620,8 +629,10 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.7.1**       | _Testing plan completion_ ✅ **RELEASED 2026-06-30** | Test- and documentation-only, no library API change (a patch per §2). Testing-plan **Tier 4** (generic `impl<E: Environment> Protocol<E>` migration of `tests/simulator.rs`, run-to-run reproducibility test, capability-carrying-environment test), **Tier 5** (real-network tests inline in `src/net/tcp.rs`: multi-party `recv_any` over mTLS, plus `ConnectionClosed`/`ConfigParse`/`InvalidPemFile` failure paths), and **Tier 6** per-constructor doctests on `Packet`/`ShamirSS`/`FeldmanSS`. The Tier 4 reordering harness and `cargo-deny` were declined. See `CHANGELOG.md` `[0.7.1]`. |
 | **0.8.0**       | _MPC arithmetic layer_ ✅ **RELEASED 2026-07-06**  | The first §11 **Tier 1** slice: the **`LinearShare` trait** on the share types (local-op overloads, `encode_party` — Shamir maps party `i` to field point `i + 1`, keeping `0`-based network ids off the secret's point — trait-level deal/reconstruct; the reshaped `AdditiveSS` and `PartyId` derives are the batched breaking changes per §2) plus the **passive-adversary deal/open protocols** (`protocol::share`: `PassiveDealShr`, `PassiveOpenShr`, `PassiveOpenToParty`), the `protocol::Error::{Share, Input}` variants, and end-to-end simulator tests over both schemes (`tests/protocol_share.rs`). See `CHANGELOG.md` `[0.8.0]`. |
 | **0.8.1**       | _Simulator FIFO fix_ ✅ **RELEASED 2026-07-06**    | Bug-fix patch per §2: the switchboard now keeps **per-link deliveries FIFO** — under the size-dependent delay model, a later-but-smaller message could overtake an earlier-but-larger one on the same link (impossible on a real TCP stream), which mispaired shares with senders and flakily broke Shamir reconstruction in the 0.8.0 open protocols (≈1/32 per run via `postcard` varint sizes). Arrival times are clamped monotone per link; regression test pins the ordering. See `CHANGELOG.md` `[0.8.1]`. |
-| **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the malicious-model `recv_timeout` + active deal/open variants. Turns the crate into "real MPC." |
-| **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed) — plus the §14 virtual-time timeout the partially-synchronous protocols need. Sequenced by the §11.6 dependency graph. |
+| **0.8.2**       | _Virtual-time recv timeout_ ✅ **RELEASED 2026-07-07** | The §14 in-protocol timeout primitive and piece (1) of the §11.1 malicious-model receives: **`Network::recv_from_with_timeout(party, timeout)`**, returning the new `NetworkError::Timeout(PartyId)` that names the silent party. On the simulator the deadline is a **virtual-clock timer event scheduled on the switchboard** (captured on first poll as `recipient clock + timeout`; a packet arriving exactly at the deadline wins, matching `tokio::time::timeout`, to which `TcpNetwork` maps the call), so both backends keep identical semantics. Regression tests in `tests/recv_timeout.rs`. _Shipped as a required trait method in a patch — a deliberate one-time exception to §2 (breaking for external `Network` implementors)._ See `CHANGELOG.md` `[0.8.2]`. |
+| **0.9.0**       | _recv-any timeout — timeout primitive complete_ ✅ **RELEASED 2026-07-08** | Completes the §14 timeout primitive: **`Network::recv_any_with_timeout(timeout)`** returns the next packet from *any* party together with its sender, or `NetworkError::Timeout(None)` at the deadline (no single culprit). Same switchboard virtual-clock timer design as 0.8.2 (one timer per call; the deadline is checked on the empty path, so an all-silent quorum times out instead of deadlocking the scheduler; post-deadline packets stay queued). Batched breaking changes per §2: `Timeout` carries `Option<PartyId>`, `recv_any` returns `(PartyId, Packet)`, and the new method is required on `Network`. Regression tests (all-silent / late-packet / prompt sender) in `tests/recv_timeout.rs`; module docs for the simulation internals. See `CHANGELOG.md` `[0.9.0]`. |
+| **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
+| **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
 | **0.x (stable)** | _API settled — steady state_                      | The §5 work has baked, public enums are `#[non_exhaustive]`, docs/examples are complete, and breaks are rare and deliberate. This is the intended steady state; `1.0` stays optional and unplanned (§2).                                                     |
 
@@ -664,15 +675,17 @@ The bar for considering the `0.x` API "settled" — the steady state of §12, no
   feature**.)_
 - Packet loss / retransmission modeling in the event loop.
 - Compute-time / sender-side cost modeling in the virtual clock.
-- **In-protocol timeout / deadline primitive (virtual-time).** Let a protocol wait on a `Network`
-  operation *with a deadline* and proceed if nothing arrives in time — needed by
-  partially-synchronous protocols (round timeouts, BFT view-change timers). It cannot be built on
-  `tokio::time::timeout`, whose clock is wall-clock: under the deterministic simulator the deadline
-  must be a **virtual-time** event scheduled on the switchboard that fires at a virtual instant and
-  wakes the parked party, so a timeout and a message race *deterministically*. Exposed through the
-  `Network`/`Environment` API so one code path runs on both backends (mapping to
-  `tokio::time::timeout` on a real deployment). The only protocol-facing capability with no
-  executor-agnostic workaround today — surfaced during the `send_many`/concurrency design.
+- **In-protocol timeout / deadline primitive (virtual-time).** _(✅ **Complete** — 0.8.2 shipped
+  `Network::recv_from_with_timeout` and 0.9.0 `Network::recv_any_with_timeout`, exactly per this
+  design; see §11.1.)_ Let a protocol wait on a `Network` operation *with a deadline* and
+  proceed if nothing arrives in time — needed by partially-synchronous protocols (round timeouts,
+  BFT view-change timers). It cannot be built on `tokio::time::timeout`, whose clock is wall-clock:
+  under the deterministic simulator the deadline must be a **virtual-time** event scheduled on the
+  switchboard that fires at a virtual instant and wakes the parked party, so a timeout and a
+  message race *deterministically*. Exposed through the `Network`/`Environment` API so one code
+  path runs on both backends (mapping to `tokio::time::timeout` on a real deployment). Was the only
+  protocol-facing capability with no executor-agnostic workaround — surfaced during the
+  `send_many`/concurrency design.
 - Broader MPC protocol library on top of the typed-composition core. **Now a concrete, tiered plan
   in §11** (`LinearShare` arithmetic layer, opening/Beaver multiplication, shared
   randomness/broadcast, linear algebra/comparison/commitments, and additional sharing schemes),

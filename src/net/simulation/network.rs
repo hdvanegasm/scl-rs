@@ -1,6 +1,18 @@
+//! The [`Network`](crate::net::Network) implementation backed by the deterministic simulator.
+//!
+//! [`SimNetwork`](crate::net::simulation::network::SimNetwork) is the per-party handle the simulator hands to a protocol in place of a real
+//! socket: every `send`/`recv` routes through the shared
+//! [`Switchboard`](crate::net::simulation::switchboard::Switchboard), and receives with no message
+//! ready suspend the party (through the switchboard's `recv` futures) so the executor can advance
+//! virtual time. See [`SimNetwork`](crate::net::simulation::network::SimNetwork) for the full model.
+
 use crate::net;
 use crate::net::simulation::event::Event;
-use crate::net::simulation::switchboard::{Recv, RecvAny, RecvTimeout, Switchboard};
+use crate::net::simulation::switchboard::recv::RecvAnyTimeout;
+use crate::net::simulation::switchboard::{
+    recv::{Recv, RecvAny, RecvTimeout},
+    Switchboard,
+};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -48,9 +60,18 @@ impl Network for SimNetwork {
         self.local
     }
 
-    async fn recv_any(&mut self) -> net::Result<(Packet, PartyId)> {
-        let result = RecvAny::new(self.switchboard.clone(), self.local, self.parties.clone()).await;
-        Ok(result)
+    async fn recv_any(&mut self) -> net::Result<(PartyId, Packet)> {
+        Ok(RecvAny::new(self.switchboard.clone(), self.local, self.parties.clone()).await)
+    }
+
+    async fn recv_any_with_timeout(&mut self, timeout: Duration) -> net::Result<(PartyId, Packet)> {
+        RecvAnyTimeout::new(
+            self.switchboard.clone(),
+            self.local,
+            self.parties.clone(),
+            timeout,
+        )
+        .await
     }
 
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> net::Result<usize> {
@@ -72,9 +93,7 @@ impl Network for SimNetwork {
         party_id: PartyId,
         timeout: Duration,
     ) -> net::Result<Packet> {
-        let packet =
-            RecvTimeout::new(self.switchboard.clone(), party_id, self.local, timeout).await?;
-        Ok(packet)
+        RecvTimeout::new(self.switchboard.clone(), party_id, self.local, timeout).await
     }
 
     fn other(&self) -> net::Result<PartyId> {

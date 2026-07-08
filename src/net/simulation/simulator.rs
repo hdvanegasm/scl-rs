@@ -1,3 +1,12 @@
+//! Entry point that runs a protocol across all parties on the deterministic core.
+//!
+//! [`simulate`](crate::net::simulation::simulator::simulate) builds one shared [`Switchboard`](crate::net::simulation::switchboard::Switchboard),
+//! spawns a task per party that drives its [`Protocol`](crate::protocol::Protocol) to completion over
+//! a [`SimNetwork`](crate::net::simulation::network::SimNetwork), and runs them all on the
+//! single-threaded executor, delivering scheduled network events in virtual-time order whenever no
+//! party can make progress. It returns each party's typed output and event trace in a
+//! [`SimulationOutcome`](crate::net::simulation::simulator::SimulationOutcome).
+
 use std::{
     collections::HashMap,
     future::Future,

@@ -1,3 +1,11 @@
+//! Single-threaded cooperative executor that drives every party's task to completion.
+//!
+//! `run_with_idle` round-robins the party futures over a ready queue, re-polling a task only when
+//! its waker fires. When the ready queue drains but tasks are still parked, it invokes the `on_idle`
+//! callback to make external progress (deliver the next scheduled network event) and resumes; if
+//! `on_idle` reports that nothing can be delivered while tasks remain parked, the run panics,
+//! surfacing the protocol deadlock instead of hanging.
+
 use std::{
     collections::VecDeque,
     future::Future,

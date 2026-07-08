@@ -1,3 +1,15 @@
+//! Party-to-party links and the network model that assigns each message a virtual-time delay.
+//!
+//! A [`Link`] is the directed `sender -> recipient` channel used as the routing key throughout the
+//! simulator. A [`NetworkConfig`](crate::net::simulation::channel::NetworkConfig) maps each link to a
+//! [`ChannelConfig`](crate::net::simulation::channel::ChannelConfig) describing its bandwidth,
+//! RTT, MSS, packet loss and window size; [`ChannelConfig::message_delay`](crate::net::simulation::channel::ChannelConfig::message_delay)
+//! turns those, together
+//! with a message size, into the transit [`Duration`](std::time::Duration) the switchboard schedules
+//! deliveries with. [`SimpleNetworkConfig`](crate::net::simulation::channel::SimpleNetworkConfig)
+//! supplies sensible defaults (with zero-delay self-links),
+//! and [`ChannelConfigBuilder`] builds custom per-link configurations.
+
 use crate::net::simulation::{Result, SimulationError};
 use crate::net::PartyId;
 use std::time::Duration;

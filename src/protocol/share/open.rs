@@ -65,7 +65,7 @@ where
         let mut shares = vec![self.my_share];
         let mut senders = vec![me];
         while shares.len() < parties.len() {
-            let (mut pkt, sender) = env.network_mut().recv_any().await?;
+            let (sender, mut pkt) = env.network_mut().recv_any().await?;
             let share: S = pkt.pop()?;
             shares.push(share);
             senders.push(sender);
@@ -141,7 +141,7 @@ where
             let mut shares = vec![self.my_share];
             let mut senders = vec![me];
             while shares.len() < parties.len() {
-                let (mut pkt, sender) = env.network_mut().recv_any().await?;
+                let (sender, mut pkt) = env.network_mut().recv_any().await?;
                 let share: S = pkt.pop()?;
                 shares.push(share);
                 senders.push(sender);

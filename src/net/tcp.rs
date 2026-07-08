@@ -255,10 +255,18 @@ impl Network for TcpNetwork {
         self.writers.keys().copied().collect()
     }
 
-    async fn recv_any(&mut self) -> Result<(Packet, PartyId)> {
+    async fn recv_any(&mut self) -> Result<(PartyId, Packet)> {
         match self.receivers.next().await {
-            Some((peer_id, result_packet)) => Ok((result_packet?, peer_id)),
+            Some((peer_id, result_packet)) => Ok((peer_id, result_packet?)),
             None => Err(NetworkError::ConnectionClosed(None)),
+        }
+    }
+
+    async fn recv_any_with_timeout(&mut self, timeout: Duration) -> Result<(PartyId, Packet)> {
+        match tokio::time::timeout(timeout, self.receivers.next()).await {
+            Ok(Some((pid, pkt_result))) => Ok((pid, pkt_result?)),
+            Ok(None) => Err(NetworkError::ConnectionClosed(None)),
+            Err(_) => Err(NetworkError::Timeout(None)),
         }
     }
 
@@ -319,7 +327,7 @@ impl Network for TcpNetwork {
 
         match tokio::time::timeout(timeout, reader.next()).await {
             Ok(result) => result.ok_or(NetworkError::ConnectionClosed(Some(party_id)))?,
-            Err(_) => return Err(NetworkError::Timeout(party_id)),
+            Err(_) => return Err(NetworkError::Timeout(Some(party_id))),
         }
     }
 
@@ -469,7 +477,7 @@ mod tests {
         net0.send_to(PartyId::from(1), &packet_send_recv_any)
             .await
             .unwrap();
-        let (recv_pkg, sender_pid) = net1.recv_any().await.unwrap();
+        let (sender_pid, recv_pkg) = net1.recv_any().await.unwrap();
         assert_eq!(sender_pid, PartyId::from(0));
         assert_eq!(recv_pkg, packet_send_recv_any);
 
@@ -610,7 +618,7 @@ mod tests {
         let collector = async {
             let mut heard = Vec::new();
             for _ in 0..2 {
-                let (packet, sender) = net0.recv_any().await.unwrap();
+                let (sender, packet) = net0.recv_any().await.unwrap();
                 // Each sender writes its own id, so the payload must match the reported sender.
                 let payload: usize = packet.read(0).unwrap();
                 assert_eq!(payload, sender.as_usize());
