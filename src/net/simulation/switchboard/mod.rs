@@ -303,7 +303,7 @@ impl Switchboard {
         senders: &[PartyId],
         deadline: Duration,
     ) -> TimedRecvOut {
-        let sender = match senders
+        let ready_sender = senders
             .iter()
             .copied()
             .filter(|&sender| {
@@ -311,23 +311,25 @@ impl Switchboard {
                     .get(&Link::new(sender, local))
                     .is_some_and(|queue| !queue.is_empty())
             })
-            .min_by_key(PartyId::as_usize)
-        {
-            Some(s) => s,
-            None => {
-                return if self.clock_of(local) >= deadline {
-                    TimedRecvOut::Timeout
-                } else {
-                    TimedRecvOut::None
-                }
-            }
-        };
+            .min_by_key(PartyId::as_usize);
 
+        // Nothing is ready and the deadline has not passed: keep waiting. Return `None` so the
+        // caller re-parks, leaving the wakers on every inbound link in place.
+        if ready_sender.is_none() && self.clock_of(local) < deadline {
+            return TimedRecvOut::None;
+        }
+
+        // The receive is resolving now — with a packet or a timeout — and will not park again, so
+        // drop the wakers parked on every inbound link before returning (as the single-sender
+        // success path in `try_recv_any` does).
         for &peer in senders {
             self.parked.remove(&Link::new(peer, local));
         }
 
-        self.try_recv_with_deadline(Link::new(sender, local), deadline)
+        match ready_sender {
+            Some(sender) => self.try_recv_with_deadline(Link::new(sender, local), deadline),
+            None => TimedRecvOut::Timeout,
+        }
     }
 
     /// Parks `waker` on every link delivering to `local`, so that a send from any of
