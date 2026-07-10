@@ -18,9 +18,9 @@
 //!    sum, reveals that summed share to everyone, and reconstructs the total from the revealed
 //!    shares.
 //!
-//! Like every protocol in scl-rs, these are written generic over `N: Network` (here through the
-//! `Environment` trait), so the very same code runs on the deterministic simulator used in `main`
-//! and over a real TLS deployment, unchanged.
+//! Like every protocol in scl-rs, these are written generic over `E: Environment` (and therefore
+//! over any `Network` the environment wraps), so the very same code runs on the deterministic
+//! simulator used in `main` and over a real TLS deployment, unchanged.
 //!
 //! The two sub-protocols are written by hand here to show how protocols are built and composed.
 //! scl-rs also ships generic, scheme-agnostic versions of these building blocks in
@@ -35,6 +35,7 @@ use scl_rs::{
     math::field::secp256k1_scalar::Secp256k1ScalarField,
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, Environment, Error, GeneralEnv, Protocol, Ring},
+    protocol::ProtocolId,
     ss::additive::AdditiveSS,
 };
 
@@ -55,8 +56,8 @@ where
     // every party's input.
     type Output = Vec<AdditiveSS<R>>;
 
-    fn name(&self) -> &'static str {
-        "DistAdditiveShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DistAdditiveShr")
     }
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -139,8 +140,8 @@ where
         Ok(secret)
     }
 
-    fn name(&self) -> &'static str {
-        "ReconstrAdditiveShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ReconstrAdditiveShr")
     }
 }
 
@@ -178,8 +179,8 @@ where
         Ok(result)
     }
 
-    fn name(&self) -> &'static str {
-        "SecSumAdditiveShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SecSumAdditiveShr")
     }
 }
 

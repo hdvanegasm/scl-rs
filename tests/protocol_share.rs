@@ -7,9 +7,12 @@ use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
     prelude::{simulate, Abbreviate, Environment, Error, GeneralEnv, Protocol},
-    protocol::share::{
-        deal::PassiveDealShr,
-        open::{PassiveOpenShr, PassiveOpenToParty},
+    protocol::{
+        share::{
+            deal::PassiveDealShr,
+            open::{PassiveOpenShr, PassiveOpenToParty},
+        },
+        ProtocolId,
     },
     ss::{additive::AdditiveSS, shamir::ShamirSS, LinearShare},
 };
@@ -56,8 +59,8 @@ where
         PassiveOpenShr::new(share).execute(env).await
     }
 
-    fn name(&self) -> &'static str {
-        "DealThenOpen"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DealThenOpen")
     }
 }
 
@@ -121,8 +124,8 @@ where
         PassiveOpenShr::new(affine_share).execute(env).await
     }
 
-    fn name(&self) -> &'static str {
-        "DealAffineOpen"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DealAffineOpen")
     }
 }
 
@@ -192,8 +195,8 @@ where
             .await
     }
 
-    fn name(&self) -> &'static str {
-        "DealThenOpenTo"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DealThenOpenTo")
     }
 }
 

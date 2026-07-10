@@ -51,7 +51,7 @@
 //!     /// Behavior of the protocol when run.
 //!     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
 //!     /// Identifier of the protocol.
-//!     fn name(&self) -> &'static str;
+//!     fn id(&self) -> ProtocolId;
 //! }
 //! ```
 //!
@@ -67,7 +67,7 @@
 //! ```rust
 //! use async_trait::async_trait;
 //! use scl_rs::net::{Network, Packet};
-//! use scl_rs::protocol::{Environment, Error, Protocol};
+//! use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
 //!
 //! pub struct SendRecvProtocol;
 //!
@@ -92,8 +92,8 @@
 //!         Ok(their_id)
 //!     }
 //!
-//!     fn name(&self) -> &'static str {
-//!         "SendRecvProtocol"
+//!     fn id(&self) -> ProtocolId {
+//!         ProtocolId::from("SendRecvProtocol")
 //!     }
 //! }
 //! #
@@ -118,7 +118,7 @@
 //! ```rust
 //! # use async_trait::async_trait;
 //! # use scl_rs::net::{Network, Packet};
-//! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol};
+//! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol, ProtocolId};
 //! # pub struct SendRecvProtocol;
 //! # #[async_trait]
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
@@ -135,7 +135,7 @@
 //! #
 //! #         Ok(received.read(0)?)
 //! #     }
-//! #     fn name(&self) -> &'static str { "SendRecvProtocol" }
+//! #     fn id(&self) -> ProtocolId { ProtocolId::from("SendRecvProtocol") }
 //! # }
 //! #
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
@@ -172,6 +172,11 @@
 //! `SimpleNetworkConfig` uses instantaneous channels; supply your own `NetworkConfig` to model latency,
 //! bandwidth, and other parameters, and the reported timings will approximate a real deployment under
 //! those conditions.
+//!
+//! The last argument to `simulate` — empty above — is a list of
+//! [`TriggeredHook`](net::simulation::hook::TriggeredHook)s: callbacks that fire as each event is
+//! appended to a party's trace, for measuring or steering a run. The built-in
+//! [`MetricHook`](net::simulation::hook::MetricHook) totals the bytes each party sends.
 //!
 //! ### Running on a real network
 //!
@@ -316,7 +321,7 @@ pub mod prelude {
         simulation::simulator::simulate, simulation::simulator::SimulationOutcome, Network, Packet,
         PartyId,
     };
-    pub use crate::protocol::{Environment, Error, GeneralEnv, Protocol};
+    pub use crate::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
 }
 
 /// Mathematical tools used in MPC protocols.

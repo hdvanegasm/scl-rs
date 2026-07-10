@@ -32,7 +32,10 @@
 //! - [`switchboard`](crate::net::simulation::switchboard) — the in-memory message router and
 //!   virtual-time event loop ([`Switchboard`](crate::net::simulation::switchboard::Switchboard), the
 //!   [`Delay`](crate::net::simulation::switchboard::Delay) timing model), plus trace recording and
-//!   the [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) extension point.
+//!   hook dispatch.
+//! - [`hook`](crate::net::simulation::hook) — the
+//!   [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) extension point, which fires on
+//!   recorded events, and the built-in [`MetricHook`](crate::net::simulation::hook::MetricHook).
 //! - [`network`](crate::net::simulation::network) —
 //!   [`SimNetwork`](crate::net::simulation::network::SimNetwork), the simulated
 //!   [`Network`](crate::net::Network) implementation.
@@ -77,6 +80,9 @@ use tokio::task::JoinError;
 
 /// Implementation of an executor for protocols.
 pub mod executor;
+
+/// Hooks that fire on recorded simulation events.
+pub mod hook;
 
 /// Top-level simulation driver: [`simulator::simulate`] runs every party's protocol on the
 /// deterministic core and returns their outputs and event traces.

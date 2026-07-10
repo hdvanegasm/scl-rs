@@ -3,11 +3,11 @@ use scl_rs::net::simulation::channel::{
     SimpleNetworkConfig,
 };
 use scl_rs::net::simulation::event::{Event, EventType};
+use scl_rs::net::simulation::hook::MetricHook;
 use scl_rs::net::simulation::simulator::simulate;
-use scl_rs::net::simulation::switchboard::{Switchboard, TriggeredHook};
 use scl_rs::net::simulation::SimulationTrace;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol};
+use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
 
 pub struct SendRecvProtocol;
 
@@ -31,8 +31,8 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Ok(their_id)
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecvProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecvProtocol")
     }
 }
 
@@ -101,8 +101,8 @@ impl<E: Environment> Protocol<E> for PingPongProtocol {
         Ok(received)
     }
 
-    fn name(&self) -> &'static str {
-        "PingPongProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PingPongProtocol")
     }
 }
 
@@ -162,8 +162,8 @@ impl<E: Environment> Protocol<E> for SizedFifoProtocol {
         Ok(received)
     }
 
-    fn name(&self) -> &'static str {
-        "SizedFifoProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SizedFifoProtocol")
     }
 }
 
@@ -213,8 +213,8 @@ impl<E: Environment> Protocol<E> for ChainedFirstStage {
         Ok(output)
     }
 
-    fn name(&self) -> &'static str {
-        "ChainedFirstStage"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ChainedFirstStage")
     }
 }
 
@@ -232,8 +232,8 @@ impl<E: Environment> Protocol<E> for ChainedSecondStage {
         Ok(self.received + 100)
     }
 
-    fn name(&self) -> &'static str {
-        "ChainedSecondStage"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ChainedSecondStage")
     }
 }
 
@@ -306,8 +306,8 @@ impl<E: Environment> Protocol<E> for BulkTransferProtocol {
         Ok(payload)
     }
 
-    fn name(&self) -> &'static str {
-        "BulkTransferProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("BulkTransferProtocol")
     }
 }
 
@@ -459,8 +459,8 @@ impl<E: Environment> Protocol<E> for OneWayProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "OneWayProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("OneWayProtocol")
     }
 }
 
@@ -522,8 +522,8 @@ impl<E: Environment> Protocol<E> for BroadcastProtocol {
         Ok(value)
     }
 
-    fn name(&self) -> &'static str {
-        "BroadcastProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("BroadcastProtocol")
     }
 }
 
@@ -595,6 +595,7 @@ fn output_event_elides_large_payloads() {
     assert!(large_rendered.contains("[0, 1, 2, 3, …, 96, 97, 98, 99] (100 bytes)"));
 }
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -619,8 +620,8 @@ impl<E: Environment> Protocol<E> for SendRecv {
         Ok(their_id_received)
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecv"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecv")
     }
 }
 
@@ -655,35 +656,65 @@ fn real_protocol_runs_on_deterministic_core() {
     println!("------ Party 1:\n{}", outcome.traces[&p1]);
 }
 
-struct CountSendData(Arc<Mutex<usize>>);
+struct MultipleSendRecv {
+    n_sends: usize,
+}
 
-impl TriggeredHook for CountSendData {
-    fn trigger(&self) -> Option<EventType> {
-        Some(EventType::SendData)
+#[async_trait]
+impl<E: Environment> Protocol<E> for MultipleSendRecv {
+    type Output = usize;
+
+    async fn run(self, env: &mut E) -> Result<usize, Error> {
+        let other = env.network().other()?;
+        let me = env.network().local_party();
+
+        for _ in 0..self.n_sends {
+            let mut packet = Packet::empty();
+            packet.write(&me.as_usize()).unwrap();
+            env.network_mut().send_to(other, &packet).await?;
+        }
+
+        let received = env.network_mut().recv_from(other).await?;
+        let their_id_received: usize = received.read(0).unwrap();
+
+        Ok(their_id_received)
     }
 
-    fn run(&self, _party: PartyId, _event: &Event, _switchboard: &mut Switchboard) {
-        *self.0.lock().expect("lock free") += 1;
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("MultipleSendRecv")
     }
 }
 
 #[test]
-fn hook_fires_on_matching_event() {
+fn metric_hook_fires_on_matching_event() {
+    const N_SENDS: usize = 10;
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
-    let count = Arc::new(Mutex::new(0_usize));
-    let hook = Arc::new(CountSendData(count.clone()));
+    let count_total = Arc::new(Mutex::new(0_usize));
+    let count_per_party = Arc::new(Mutex::new(HashMap::new()));
+    let metrics = Arc::new(MetricHook::new(
+        count_total.clone(),
+        count_per_party.clone(),
+    ));
 
     simulate(
         SimpleNetworkConfig,
         vec![p0, p1],
-        |_| SendRecv,
+        |_| MultipleSendRecv { n_sends: N_SENDS },
         |_, net| GeneralEnv::new(net),
-        vec![hook],
+        vec![metrics.clone()],
     );
 
-    // Each party sends exactly once → two SendData events.
-    assert_eq!(*count.lock().unwrap(), 2);
+    // The hook accumulates the payload *bytes* of every SendData event, not the message count, so
+    // the expected totals are `N_SENDS` packets per party times the size of one packet.
+    let packet_bytes = {
+        let mut packet = Packet::empty();
+        packet.write(&p0.as_usize()).unwrap();
+        packet.size()
+    };
+    assert_eq!(metrics.total_data(), 2 * N_SENDS * packet_bytes);
+    assert_eq!(metrics.total_data_by(&p0).unwrap(), N_SENDS * packet_bytes);
+    assert_eq!(metrics.total_data_by(&p1).unwrap(), N_SENDS * packet_bytes);
 }
 
 /// Protocol exercising [`Network::recv_any`]. One `collector` party waits for `quorum`
@@ -740,8 +771,8 @@ impl<E: Environment> Protocol<E> for QuorumCollect {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "QuorumCollect"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("QuorumCollect")
     }
 }
 
@@ -903,8 +934,8 @@ impl<E: Environment> Protocol<E> for StragglerScenario {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "StragglerScenario"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("StragglerScenario")
     }
 }
 
@@ -1020,8 +1051,8 @@ impl<E: Environment> Protocol<E> for ScatterProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "ScatterProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ScatterProtocol")
     }
 }
 
@@ -1143,8 +1174,8 @@ impl<E: DeltaEnv> Protocol<E> for DeltaExchange {
         Ok(my_delta + their_delta)
     }
 
-    fn name(&self) -> &'static str {
-        "DeltaExchange"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DeltaExchange")
     }
 }
 

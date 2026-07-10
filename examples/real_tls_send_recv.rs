@@ -46,6 +46,7 @@ use std::path::Path;
 use scl_rs::{
     net::{Network, NetworkConfig, Packet, TcpNetwork},
     prelude::{Environment, Error, GeneralEnv, Protocol},
+    protocol::ProtocolId,
 };
 
 /// This protocol and its implementation of the [`Protocol`] trait are fully explained in
@@ -70,8 +71,8 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Ok(their_id)
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecvProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecvProtocol")
     }
 }
 

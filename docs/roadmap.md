@@ -1,11 +1,29 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-06-30
+**Date:** 2026-07-10
 
-**Current version:** 0.7.1 (released 2026-06-30) — a test- and documentation-only patch on top of
-0.7.0 (released the same day), itself a breaking minor on top of 0.6.0 (released 2026-06-25), whose
-last patch 0.5.2 shipped 2026-06-23 (a `Matrix` non-square indexing fix + `Clone` for `FeldmanSS`;
-0.5.1 and 0.5.0 both shipped 2026-06-22, 0.4.1 on 2026-06-19).
+**Current version:** 0.10.0 (released 2026-07-10) — simulation hooks, typed protocol ids, and
+post-hoc bandwidth profiling with flamegraph export. Before that: 0.9.1 (2026-07-08), an internal
+waker-cleanup patch on top of 0.9.0 (released the same day), which completed the virtual-time
+timeout primitive begun in 0.8.2 (2026-07-07). The MPC arithmetic layer landed in 0.8.0
+(2026-07-06), with the simulator FIFO fix in 0.8.1 (same day). Before that: 0.7.1/0.7.0
+(2026-06-30), 0.6.0 (2026-06-25), 0.5.2 (2026-06-23).
+
+**0.10.0 contents:** a **simulation-hook module** — `TriggeredHook` moved out of `switchboard` into
+its own `net::simulation::hook`, joined by the first built-in hook, `MetricHook`, which totals the
+payload bytes each party puts on the wire (in aggregate and per sender; self-sends excluded — they
+never leave the process). Plus the **`Protocol::name` → `Protocol::id` rename**, returning a `Copy`
+`ProtocolId` newtype over `&'static str` (prelude-exported) instead of a bare `&'static str`, which
+also becomes the type of the `protocol_name` field on the `ProtocolBegin`/`ProtocolEnd` trace
+events. Both are breaking, so a minor bump per §2. On top of these, **post-hoc bandwidth
+profiling**: `SimulationOutcome::bandwidth_tree_for` reconstructs a per-protocol call tree
+(`ProtocolBandwidthTree` — self bytes per node, attributed to the innermost running protocol,
+rebuilt recursively from each party's trace with no protocol instrumentation), and
+`ProtocolBandwidthTree::write_folded` exports it in the folded-stacks flamegraph format (the §14
+idea, shipped; rendering stays external — `examples/bandwidth_flamegraph.rs` and the multi-level
+`examples/secure_stats_flamegraph.rs` show the `inferno` pipeline). See `CHANGELOG.md` `[0.10.0]`. **Still in development on top of the tree:** merging
+repeated calls of the same protocol under the same parent, and a `SimulationMetrics` summary
+(`SimulationOutcome::metrics()`) with a percentage-annotated tree `Display`.
 
 **0.7.1 contents:** test- and documentation-only, no library API change. Completes the testing
 plan: Tier 4 (all `tests/simulator.rs` protocols migrated to generic `impl<E: Environment>
@@ -67,13 +85,14 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
 - **`ss`** — additive sharing, Shamir, Feldman VSS, with a generic `ShareError<T: Ring>`.
 - **`net`** — real TLS point-to-point networking (`TcpNetwork` over `tokio-rustls`) **and** a
   single-threaded deterministic discrete-event simulator (`SimNetwork` + `Switchboard` + virtual
-  clock), both behind one `Network` trait.
+  clock), both behind one `Network` trait. The simulator records a per-party event trace and exposes
+  a `TriggeredHook` extension point (`net::simulation::hook`) for observing or steering a run.
 - **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output`; protocols compose by
   calling one another through `Protocol::execute` (which brackets each call with trace markers).
   `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
   protocols deterministically and returns typed outputs + nesting-aware event traces.
 
-**Published and iterating** (see §4): releases `0.2.0`–`0.7.1` have shipped to crates.io. `Cargo.toml`
+**Published and iterating** (see §4): releases `0.2.0`–`0.10.0` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
 is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. The `Environment`
@@ -219,7 +238,17 @@ release rather than dribbling breaks out continuously.
       symmetric protocols are `|_| Proto`, and private inputs are `|pid| Proto { input: inputs[&pid] }`
       — without `P: Clone` or per-party boilerplate. (`src/net/simulation/simulator.rs`.)
 - [x] **Re-exports / prelude — added in 0.4.0.** A `prelude` module now re-exports the common path so
-      users aren't deep-pathing.
+      users aren't deep-pathing. _(Extended in 0.10.0: `ProtocolId` joins `Protocol` in
+      the prelude, so implementing the trait doesn't need a second import.)_
+- [x] **`Protocol::name` → `Protocol::id`, returning `ProtocolId` (0.10.0).** The identifier a
+      protocol reports for tracing is now a `Copy`, allocation-free newtype over `&'static str`
+      (`protocol::ProtocolId`, built with `ProtocolId::from`, rendered through `Display`) rather than
+      a bare `&'static str`. The rename separates a protocol's *trace identity* from any
+      human-readable description, and the newtype gives the id a place to gain structure later
+      (a version, a parameterized instance name) without touching the `Network` trace API again.
+      `Network::record_protocol_begin`/`record_protocol_end` and the `ProtocolBegin`/`ProtocolEnd`
+      events carry `ProtocolId` accordingly. Breaking (every `impl Protocol` updates), so a minor
+      bump per §2.
 - [x] **Naming/visibility audit — done in 0.4.0.** Simulator internals demoted to `pub(crate)`
       (`Switchboard::send`/`try_recv_any`/`park_any`/`new`, the `Recv`/`RecvAny` futures); the vestigial
       `Channel` trait and `LoopBackChannel` removed. (The `ss::ec` doc nit was already moot — `math/ec`
@@ -298,6 +327,15 @@ release rather than dribbling breaks out continuously.
       markers via no-op-by-default `Network::record_protocol_begin`/`record_protocol_end` hooks
       (overridden only by the simulator), and `SimulationTrace`'s `Display` renders the result as an
       indented brace-block tree that mirrors the call structure.
+- [x] **Simulation hooks have their own module, and a first built-in (0.10.0).**
+      `TriggeredHook` moved from `net::simulation::switchboard` to a new `net::simulation::hook`
+      (breaking: the import path changed; the trait and the switchboard's dispatch are unchanged), so
+      the extension point no longer lives inside the message router it observes. `MetricHook` is the
+      first built-in implementation: it triggers on `SendData` and totals the payload **bytes** each
+      party puts on the wire, in aggregate and per sender — the communication-cost measurement an MPC
+      protocol is usually benchmarked on. Guarded by `metric_hook_fires_on_matching_event` in
+      `tests/simulator.rs`. _Future hooks land here too: a latency/round counter, and the
+      delay/drop/reorder steering hook sketched in §14._
 - [x] **D10 unification.** The duplicated `Link {recipient,sender}` (routing) and
       `ChannelId {local,remote}` (config/trace) are collapsed into one directed `Link {sender,
       recipient}` in `net::simulation::channel`; the dead `flip_end_points` is removed.
@@ -632,6 +670,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.8.2**       | _Virtual-time recv timeout_ ✅ **RELEASED 2026-07-07** | The §14 in-protocol timeout primitive and piece (1) of the §11.1 malicious-model receives: **`Network::recv_from_with_timeout(party, timeout)`**, returning the new `NetworkError::Timeout(PartyId)` that names the silent party. On the simulator the deadline is a **virtual-clock timer event scheduled on the switchboard** (captured on first poll as `recipient clock + timeout`; a packet arriving exactly at the deadline wins, matching `tokio::time::timeout`, to which `TcpNetwork` maps the call), so both backends keep identical semantics. Regression tests in `tests/recv_timeout.rs`. _Shipped as a required trait method in a patch — a deliberate one-time exception to §2 (breaking for external `Network` implementors)._ See `CHANGELOG.md` `[0.8.2]`. |
 | **0.9.0**       | _recv-any timeout — timeout primitive complete_ ✅ **RELEASED 2026-07-08** | Completes the §14 timeout primitive: **`Network::recv_any_with_timeout(timeout)`** returns the next packet from *any* party together with its sender, or `NetworkError::Timeout(None)` at the deadline (no single culprit). Same switchboard virtual-clock timer design as 0.8.2 (one timer per call; the deadline is checked on the empty path, so an all-silent quorum times out instead of deadlocking the scheduler; post-deadline packets stay queued). Batched breaking changes per §2: `Timeout` carries `Option<PartyId>`, `recv_any` returns `(PartyId, Packet)`, and the new method is required on `Network`. Regression tests (all-silent / late-packet / prompt sender) in `tests/recv_timeout.rs`; module docs for the simulation internals. See `CHANGELOG.md` `[0.9.0]`. |
 | **0.9.1**       | _recv-any timeout cleanup_ ✅ **RELEASED 2026-07-08** | Internal bug-fix patch per §2: `recv_any_with_timeout`'s timeout path now clears the wakers it parked on each inbound link, matching the success path (the leftovers were harmless — an extra ignored re-poll at worst — but the bookkeeping is now symmetric). No API change. See `CHANGELOG.md` `[0.9.1]`. |
+| **0.10.0**      | _Hooks, protocol ids & bandwidth profiling_ ✅ **RELEASED 2026-07-10** | The `TriggeredHook` extension point extracted from `switchboard` into `net::simulation::hook`, plus the first built-in hook, **`MetricHook`** (totals the payload bytes each party sends, in aggregate and per sender; self-sends excluded). Plus **`Protocol::name` → `Protocol::id`**, returning the `Copy` `ProtocolId` newtype over `&'static str` (prelude-exported) that also types the `protocol_name` field on the `ProtocolBegin`/`ProtocolEnd` events. Both breaking, so a minor bump per §2. On top of these, **post-hoc bandwidth profiling**: `SimulationOutcome::bandwidth_tree_for` rebuilds the per-protocol call tree (`ProtocolBandwidthTree`, self bytes per node) from a party's trace, and `write_folded` exports it in the folded-stacks flamegraph format (§14), demoed in `examples/bandwidth_flamegraph.rs` and `examples/secure_stats_flamegraph.rs`. See `CHANGELOG.md` `[0.10.0]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |
@@ -673,9 +712,26 @@ The bar for considering the `0.x` API "settled" — the steady state of §12, no
 - Adversarial/reordering simulation harness (delay/drop/reorder deliveries) — a payoff of the
   explicit-blocking-state design (`Poll::Pending` = "party blocked on recv"). _(As a **test**
   harness this was declined 2026-06-30 (§10); it is kept here only as a possible future **simulator
-  feature**.)_
+  feature**.)_ If built, it lands as a `TriggeredHook` in `net::simulation::hook` (§7) — the trait
+  already hands a hook `&mut Switchboard`, which is the steering seam it needs.
 - Packet loss / retransmission modeling in the event loop.
 - Compute-time / sender-side cost modeling in the virtual clock.
+- **Flamegraph export of per-protocol bandwidth.** _(✅ **Shipped in 0.10.0** —
+  `SimulationOutcome::bandwidth_tree_for` reconstructs the per-call-path tree from the
+  `ProtocolBegin`/`ProtocolEnd`/`SendData` events in a party's trace, and
+  `ProtocolBandwidthTree::write_folded(&mut impl io::Write)` serializes it; demoed end to end in
+  `examples/bandwidth_flamegraph.rs`. Idea recorded 2026-07-09; scoped down the same day from an
+  in-terminal renderer — scl-rs renders nothing.)_ The export uses the standard **folded-stacks
+  format** of Brendan Gregg's flamegraph tooling
+  (<https://www.brendangregg.com/flamegraphs.html>): one line per call path, frames
+  semicolon-separated root-first, then the value —
+  `<simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20`. The user renders it with the
+  tool of their preference (`flamegraph.pl`, `inferno`, speedscope), so scl-rs takes on **zero
+  rendering dependencies** and gets interactive SVG for free. Each line's value is the node's
+  **self bytes**, not inclusive — flamegraph tools sum children into parents themselves, so
+  emitting inclusive values would double-count. **Remaining sibling feature:** bytes is one of two
+  natural axes — events carry virtual-time timestamps, so a time-in-protocol-scope export could
+  share the same tree reconstruction and the same folded format.
 - **In-protocol timeout / deadline primitive (virtual-time).** _(✅ **Complete** — 0.8.2 shipped
   `Network::recv_from_with_timeout` and 0.9.0 `Network::recv_any_with_timeout`, exactly per this
   design; see §11.1.)_ Let a protocol wait on a `Network` operation *with a deadline* and

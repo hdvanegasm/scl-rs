@@ -4,16 +4,16 @@
 use scl_rs::{
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, Environment, Error, Protocol},
-    protocol::GeneralEnv,
+    protocol::{GeneralEnv, ProtocolId},
 };
 
 // A protocol is a struct that implements the `Protocol` trait.
 pub struct SendRecvProtocol;
 
-// The protocol is written generic over `N: Network` instead of being tied to a concrete network.
-// This is the key to scl-rs' portability: the very same protocol runs on the deterministic
-// simulator (`SimNetwork`, used in `main` below) and over a real TLS deployment (`TcpNetwork`),
-// without any changes to its logic.
+// The protocol is written generic over `E: Environment` — and therefore over any `Network` the
+// environment wraps — instead of being tied to a concrete network. This is the key to scl-rs'
+// portability: the very same protocol runs on the deterministic simulator (`SimNetwork`, used in
+// `main` below) and over a real TLS deployment (`TcpNetwork`), without any changes to its logic.
 #[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // Here, you define what is the output of the protocol. This output can be arbitrary: it may be
@@ -23,7 +23,7 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // The key method of a protocol is the `run` method. It is written from the perspective of the
     // current party, that is, you are writing how the current party will behave. Different parties
     // may behave in different ways, and you can access the current party ID using
-    // `environment.network.local_party()`.
+    // `environment.network().local_party()`.
     async fn run(self, environment: &mut E) -> Result<usize, Error> {
         // You can only send `Packet`s to the network. A packet is a collection of serialized
         // objects. The packet can hold the serialized version of any serializable data structure.
@@ -54,8 +54,11 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Ok(their_id)
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecvProtocol"
+    // Every protocol names itself with a `ProtocolId`. The simulator brackets each protocol run
+    // with this id, so it labels the protocol's scope in the trace printed by `main` below — and
+    // when a protocol calls another one, the nesting shows up as an indented block.
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecvProtocol")
     }
 }
 
@@ -72,6 +75,8 @@ fn main() {
         vec![p0, p1],
         |_| SendRecvProtocol,
         |_, net| GeneralEnv::new(net),
+        // The last argument is the list of hooks: callbacks that fire as each event is recorded, to
+        // observe or steer the run. This protocol needs none. See `scl_rs::net::simulation::hook`.
         vec![],
     );
 

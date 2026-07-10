@@ -10,6 +10,7 @@
 use std::{
     collections::HashMap,
     future::Future,
+    io::Write,
     pin::Pin,
     sync::{Arc, Mutex},
     time::Duration,
@@ -23,12 +24,14 @@ use crate::{
             channel::NetworkConfig,
             event::Event,
             executor::run_with_idle,
+            hook::TriggeredHook,
             network::SimNetwork,
-            switchboard::{ConfigDelay, Switchboard, TriggeredHook},
-            SimulationTrace,
+            switchboard::{ConfigDelay, Switchboard},
+            SimulationError, SimulationTrace,
         },
         PartyId,
     },
+    prelude::ProtocolId,
     protocol::{Environment, Protocol},
 };
 
@@ -39,6 +42,132 @@ pub struct SimulationOutcome<O> {
     pub outputs: HashMap<PartyId, O>,
     /// The time-ordered [`SimulationTrace`] recorded for each party, keyed by [`PartyId`].
     pub traces: HashMap<PartyId, SimulationTrace>,
+}
+
+impl<O> SimulationOutcome<O> {
+    /// Reconstructs the per-protocol bandwidth call tree of `party` from its recorded trace.
+    ///
+    /// The tree is rebuilt post-hoc by walking the party's [`SimulationTrace`]: every
+    /// [`ProtocolBegin`](Event::ProtocolBegin)/[`ProtocolEnd`](Event::ProtocolEnd) pair opens and
+    /// closes a node, and each [`SendData`](Event::SendData) payload is attributed to the
+    /// innermost protocol running when it was sent. The returned root is a synthetic
+    /// `"<simulation>"` node spanning the whole run; bytes sent outside any protocol scope are
+    /// attributed to the root itself.
+    ///
+    /// Only bytes *sent* by `party` are counted, as payload sizes rather than wire bytes —
+    /// the same accounting as [`MetricHook`](crate::net::simulation::hook::MetricHook). Sends
+    /// from a party to itself are excluded: they never touch the wire, because
+    /// [`TcpNetwork`](crate::net::tcp::TcpNetwork) delivers them over an in-process loop-back
+    /// channel rather than a socket.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SimulationError::PartyNotFound`] if this outcome holds no trace for `party`.
+    pub fn bandwidth_tree_for(
+        &self,
+        party: PartyId,
+    ) -> Result<ProtocolBandwidthTree, SimulationError> {
+        Ok(ProtocolBandwidthTree::parse(
+            ProtocolId::from("<simulation>"),
+            &mut self
+                .traces
+                .get(&party)
+                .ok_or(SimulationError::PartyNotFound(party))?
+                .events(),
+        ))
+    }
+}
+
+/// A node of the per-protocol bandwidth call tree reconstructed from one party's trace.
+///
+/// Each node records the bytes the protocol sent *itself* (excluding its sub-protocols) and one
+/// child per sub-protocol invocation, in call order — repeated calls of the same sub-protocol
+/// appear as separate children. Build one with [`SimulationOutcome::bandwidth_tree_for`] and
+/// export it with [`write_folded`](ProtocolBandwidthTree::write_folded).
+pub struct ProtocolBandwidthTree {
+    id: ProtocolId,
+    self_bytes: usize,
+    children: Vec<ProtocolBandwidthTree>,
+}
+
+impl ProtocolBandwidthTree {
+    /// Builds the node for the protocol whose [`ProtocolBegin`](Event::ProtocolBegin) the cursor
+    /// sits just after, consuming events through its matching [`ProtocolEnd`](Event::ProtocolEnd)
+    /// (or to the end of the trace for a truncated trace or the synthetic root). Each
+    /// [`SendData`](Event::SendData) is attributed to the innermost open protocol.
+    fn parse(protocol_id: ProtocolId, events: &mut &[Event]) -> Self {
+        let mut metric = Self {
+            id: protocol_id,
+            self_bytes: 0,
+            children: vec![],
+        };
+
+        while let Some((first, rest)) = events.split_first() {
+            *events = rest;
+            match first {
+                Event::SendData { link, size, .. } => {
+                    // Self-sends never touch the wire (TcpNetwork loops them back in-process),
+                    // so they don't count as bandwidth.
+                    if link.sender() != link.recipient() {
+                        metric.self_bytes += size;
+                    }
+                }
+                Event::ProtocolBegin { protocol_name, .. } => {
+                    let child = Self::parse(*protocol_name, events);
+                    metric.children.push(child);
+                }
+                Event::ProtocolEnd { .. } => return metric,
+                _ => {}
+            }
+        }
+        metric
+    }
+
+    /// Writes this tree to `out` in the folded-stacks format understood by flamegraph tools.
+    ///
+    /// One line is emitted per node that sent bytes itself: the semicolon-joined protocol ids
+    /// from the root down to that node, a space, and the node's own byte count. The count
+    /// deliberately excludes descendants — flamegraph tools sum descendant lines into ancestor
+    /// frames, so nodes that sent nothing themselves get no line yet still appear in the graph
+    /// as prefixes of their descendants' paths:
+    ///
+    /// ```text
+    /// <simulation>;Root 2
+    /// <simulation>;Root;TwoRounds;DealThenOpen;PassiveDealLinearShr 30
+    /// <simulation>;Root;TwoRounds;DealThenOpen;PassiveOpenLinearShr 20
+    /// ```
+    ///
+    /// The output renders with any consumer of [Brendan Gregg's folded
+    /// format](https://www.brendangregg.com/flamegraphs.html), e.g. `flamegraph.pl
+    /// --countname=bytes` or `inferno-flamegraph`. Concatenating several parties' trees into one
+    /// file is valid: rendering tools sum repeated paths.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any I/O error raised by `out`.
+    pub fn write_folded(&self, out: &mut impl Write) -> std::io::Result<()> {
+        self.fold(out, &mut Vec::new())
+    }
+
+    /// Pre-order walk emitting one folded line per node with nonzero self bytes; `path` holds
+    /// the ids from the root down to `self`, pushed on entry and popped symmetrically on exit.
+    fn fold(&self, out: &mut impl Write, path: &mut Vec<ProtocolId>) -> std::io::Result<()> {
+        path.push(self.id);
+        if self.self_bytes > 0 {
+            let path_joined = path
+                .iter()
+                .map(|node| node.to_string())
+                .collect::<Vec<_>>()
+                .join(";");
+            out.write_all(format!("{} {}\n", path_joined, self.self_bytes).as_bytes())?;
+        }
+
+        for child in &self.children {
+            child.fold(out, path)?;
+        }
+        path.pop();
+        Ok(())
+    }
 }
 
 /// Helper that records an event for a party at its current virtual time.

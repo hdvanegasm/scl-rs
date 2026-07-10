@@ -1,7 +1,7 @@
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol};
+use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
 use std::time::Duration;
 
 /// P0 waits with a timeout; P1 never sends. The recv must resolve to a Timeout error.
@@ -27,8 +27,8 @@ impl<E: Environment> Protocol<E> for SilentPartyProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "SilentPartyProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SilentPartyProtocol")
     }
 }
 
@@ -72,8 +72,8 @@ impl<E: Environment> Protocol<E> for PromptSenderProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "PromptSenderProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PromptSenderProtocol")
     }
 }
 
@@ -114,8 +114,8 @@ impl<E: Environment> Protocol<E> for AllSilentProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "AllSilentProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("AllSilentProtocol")
     }
 }
 
@@ -162,8 +162,8 @@ impl<E: Environment> Protocol<E> for LateSenderProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "LateSenderProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("LateSenderProtocol")
     }
 }
 
@@ -211,8 +211,8 @@ impl<E: Environment> Protocol<E> for PromptAnyProtocol {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "PromptAnyProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PromptAnyProtocol")
     }
 }
 

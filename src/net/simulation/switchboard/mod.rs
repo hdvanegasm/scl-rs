@@ -22,30 +22,15 @@ use std::{
 use crate::net::{
     simulation::{
         channel::{Link, NetworkConfig},
-        event::{Event, EventType},
+        event::Event,
         executor::Idle,
+        hook::TriggeredHook,
         SimulationTrace,
     },
     Packet, PartyId,
 };
 
 pub(crate) mod recv;
-
-/// A hook that runs in reaction to events recorded during a simulation.
-///
-/// Hooks are registered through [`simulate`](crate::net::simulation::simulator::simulate) and fire
-/// as each event is appended to a party's trace. They are the extension point for observing or
-/// steering a run (for example, injecting a reply when a party receives a particular message).
-///
-/// `run` is handed `&mut Switchboard`, but only the switchboard's public API is reachable, so a hook cannot corrupt
-/// the event queue or recurse back into the recording path.
-pub trait TriggeredHook: Send + Sync {
-    /// The event type this hook reacts to, or `None` to react to *every* event.
-    fn trigger(&self) -> Option<EventType>;
-    /// Runs the hook for `party_id` against the just-recorded `event`, with access to the
-    /// `switchboard`'s public API.
-    fn run(&self, party_id: PartyId, event: &Event, switchboard: &mut Switchboard);
-}
 
 /// Outcome of one try-receive attempt under a deadline. Shared by the single-link and any-link
 /// receives: a successful receive always carries the sender (the single-link caller ignores it),

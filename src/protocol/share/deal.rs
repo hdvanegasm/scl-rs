@@ -1,5 +1,6 @@
 use crate::net::{Network, Packet, PartyId};
 use crate::prelude::{Abbreviate, Environment, Error, Protocol};
+use crate::protocol::ProtocolId;
 use crate::ss::LinearShare;
 
 /// Protocol in which a designated **dealer** splits a secret into shares of a linear secret
@@ -101,7 +102,7 @@ where
         Ok(own_shr)
     }
 
-    fn name(&self) -> &'static str {
-        "PassiveDealLinearShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PassiveDealLinearShr")
     }
 }

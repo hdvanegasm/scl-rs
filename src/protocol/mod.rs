@@ -7,6 +7,7 @@ use crate::{
     ss::ShareError,
 };
 use async_trait::async_trait;
+use std::fmt;
 use thiserror::Error;
 
 /// Error that may occur during a protocol execution.
@@ -40,6 +41,45 @@ where
     }
 }
 
+/// The name a protocol reports for itself, used to label its scope in a trace.
+///
+/// A protocol returns its id from [`Protocol::id`]. [`Protocol::execute`] then hands that id to
+/// [`Network::record_protocol_begin`] and [`Network::record_protocol_end`], which the simulator
+/// turns into the [`ProtocolBegin`](crate::net::simulation::event::Event::ProtocolBegin) and
+/// [`ProtocolEnd`](crate::net::simulation::event::Event::ProtocolEnd) events that bracket the
+/// protocol's scope in the trace.
+///
+/// A `ProtocolId` wraps a `&'static str`: a protocol's name is fixed at compile time rather than
+/// built per instance, which keeps the id `Copy` and allocation-free on the tracing path. Build one
+/// from a string literal with [`From`], and render it with [`Display`](fmt::Display):
+///
+/// ```rust
+/// use scl_rs::protocol::ProtocolId;
+///
+/// let id = ProtocolId::from("PassiveOpenLinearShr");
+/// assert_eq!(id.to_string(), "PassiveOpenLinearShr");
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+pub struct ProtocolId(&'static str);
+
+impl From<ProtocolId> for String {
+    fn from(value: ProtocolId) -> Self {
+        String::from(value.0)
+    }
+}
+
+impl From<&'static str> for ProtocolId {
+    fn from(value: &'static str) -> Self {
+        ProtocolId(value)
+    }
+}
+
+impl fmt::Display for ProtocolId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Represents a protocol.
 #[async_trait]
 pub trait Protocol<E: Environment>: Send + Sync {
@@ -47,8 +87,8 @@ pub trait Protocol<E: Environment>: Send + Sync {
     type Output;
     /// Behavior of the protocol when run.
     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
-    /// Identifier of the protocol.
-    fn name(&self) -> &'static str;
+    /// Identifier of the protocol, used to label its scope in a trace. See [`ProtocolId`].
+    fn id(&self) -> ProtocolId;
 
     /// Runs this protocol bracketed by protocol-scope trace markers.
     ///
@@ -66,10 +106,10 @@ pub trait Protocol<E: Environment>: Send + Sync {
     where
         Self: Sized,
     {
-        let name = self.name();
-        environment.network_mut().record_protocol_begin(name);
+        let id = self.id();
+        environment.network_mut().record_protocol_begin(id);
         let output = self.run(environment).await;
-        environment.network_mut().record_protocol_end(name);
+        environment.network_mut().record_protocol_end(id);
         output
     }
 }

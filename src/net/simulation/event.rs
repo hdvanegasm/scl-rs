@@ -5,9 +5,10 @@
 //! appended to a [`SimulationTrace`](crate::net::simulation::SimulationTrace) as the protocol runs,
 //! and each renders to a compact human-readable line through its [`Display`](std::fmt::Display) impl.
 //! [`EventType`] is the data-less discriminant, used to filter traces and to declare which event a
-//! [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) reacts to.
+//! [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) reacts to.
 
 use crate::net::simulation::channel::Link;
+use crate::protocol::ProtocolId;
 use std::fmt;
 use std::time::Duration;
 
@@ -103,15 +104,15 @@ pub enum Event {
     ProtocolBegin {
         /// Virtual time at which the protocol started.
         timestamp: Duration,
-        /// Name of the protocol, as reported by [`Protocol::name`](crate::protocol::Protocol::name).
-        protocol_name: &'static str,
+        /// Name of the protocol, as reported by [`Protocol::id`](crate::protocol::Protocol::id).
+        protocol_name: ProtocolId,
     },
     /// A protocol finished running.
     ProtocolEnd {
         /// Virtual time at which the protocol finished.
         timestamp: Duration,
-        /// Name of the protocol, as reported by [`Protocol::name`](crate::protocol::Protocol::name).
-        protocol_name: &'static str,
+        /// Name of the protocol, as reported by [`Protocol::id`](crate::protocol::Protocol::id).
+        protocol_name: ProtocolId,
     },
 }
 
@@ -135,7 +136,7 @@ impl Event {
 
     /// Returns the [`EventType`] discriminant of this event, dropping its associated data.
     ///
-    /// Useful for matching a [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook)
+    /// Useful for matching a [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook)
     /// trigger or asserting on the shape of a trace without caring about payloads.
     pub fn event_type(&self) -> EventType {
         match self {
@@ -264,7 +265,7 @@ impl fmt::Display for Event {
 /// The kind of an [`Event`], without its associated data.
 ///
 /// Obtained via [`Event::event_type`]; used to filter events and to declare which event a
-/// [`TriggeredHook`](crate::net::simulation::switchboard::TriggeredHook) reacts to.
+/// [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) reacts to.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EventType {
     /// See [`Event::Start`].

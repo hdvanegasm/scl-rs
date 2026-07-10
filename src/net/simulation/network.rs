@@ -14,6 +14,7 @@ use crate::net::simulation::switchboard::{
     Switchboard,
 };
 use crate::net::{Network, NetworkError, Packet, PartyId};
+use crate::protocol::ProtocolId;
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -112,7 +113,7 @@ impl Network for SimNetwork {
         Ok(())
     }
 
-    fn record_protocol_begin(&mut self, protocol_name: &'static str) {
+    fn record_protocol_begin(&mut self, protocol_name: ProtocolId) {
         let mut switchboard = self.switchboard.lock().expect("lock must be free");
         let timestamp = switchboard.clock_of(self.local);
         switchboard.record_event(
@@ -124,7 +125,7 @@ impl Network for SimNetwork {
         );
     }
 
-    fn record_protocol_end(&mut self, protocol_name: &'static str) {
+    fn record_protocol_end(&mut self, protocol_name: ProtocolId) {
         let mut switchboard = self.switchboard.lock().expect("lock must be free");
         let timestamp = switchboard.clock_of(self.local);
         switchboard.record_event(

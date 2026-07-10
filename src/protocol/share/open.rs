@@ -1,6 +1,7 @@
 use crate::{
     net::{Network, Packet, PartyId},
     prelude::{Abbreviate, Environment, Error, Protocol},
+    protocol::ProtocolId,
     ss::LinearShare,
 };
 
@@ -74,8 +75,8 @@ where
         Ok(secret)
     }
 
-    fn name(&self) -> &'static str {
-        "PassiveOpenLinearShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PassiveOpenLinearShr")
     }
 }
 
@@ -151,7 +152,7 @@ where
         }
     }
 
-    fn name(&self) -> &'static str {
-        "PassiveOpenToPartyLinearShr"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("PassiveOpenToPartyLinearShr")
     }
 }

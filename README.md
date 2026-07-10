@@ -43,7 +43,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.9.1"
+scl-rs = "0.10.0"
 ```
 
 ### Releases vs. `main`
@@ -88,7 +88,7 @@ pub trait Protocol<E: Environment>: Send + Sync {
     /// Behavior of the protocol when run.
     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
     /// Identifier of the protocol.
-    fn name(&self) -> &'static str;
+    fn id(&self) -> ProtocolId;
 }
 ```
 
@@ -103,7 +103,7 @@ runs on either without changes:
 
 ```rust
 use scl_rs::net::{Network, Packet};
-use scl_rs::protocol::{Environment, Error, Protocol};
+use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
 
 pub struct SendRecvProtocol;
 
@@ -128,11 +128,15 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Ok(their_id)
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecvProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecvProtocol")
     }
 }
 ```
+
+The `ProtocolId` a protocol reports for itself is what labels its scope in a simulation trace: the
+simulator brackets every `execute` call with a `PROTOCOL_BEGIN` / `PROTOCOL_END` pair carrying that
+id, which is how nested sub-protocol calls become visible as an indented tree.
 
 A protocol can also **call another protocol** inline and use its typed result directly (no
 serialization, fully type-checked) — this is how larger protocols are built from smaller ones. For
@@ -217,6 +221,42 @@ The built-in field, curve, polynomial, vector, and secret-sharing types already 
 `Abbreviate`. Labels are display-only metadata: they are never serialized onto the wire (so they
 cost no bandwidth and do not affect packet equality), and the breakdown is therefore available on
 the simulator, where packets are passed in-process.
+
+#### Hooks
+
+The last argument to `simulate` is a list of hooks. A hook implements `TriggeredHook`, names the
+event type it reacts to (or `None` for every event), and runs each time a matching event is appended
+to a party's trace — the extension point for measuring a run or for steering it.
+
+`MetricHook` is the built-in example: it reacts to `SendData` and totals the payload **bytes** each
+party puts on the wire, in aggregate and per sender.
+
+```rust
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use scl_rs::net::simulation::hook::MetricHook;
+
+let metrics = Arc::new(MetricHook::new(
+    Arc::new(Mutex::new(0_usize)),
+    Arc::new(Mutex::new(HashMap::new())),
+));
+
+simulate(
+    SimpleNetworkConfig,
+    vec![p0, p1],
+    |_| SendRecvProtocol,
+    |_, net| GeneralEnv::new(net),
+    vec![metrics.clone()],
+);
+
+println!("total bytes sent: {}", metrics.total_data());
+println!("bytes sent by party 0: {:?}", metrics.total_data_by(&p0));
+```
+
+Because `simulate` takes each hook as an `Arc<dyn TriggeredHook>` and a hook only ever sees `&self`,
+its counters live behind a `Mutex`; register a clone of the `Arc` and read the totals back through it
+once the run has finished.
 
 ### Running on a real network
 

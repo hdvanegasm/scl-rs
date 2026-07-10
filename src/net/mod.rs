@@ -16,6 +16,7 @@ pub use tcp::TcpNetwork;
 
 use crate::abbreviate::Abbreviate;
 use crate::net::channel::ChannelError;
+use crate::protocol::ProtocolId;
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
@@ -520,11 +521,11 @@ pub trait Network: Send {
     /// (or sub-protocol) runs, so the trace reflects how protocols nest. The deterministic
     /// simulator records a protocol-begin event; a real-network backend keeps no trace, so the
     /// default is a no-op and behavior is unchanged.
-    fn record_protocol_begin(&mut self, _protocol_name: &'static str) {}
+    fn record_protocol_begin(&mut self, _protocol_name: ProtocolId) {}
 
     /// Records that a protocol scope has ended; the counterpart to
     /// [`record_protocol_begin`](Network::record_protocol_begin).
-    fn record_protocol_end(&mut self, _protocol_name: &'static str) {}
+    fn record_protocol_end(&mut self, _protocol_name: ProtocolId) {}
 }
 
 #[cfg(test)]

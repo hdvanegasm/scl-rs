@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.10.0] - 2026-07-10
+
+### Added
+
+- **`MetricHook`** — the first built-in `TriggeredHook`: it reacts to `SendData` events and totals
+  the payload **bytes** each party puts on the wire, both in aggregate (`total_data`) and per sending
+  party (`total_data_by`). Counters are handed in as `Arc<Mutex<_>>` so the caller keeps a view of
+  them after the hook has been moved into `simulate`; register a clone of the `Arc<MetricHook>` and
+  read the totals back once the run has finished. Note the counters measure bytes, not message
+  counts, and that sends from a party to itself are excluded — they never touch the wire, since
+  `TcpNetwork` delivers them over an in-process loop-back channel.
+- **`ProtocolId`** — a `Copy`, allocation-free newtype over `&'static str` naming a protocol, built
+  with `ProtocolId::from("…")` and rendered through `Display`. Re-exported from the `prelude`
+  alongside `Protocol`, so implementing the trait no longer needs a second import.
+- **Post-hoc per-protocol bandwidth profiling** — `SimulationOutcome::bandwidth_tree_for(party)`
+  reconstructs a `ProtocolBandwidthTree` from the party's recorded trace: the call tree of
+  (sub-)protocol invocations, with every sent byte attributed to the innermost protocol running
+  when it was sent. Protocols need no instrumentation — the tree is rebuilt after the run from the
+  `ProtocolBegin`/`ProtocolEnd`/`SendData` events the simulator records anyway. The root is a
+  synthetic `<simulation>` node spanning the whole run (bytes sent outside any protocol scope are
+  attributed to it), sizes are payload bytes, and self-sends are excluded — the same accounting as
+  `MetricHook`. Asking for a party that was not simulated returns
+  `SimulationError::PartyNotFound`.
+- **`ProtocolBandwidthTree::write_folded(&mut impl io::Write)`** — serializes the bandwidth tree
+  in the folded-stacks format of Brendan Gregg's flamegraph tooling
+  (<https://www.brendangregg.com/flamegraphs.html>): one line per call path that sent bytes
+  itself, e.g. `<simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20`. Render with
+  `inferno-flamegraph --countname bytes` or `flamegraph.pl --countname=bytes`; line values are
+  self bytes (renderers sum descendants into ancestors themselves), and concatenating several
+  parties' trees into one file is valid — renderers sum duplicate paths into network-wide totals.
+- An `examples/bandwidth_flamegraph.rs` example: a three-party Shamir secure summation composed of
+  nested protocols, profiled post-hoc and exported to `bandwidth.folded`, together with the
+  `inferno` command that renders the SVG. Run with `cargo run --example bandwidth_flamegraph`.
+- An `examples/secure_stats_flamegraph.rs` example: secure **mean and variance** among five
+  parties, one composition level deeper, so the flamegraph shows two distinct towers
+  (`SumValues` / `SumSquares`, each over an `InputPhase` of Shamir deals plus an open). Variance
+  needs no secure multiplication: each party shares its own square, keeping the whole computation
+  linear, and the mean/variance arithmetic finishes in the clear on the two opened sums. Also
+  demonstrates giving repeated phases **distinct `ProtocolId`s** so renderers don't merge their
+  towers. Run with `cargo run --example secure_stats_flamegraph`.
+
+### Changed
+
+- **Breaking: `Protocol::name` is renamed to `Protocol::id` and now returns `ProtocolId`** instead of
+  `&'static str`. Every `impl Protocol for …` must be updated:
+
+  ```diff
+  - fn name(&self) -> &'static str { "MyProtocol" }
+  + fn id(&self) -> ProtocolId { ProtocolId::from("MyProtocol") }
+  ```
+
+  The rename separates a protocol's *trace identity* from any human-readable description, and the
+  newtype keeps the tracing path in `Protocol::execute` free of allocation while leaving room for the
+  id to gain structure later. `Network::record_protocol_begin`/`record_protocol_end` and the
+  `Event::ProtocolBegin`/`ProtocolEnd` `protocol_name` field carry `ProtocolId` for the same reason.
+- **Breaking: `TriggeredHook` moved from `net::simulation::switchboard` to a new
+  `net::simulation::hook` module**, which now houses the hook extension point and its built-in
+  implementations. Update `use scl_rs::net::simulation::switchboard::TriggeredHook` to
+  `use scl_rs::net::simulation::hook::TriggeredHook`. The trait itself is unchanged, and the
+  switchboard still dispatches the hooks; only the path moved.
+
 ## [0.9.1] - 2026-07-08
 
 ### Fixed
@@ -510,7 +571,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.1...v0.8.2

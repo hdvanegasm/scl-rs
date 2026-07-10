@@ -11,7 +11,7 @@ use scl_rs::{
     math::{ec::secp256k1::Secp256k1, field::secp256k1_scalar::Secp256k1ScalarField},
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, EllipticCurve, Environment, Error, Protocol, Ring},
-    protocol::GeneralEnv,
+    protocol::{GeneralEnv, ProtocolId},
     ss::additive::AdditiveSS,
 };
 
@@ -58,8 +58,8 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Ok((scalar, ec, recv_shares))
     }
 
-    fn name(&self) -> &'static str {
-        "SendRecvProtocol"
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("SendRecvProtocol")
     }
 }
 
