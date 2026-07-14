@@ -1,6 +1,8 @@
 //! This example implements a simple send and receive protocol for two parties. In this protocol,
 //! each party with ID `i` sends `i` to the party with ID `1 - i`.
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, Environment, Error, Protocol},
@@ -74,7 +76,7 @@ fn main() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         // The last argument is the list of hooks: callbacks that fire as each event is recorded, to
         // observe or steer the run. This protocol needs none. See `scl_rs::net::simulation::hook`.
         vec![],

@@ -2,8 +2,9 @@ use itertools::Itertools;
 use rand::seq::SliceRandom;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
+    net::PartyId,
     prelude::Ring,
-    ss::{shamir::ShamirSS, ShareError},
+    ss::{shamir::ShamirSS, LinearShare, ShareError},
 };
 
 fn party_indexes(n: u64) -> Vec<Mersenne61> {
@@ -30,6 +31,51 @@ fn too_few_shares_is_not_enough() {
             assert!(matches!(reconstr, Err(ShareError::NotEnoughShares)));
         }
     }
+}
+
+/// Trait-level dealing honors the caller-chosen threshold: dealt at degree `t` through
+/// `LinearShare`, any `t + 1` shares reconstruct — the degree is no longer hardcoded to `n - 1`.
+#[test]
+fn linear_share_deal_with_threshold_reconstructs() {
+    const T: usize = 2;
+    const N: usize = 5;
+
+    let mut rng = rand::rng();
+    let secret = Mersenne61::random(&mut rng);
+    let parties: Vec<PartyId> = (0..N).map(PartyId::from).collect();
+
+    let shares =
+        <ShamirSS<1, Mersenne61> as LinearShare>::shares_from_secret(secret, &parties, T, &mut rng)
+            .unwrap();
+    assert!(shares.iter().all(|share| share.degree() == T));
+
+    let reconstructed = <ShamirSS<1, Mersenne61> as LinearShare>::secret_from_shares(
+        &shares[..T + 1],
+        &parties[..T + 1],
+    )
+    .unwrap();
+    assert_eq!(reconstructed, secret);
+}
+
+/// A degree that even all `n` dealt shares could never reconstruct is rejected at dealing time
+/// instead of producing an unreconstructable sharing.
+#[test]
+fn linear_share_invalid_threshold_is_rejected() {
+    const N: usize = 3;
+
+    let mut rng = rand::rng();
+    let secret = Mersenne61::random(&mut rng);
+    let parties: Vec<PartyId> = (0..N).map(PartyId::from).collect();
+
+    let result =
+        <ShamirSS<1, Mersenne61> as LinearShare>::shares_from_secret(secret, &parties, N, &mut rng);
+    assert!(matches!(
+        result,
+        Err(ShareError::InvalidThreshold {
+            threshold: N,
+            n_parties: N,
+        })
+    ));
 }
 
 use proptest::prelude::*;

@@ -71,7 +71,7 @@ fn main() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

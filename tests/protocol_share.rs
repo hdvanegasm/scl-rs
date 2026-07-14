@@ -3,10 +3,12 @@
 //! party ids are the usual `0`-based network ids; Shamir's `encode_party` shifts them to the field
 //! points `i + 1`, keeping the point `0` reserved for the secret.
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Abbreviate, Environment, Error, GeneralEnv, Protocol},
+    prelude::{simulate, Abbreviate, Error, GeneralEnv, Protocol, RandEnvironment},
     protocol::{
         share::{
             deal::PassiveDealShr,
@@ -24,18 +26,27 @@ fn parties() -> Vec<PartyId> {
     (0..N_PARTIES).map(PartyId::from).collect()
 }
 
-/// Builds the `PassiveDealShr` instance for `pid`: the dealer's (carrying `secret`) if `pid` is
-/// the dealer, a receiver's otherwise.
-fn deal_for<S>(pid: PartyId, dealer: PartyId, secret: S::Value) -> PassiveDealShr<S>
+/// Builds the `PassiveDealShr` instance for `pid`: the dealer's (carrying `secret` and the
+/// scheme's reconstruction `threshold`) if `pid` is the dealer, a receiver's otherwise.
+fn deal_for<S>(
+    pid: PartyId,
+    dealer: PartyId,
+    secret: S::Value,
+    threshold: S::Threshold,
+) -> PassiveDealShr<S>
 where
     S: LinearShare,
 {
     if pid == dealer {
-        PassiveDealShr::dealer(dealer, secret, parties())
+        PassiveDealShr::dealer(dealer, secret, parties(), threshold)
     } else {
         PassiveDealShr::receiver(dealer)
     }
 }
+
+/// The Shamir threshold used by these tests: dealt at degree 1, so any 2 of the 3 shares would
+/// reconstruct — deliberately below full threshold to exercise the caller-chosen degree.
+const SHAMIR_DEGREE: usize = 1;
 
 /// Composed test protocol: receive a share from the dealer, then open the secret to everyone.
 struct DealThenOpen<S>
@@ -49,7 +60,7 @@ where
 impl<S, E> Protocol<E> for DealThenOpen<S>
 where
     S: LinearShare + Abbreviate,
-    E: Environment,
+    E: RandEnvironment,
     S::Value: Send + Sync + 'static,
 {
     type Output = S::Value;
@@ -65,7 +76,7 @@ where
 }
 
 /// Deals a secret from party 0 and opens it to everyone; every party must output the secret.
-fn deal_then_open_roundtrip<S>()
+fn deal_then_open_roundtrip<S>(threshold: S::Threshold)
 where
     S: LinearShare<Value = Mersenne61> + Abbreviate + 'static,
 {
@@ -77,9 +88,9 @@ where
         SimpleNetworkConfig,
         parties.clone(),
         |pid| DealThenOpen::<S> {
-            deal: deal_for(pid, dealer, secret),
+            deal: deal_for(pid, dealer, secret, threshold),
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -90,12 +101,12 @@ where
 
 #[test]
 fn additive_deal_then_open_roundtrip() {
-    deal_then_open_roundtrip::<AdditiveSS<Mersenne61>>();
+    deal_then_open_roundtrip::<AdditiveSS<Mersenne61>>(());
 }
 
 #[test]
 fn shamir_deal_then_open_roundtrip() {
-    deal_then_open_roundtrip::<ShamirSS<1, Mersenne61>>();
+    deal_then_open_roundtrip::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);
 }
 
 /// Composed test protocol: receive a share of `x` from the dealer, locally compute the affine map
@@ -113,7 +124,7 @@ where
 impl<S, E> Protocol<E> for DealAffineOpen<S>
 where
     S: LinearShare + Abbreviate,
-    E: Environment,
+    E: RandEnvironment,
     S::Value: Send + Sync + 'static,
 {
     type Output = S::Value;
@@ -131,7 +142,7 @@ where
 
 /// Deals `x`, has every party locally compute `a·[x] + b`, opens, and checks the result is
 /// `a * x + b` — exercising the local `LinearShare` operators through the interactive protocols.
-fn deal_affine_open<S>()
+fn deal_affine_open<S>(threshold: S::Threshold)
 where
     S: LinearShare<Value = Mersenne61> + Abbreviate + 'static,
 {
@@ -145,11 +156,11 @@ where
         SimpleNetworkConfig,
         parties.clone(),
         |pid| DealAffineOpen::<S> {
-            deal: deal_for(pid, dealer, secret),
+            deal: deal_for(pid, dealer, secret, threshold),
             a,
             b,
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -161,12 +172,12 @@ where
 
 #[test]
 fn additive_deal_affine_open() {
-    deal_affine_open::<AdditiveSS<Mersenne61>>();
+    deal_affine_open::<AdditiveSS<Mersenne61>>(());
 }
 
 #[test]
 fn shamir_deal_affine_open() {
-    deal_affine_open::<ShamirSS<1, Mersenne61>>();
+    deal_affine_open::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);
 }
 
 /// Composed test protocol: receive a share from the dealer, then open the secret towards a single
@@ -183,7 +194,7 @@ where
 impl<S, E> Protocol<E> for DealThenOpenTo<S>
 where
     S: LinearShare + Abbreviate,
-    E: Environment,
+    E: RandEnvironment,
     S::Value: Send + Sync + 'static,
 {
     type Output = Option<S::Value>;
@@ -202,7 +213,7 @@ where
 
 /// Deals a secret and opens it towards a single party (not the dealer): only the receiver's output
 /// is `Some(secret)`; every other party — the dealer included — outputs `None`.
-fn deal_then_open_to_party<S>()
+fn deal_then_open_to_party<S>(threshold: S::Threshold)
 where
     S: LinearShare<Value = Mersenne61> + Abbreviate + 'static,
 {
@@ -215,10 +226,10 @@ where
         SimpleNetworkConfig,
         parties.clone(),
         |pid| DealThenOpenTo::<S> {
-            deal: deal_for(pid, dealer, secret),
+            deal: deal_for(pid, dealer, secret, threshold),
             receiver,
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -234,10 +245,10 @@ where
 
 #[test]
 fn additive_deal_then_open_to_party() {
-    deal_then_open_to_party::<AdditiveSS<Mersenne61>>();
+    deal_then_open_to_party::<AdditiveSS<Mersenne61>>(());
 }
 
 #[test]
 fn shamir_deal_then_open_to_party() {
-    deal_then_open_to_party::<ShamirSS<1, Mersenne61>>();
+    deal_then_open_to_party::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);
 }

@@ -41,6 +41,8 @@
 //! party's own leaf certificate and key. See the README's "Network configuration" section for the
 //! meaning of every field, and "Generating certificates" for what the script emits.
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use std::path::Path;
 
 use scl_rs::{
@@ -94,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = NetworkConfig::new(Path::new(config_path))?;
 
     let network = TcpNetwork::create(my_id, config).await?;
-    let mut env = GeneralEnv::new(network);
+    let mut env = GeneralEnv::new(network, ChaCha20Rng::from_rng(&mut rand::rng()));
     let their_id = SendRecvProtocol.execute(&mut env).await?;
     println!("Party {my_id} received id {their_id} from the other party");
 

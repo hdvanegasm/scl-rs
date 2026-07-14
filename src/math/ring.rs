@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     hash::Hash,
-    ops::{Add, Mul, Sub},
+    ops::{Add, Mul, Neg, Sub},
 };
 
 /// This trait represent an algebraic finite Ring.
@@ -18,6 +18,7 @@ pub trait Ring:
     + for<'a> Add<&'a Self, Output = Self>
     + for<'a> Mul<&'a Self, Output = Self>
     + for<'a> Sub<&'a Self, Output = Self>
+    + Neg<Output = Self>
     + Copy
     + Hash
 {

@@ -3,7 +3,7 @@ use crate::math::ring::Ring;
 use crypto_bigint::{NonZero, RandomMod, Uint};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// Represents an element in the field in which secp256k1 is defined.
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
@@ -78,6 +78,14 @@ impl Sub<&Self> for Secp256k1PrimeField {
 
     fn sub(self, other: &Self) -> Self::Output {
         Self(self.0.sub_mod(&other.0, &Self::MODULUS))
+    }
+}
+
+impl Neg for Secp256k1PrimeField {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negate()
     }
 }
 

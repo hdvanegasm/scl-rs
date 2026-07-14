@@ -31,12 +31,14 @@
 //!    private input with the library's `PassiveDealShr`.
 //! 3. `PassiveOpenLinearShr` — the parties reveal their shares of the sum and reconstruct it.
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use std::fs;
 
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
-    prelude::{simulate, Environment, Error, GeneralEnv, Protocol, ProtocolId, Ring},
+    prelude::{simulate, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment, Ring},
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
     ss::shamir::ShamirSS,
 };
@@ -53,7 +55,7 @@ struct InputPhase {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for InputPhase {
+impl<E: RandEnvironment> Protocol<E> for InputPhase {
     // One share per party in the computation.
     type Output = Vec<Share>;
 
@@ -62,7 +64,11 @@ impl<E: Environment> Protocol<E> for InputPhase {
         let mut shares = Vec::new();
         for dealer in env.network().party_ids() {
             let deal = if dealer == me {
-                PassiveDealShr::dealer(me, self.input, env.network().party_ids())
+                let receivers = env.network().party_ids();
+                // Full-threshold sharing (degree n − 1): every party is needed to reconstruct,
+                // preserving this example's original semantics.
+                let degree = receivers.len() - 1;
+                PassiveDealShr::dealer(me, self.input, receivers, degree)
             } else {
                 PassiveDealShr::receiver(dealer)
             };
@@ -84,7 +90,7 @@ struct SecSumShamirShr {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for SecSumShamirShr {
+impl<E: RandEnvironment> Protocol<E> for SecSumShamirShr {
     // The sum of every party's input, learned by everyone.
     type Output = Mersenne61;
 
@@ -116,7 +122,7 @@ fn main() {
         |_| SecSumShamirShr {
             input: Mersenne61::random(&mut rand::rng()),
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

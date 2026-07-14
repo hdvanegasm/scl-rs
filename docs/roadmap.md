@@ -101,17 +101,21 @@ redesign that was staged for the next `0.x` shipped in `0.5.0` (see §12).
 The testing plan (Tiers 1–6) is **complete as of 0.7.1** — every tier is shipped or a recorded
 deferral/decline (see §10) — so testing is no longer an open workstream.
 
-**What remains** splits in two. Much of it is _productization_, not core features: finishing the §6
-hardening (constant-time review — deferred; threat-model doc), and chosen §10 features
-(`CONTRIBUTING.md` is deferred until there are outside contributors — see §9/§14). But there is also
-one deliberately-chosen **core-feature** workstream: the §11 **MPC protocol library** — an
-arithmetic layer that lets protocols _compute on shares_ (opening, Beaver multiplication, shared
-randomness, broadcast, …), the bridge between the crate's existing primitives and its
-typed-composition core. That is the natural next direction now that 0.7.x is stabilizing, and its
-first Tier-1 slice — the `LinearShare` arithmetic seam plus the passive deal/open protocols —
-shipped as `0.8.0` (§12); the Tier-1 remainder (Beaver multiplication, `open_many`,
-error-detecting reconstruction) follows in a later `0.x`. Both halves are the body of this
-roadmap — work that improves the `0.x` line, not a checklist gating a `1.0`.
+**Tier 1 of the §11 MPC protocol library is complete as of `0.11.0`.** The crate can now *compute on
+shares*, not merely share and reconstruct them. `0.8.0` shipped the `LinearShare` arithmetic seam and
+the passive deal/open protocols; `0.11.0` shipped the multiplication half — the DN07 protocols
+(`protocol::passive_shamir`): shared-randomness generation via Vandermonde extraction (`Random`,
+`Double-Random`), a king-routed batched open, multiplication-triple generation, and Beaver
+multiplication, with a worked arithmetic-circuit example (`examples/secure_covariance.rs`). The one
+Tier-1 item still open is **error-detecting reconstruction**, which is a *malicious-model* upgrade
+rather than a missing arithmetic capability.
+
+**What remains** is therefore mostly (a) _productization_ — finishing the §6 hardening (constant-time
+review — deferred; threat-model doc) and chosen §10 features (`CONTRIBUTING.md` is deferred until
+there are outside contributors — see §9/§14) — and (b) the **higher tiers of §11**: the rest of Tier 2
+(`rand_bit`, coin-tossing, broadcast), Tier 3 comparisons, and the malicious-model work (active
+deal/open variants, error-detecting reconstruction). All of it is work that improves the `0.x` line,
+not a checklist gating a `1.0`.
 
 ---
 
@@ -476,12 +480,16 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
     party id**, decided at deal time and stamped on every share — so `Add<&Value>` is correct for any
     party numbering (Shamir is symmetric: every party adds `c`). Required `PartyId` to derive
     `Serialize`/`Deserialize` (share now carries it) and `Ord` (to pick the min).
-  - **Two recorded trade-offs of the no-RNG / no-threshold trait signatures** (documented in-code):
-    trait-level `shares_from_secret` draws from `rand::rng()`, so it is **not seed-reproducible** —
-    seeded/deterministic dealing must use the inherent method (matters for the Tier-4 reproducibility
-    test); and Shamir's trait-level dealing is **full-threshold (`n`-of-`n`)**, so trait-dealt Shamir
-    values are **not Beaver-multipliable** (product degree `2(n-1) > n-1`) — threshold sharing for an
-    MPC-with-multiplication system goes through the inherent `ShamirSS::shares_from_secret`.
+  - **Two trade-offs of the original no-RNG / no-threshold trait signatures — both resolved in
+    `0.11.0`.** As first shipped, trait-level `shares_from_secret` drew from `rand::rng()` (so it was
+    **not seed-reproducible**) and Shamir's trait-level dealing was **full-threshold (`n`-of-`n`)`**
+    (so trait-dealt Shamir values were **not Beaver-multipliable**: product degree `2(n-1) > n-1`).
+    `0.11.0` fixed both by making the trait threshold- and RNG-aware — `shares_from_secret(secret,
+    parties, threshold, rng)`, with an associated `Threshold` type (`usize` polynomial degree for
+    Shamir, `()` for additive, whose threshold is structural). Dealing now draws from the
+    environment's session RNG through the new `RandEnvironment`, so seeded runs are reproducible end
+    to end, and Shamir can be dealt at any degree `t < n` — which is what made the DN07
+    multiplication layer possible at all. _Breaking; shipped in `0.11.0`._
   - Shipped in `src/ss/mod.rs` (trait) + `shamir.rs`/`additive.rs` (impls), with the two examples and
     `tests/additive.rs` migrated to the reshaped additive deal signature. Builds green (`cargo test`,
     doctests, `clippy --all-targets`). _Non-breaking library-API-wise except the `AdditiveSS`
@@ -507,8 +515,12 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       Also added the `protocol::Error::{Share, Input}` variants — `Share` boxes a type-erased
       `ShareError<T>` so the `Protocol` trait stays ring-independent. _Non-breaking (new
       protocols)._
-  - [ ] `open_many` — batch/vectorized opening of a `Vec` of shares in one round, to amortize
-    latency (one `Packet` per peer carrying all values, reusing `write_many`).
+  - [x] `open_many` — **DONE (0.11.0)**, as `passive_shamir::open_king::BatchedPassiveOpenToKing`:
+    a `Vec` of shares opened in **two rounds regardless of batch size**, one `Packet` per peer
+    carrying every value (`write_many_labeled`, read back positionally). It routes through a
+    designated *king* rather than opening all-to-all — `O(n)` messages instead of `O(n²)` — which is
+    what keeps the round count of a circuit independent of its gate count. An all-to-all
+    `PassiveOpenShr`-style batched variant remains possible but has no caller today.
 - [x] **Malicious-model receives, piece (1): the `recv_timeout` primitive — DONE (0.8.2).** The
       `Passive*` protocols block forever on a party that crashes or withholds its share — sound
       only under the passive assumption. The network half of lifting that shipped in 0.8.2:
@@ -536,21 +548,30 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       the honest-majority analogue of the Feldman on-curve hardening shipped in 0.7.0 — it upgrades
       *opening* from honest-but-curious to **cheater-detecting**. Full Reed–Solomon error *correction*
       (Berlekamp–Welch) is a larger follow-on and can be a separate item. _Non-breaking._
-- [ ] **Beaver-triple multiplication — the flagship demo.** The roadmap explicitly calls for "a
-      Beaver-triple/multiplication example to showcase typed composition end-to-end"; this is it. Two
-      pieces:
-  1. **A preprocessing / triple source.** Begin with a **trusted-dealer** `TripleSource` that hands
-     each party its share of a multiplication triple `(a, b, c)` with `c = a·b` (dealer samples
-     `a, b`, computes `c`, secret-shares all three). This mirrors the trusted-dealer posture already
-     used elsewhere and keeps the online protocol honest. Model it as a trait so a real
-     offline-phase generator (OT/OLE-based, Tier "out of scope" below) can replace it later without
-     touching the online protocol.
-  2. **The online multiply protocol** `mul(x, y) -> Shared`: consume one triple, `open(x − a)` and
-     `open(y − b)` (one batched round via `open_many`), then locally recombine
-     `z = c + (x−a)·b + (y−b)·a + (x−a)·(y−b)`. This is the single best showcase of the typed
-     `Protocol::Output` composition, and it turns the crate into "real MPC."
-      Ship with a worked `examples/` protocol (e.g. secure multiply, an inner product, or a small
-      arithmetic circuit) that runs on the simulator and prints the nesting-aware trace. _Non-breaking._
+- [x] **Beaver-triple multiplication — the flagship demo. DONE (0.11.0).** Shipped in
+      `protocol::passive_shamir`, and it **overshot the plan**: the sketch below budgeted a
+      *trusted-dealer* `TripleSource` as a placeholder, but the triples are generated by a real
+      distributed offline phase — the DN07 protocols of Damgård & Nielsen (CRYPTO 2007) — so no party
+      or dealer ever knows `a`, `b` or `c`. The `TripleSource` trait was therefore never needed:
+  1. **The preprocessing phase.** `PassiveRandShr` (`Random`) and `PassiveRandDoubleShr`
+     (`Double-Random`) have every party deal one sharing of a value it samples itself, then compress
+     the `n` dealt sharings into `n - t` that are uniformly random even if `t` of the dealers rigged
+     their inputs — a transposed-Vandermonde extraction, which is what makes shared randomness cost
+     `O(n)` per party rather than `O(n²)`. `PassiveTriple` turns those into triples: mask the local
+     (degree-`2t`) product with the degree-`2t` half of a `DoubleShare`, open it, subtract the
+     degree-`t` half. This subsumes the Tier-2 `rand_shared()` item below.
+  2. **The online multiply protocol** — `PassiveShamirMul`: consume one triple, open `d = x − a` and
+     `e = y − b` (a single batched round through `BatchedPassiveOpenToKing`), then recombine locally,
+     `[x·y] = [a·b] + d·[b] + e·[a] + d·e`. The result is degree `t`, so it feeds the next
+     multiplication. A whole batch of products costs **one** round, so a circuit's round count tracks
+     its multiplicative *depth*, not its gate count.
+      Shipped with the worked example the roadmap asked for: `examples/secure_covariance.rs` — the
+      covariance between two parties' private datasets, an arithmetic circuit whose multiplications
+      are *unavoidable* (the operands live on different machines, so no party can pre-compute a
+      product locally the way `secure_stats_flamegraph.rs` sidesteps squaring). It runs on the
+      simulator and exports a bandwidth flamegraph in which the preprocessing dwarfs the online phase
+      that spends it. Regression tests in `tests/passive_shamir.rs`. _Non-breaking (new protocols);
+      the enabling `LinearShare` threshold/RNG change above was the breaking part._
 
 **Recommended first release (a coherent `0.8.0`):** the two shipped Tier-1 items — the
 `LinearShare` trait (with the local operators) and the passive deal/open protocols. That is a
@@ -564,11 +585,14 @@ in `0.8.0` and ships in a later `0.x` slice, together with (or after) the malici
 
 Prerequisites for most higher protocols; all build directly on Tier 1.
 
-- [ ] **Shared-randomness protocols.** `rand_shared() -> Shared<F>` (each party shares a fresh random
-      field element; the sum of shares is a uniformly random shared value no one knows), plus
-      `rand_bit()` (a shared value guaranteed to be `0`/`1`, e.g. via the square-root trick) as the
-      building block for comparisons in Tier 3. Bound on `CryptoRng`, consistent with the §6 CSPRNG
-      posture. _Non-breaking._
+- [x] **Shared-randomness protocols — `rand_shared` DONE (0.11.0); `rand_bit` still open.**
+      `PassiveRandShr` (§11.1) delivers this and improves on the sketch: rather than summing one
+      contribution per party to get *one* shared random value, DN07's Vandermonde extraction yields
+      `n - t` of them from the same single dealing round, so the amortized cost is `O(n)` per party
+      instead of `O(n²)`. Randomness is drawn from the environment's session RNG via
+      `RandEnvironment` (bound on `CryptoRng`, per the §6 posture), so seeded runs stay reproducible.
+      Still open: **`rand_bit()`** — a shared value guaranteed to be `0`/`1` (e.g. via the
+      square-root trick), the building block for the Tier-3 comparisons. _Non-breaking._
 - [ ] **Coin-tossing.** A public unbiased random value via commit-then-open (needs the Tier-3
       commitment item, or a hash commitment inline). Useful for Fiat–Shamir-style challenges and for
       seeding. _Non-breaking._

@@ -247,6 +247,10 @@ where
 {
     type Value = T;
 
+    /// Additive sharing has no threshold to choose: reconstruction structurally requires **all**
+    /// shares, so the dealing parameter is `()`.
+    type Threshold = ();
+
     /// Additive sharing does not place parties in the field, so this is never consulted and simply
     /// returns the zero element.
     fn encode_party(_party: PartyId) -> T {
@@ -264,12 +268,15 @@ where
         Ok(Self::secret_from_shares(shares))
     }
 
-    /// Deals `secret` over `parties`, drawing randomness from `rand::rng()` (a CSPRNG). Callers that
-    /// need a seeded/deterministic RNG must use the inherent
-    /// [`AdditiveSS::shares_from_secret`] instead.
-    fn shares_from_secret(secret: T, parties: &[PartyId]) -> Vec<Self> {
-        let mut rng = rand::rng();
+    /// Deals `secret` over `parties`. The threshold is structural — every share is required to
+    /// reconstruct — so the `threshold` parameter is `()` and this method cannot fail.
+    fn shares_from_secret<R: CryptoRng>(
+        secret: T,
+        parties: &[PartyId],
+        _threshold: (),
+        rng: &mut R,
+    ) -> Result<Vec<Self>, ShareError<T>> {
         // Resolves to the inherent `shares_from_secret(T, &[PartyId], _)` (three arguments).
-        Self::shares_from_secret(secret, parties, &mut rng)
+        Ok(Self::shares_from_secret(secret, parties, rng))
     }
 }

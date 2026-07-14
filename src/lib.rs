@@ -141,6 +141,7 @@
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 //! use scl_rs::net::simulation::simulator::simulate;
 //! use scl_rs::net::PartyId;
+//! use rand::{rngs::StdRng, SeedableRng};
 //!
 //! let p0 = PartyId::from(0_usize);
 //! let p1 = PartyId::from(1_usize);
@@ -149,7 +150,7 @@
 //!     SimpleNetworkConfig,
 //!     vec![p0, p1],
 //!     |_| SendRecvProtocol,
-//!     |_, net| GeneralEnv::new(net),
+//!     |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
 //!     vec![],
 //! );
 //!
@@ -321,7 +322,9 @@ pub mod prelude {
         simulation::simulator::simulate, simulation::simulator::SimulationOutcome, Network, Packet,
         PartyId,
     };
-    pub use crate::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
+    pub use crate::protocol::{
+        Environment, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
+    };
 }
 
 /// Mathematical tools used in MPC protocols.

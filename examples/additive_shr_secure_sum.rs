@@ -206,7 +206,7 @@ fn main() {
                 input: Secp256k1ScalarField::random(&mut rng),
             }
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

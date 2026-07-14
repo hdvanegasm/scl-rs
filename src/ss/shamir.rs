@@ -212,6 +212,17 @@ impl<const LIMBS: usize, F: Ring> Mul<&F> for ShamirSS<LIMBS, F> {
     }
 }
 
+impl<const LIMBS: usize, F: Ring> Mul<&Self> for ShamirSS<LIMBS, F> {
+    type Output = Self;
+
+    fn mul(self, rhs: &Self) -> Self {
+        Self {
+            share: self.share * &rhs.share,
+            degree: self.degree + rhs.degree,
+        }
+    }
+}
+
 impl<const LIMBS: usize, F: Ring> Neg for ShamirSS<LIMBS, F> {
     type Output = Self;
 
@@ -230,6 +241,9 @@ where
 {
     type Value = F;
 
+    /// The **degree** of the sharing polynomial: any `degree + 1` shares reconstruct the secret.
+    type Threshold = usize;
+
     /// Places party `i` at the field point `i + 1`, using the field's `u64` conversion. The shift
     /// keeps the mapping injective (for party ids below the field modulus) while never touching
     /// `F::ZERO` — the secret's own evaluation point — so the usual `0`-based network party ids
@@ -244,19 +258,77 @@ where
         Self::secret_from_shares(shares, &indexes)
     }
 
-    /// Deals `secret` as a **full-threshold** (`n`-out-of-`n`) sharing over `parties`: the sharing
-    /// polynomial has degree `parties.len() - 1`, so every party's share is required to
-    /// reconstruct. For a lower threshold `t < n - 1`, use the inherent
-    /// [`ShamirSS::shares_from_secret`], which takes the degree explicitly.
+    /// Deals `secret` with a caller-chosen polynomial degree (the threshold): any `degree + 1` of
+    /// the returned shares reconstruct the secret, so lower degrees tolerate more absent parties.
     ///
-    /// The trait signature carries no RNG, so the coefficients are drawn from `rand::rng()` (a
-    /// CSPRNG). Callers that need a seeded/deterministic RNG must use the inherent method instead.
-    fn shares_from_secret(secret: F, parties: &[PartyId]) -> Vec<Self> {
+    /// # Errors
+    ///
+    /// Returns [`ShareError::InvalidThreshold`] if `degree >= parties.len()`: such a sharing could
+    /// never be reconstructed, even with every dealt share.
+    fn shares_from_secret<R: CryptoRng>(
+        secret: F,
+        parties: &[PartyId],
+        degree: usize,
+        rng: &mut R,
+    ) -> Result<Vec<Self>, ShareError<F>> {
+        if degree >= parties.len() {
+            return Err(ShareError::InvalidThreshold {
+                threshold: degree,
+                n_parties: parties.len(),
+            });
+        }
         let indexes: Vec<F> = parties.iter().copied().map(Self::encode_party).collect();
-        let degree = parties.len().saturating_sub(1);
-        let mut rng = rand::rng();
         // Resolves to the inherent `shares_from_secret(F, usize, &[F], _)` (4 args).
-        let (shares, _polynomial) = Self::shares_from_secret(secret, degree, &indexes, &mut rng);
-        shares
+        let (shares, _polynomial) = Self::shares_from_secret(secret, degree, &indexes, rng);
+        Ok(shares)
+    }
+}
+
+/// A **double sharing**: a degree-`t` and a degree-`2t` sharing of one and the same secret.
+///
+/// Multiplying two degree-`t` shares locally gives a degree-`2t` sharing of the product whose
+/// polynomial is not uniformly random, so it cannot simply be opened. A double sharing repairs
+/// both problems at once: adding its degree-`2t` half masks the product so it is safe to open, and
+/// subtracting its degree-`t` half brings the result back down to degree `t`. This is the
+/// correlated randomness that makes multiplication possible; see
+/// [`PassiveRandDoubleShr`](crate::protocol::passive_shamir::double_rand_share::PassiveRandDoubleShr)
+/// for how it is produced without any party learning the secret.
+///
+/// Deliberately **not** [`Clone`]: a double sharing is one-shot randomness. Reusing one across two
+/// multiplications would mask both products with the same value and leak them, so it is consumed by
+/// [`into_parts`](DoubleShare::into_parts).
+pub struct DoubleShare<const LIMBS: usize, F> {
+    share_t: ShamirSS<LIMBS, F>,
+    share_2t: ShamirSS<LIMBS, F>,
+}
+
+impl<const LIMBS: usize, F> DoubleShare<LIMBS, F>
+where
+    F: FiniteField<LIMBS>,
+{
+    /// Pairs a degree-`t` sharing with a degree-`2t` sharing of the same secret.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `share_2t`'s degree is exactly twice `share_t`'s. The caller is responsible
+    /// for the two halves hiding the same secret, which the degrees alone cannot witness.
+    pub fn new(share_t: ShamirSS<LIMBS, F>, share_2t: ShamirSS<LIMBS, F>) -> Self {
+        assert_eq!(2 * share_t.degree, share_2t.degree);
+        Self { share_t, share_2t }
+    }
+
+    /// Returns `t`: the degree of the lower half, half the degree of the upper one.
+    pub fn degree(&self) -> usize {
+        self.share_t.degree
+    }
+
+    /// Consumes the double sharing, returning the degree-`t` and degree-`2t` halves in that order.
+    pub fn into_parts(self) -> (ShamirSS<LIMBS, F>, ShamirSS<LIMBS, F>) {
+        (self.share_t, self.share_2t)
+    }
+
+    /// Borrows the degree-`t` and degree-`2t` halves, in that order.
+    pub fn parts(&self) -> (&ShamirSS<LIMBS, F>, &ShamirSS<LIMBS, F>) {
+        (&self.share_t, &self.share_2t)
     }
 }

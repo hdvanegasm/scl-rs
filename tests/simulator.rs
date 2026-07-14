@@ -1,3 +1,5 @@
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use scl_rs::net::simulation::channel::{
     Bandwidth, ChannelConfig, ChannelConfigBuilder, Link, NetworkConfig, NetworkType, Rtt,
     SimpleNetworkConfig,
@@ -44,7 +46,7 @@ fn send_recv_simulation() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -114,7 +116,7 @@ fn ping_pong_preserves_message_order() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| PingPongProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -175,7 +177,7 @@ fn smaller_later_message_does_not_overtake_on_same_link() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SizedFifoProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -245,7 +247,7 @@ fn chained_protocols_pass_state_between_stages() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| ChainedFirstStage,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -319,7 +321,7 @@ fn simulation_reflects_bandwidth_and_latency() {
         SlowNetworkConfig,
         vec![p0, p1],
         |_| BulkTransferProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -401,7 +403,7 @@ fn trace_arrows_reflect_each_party_perspective() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -472,7 +474,7 @@ fn one_way_communication_does_not_require_prior_send() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| OneWayProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -534,7 +536,7 @@ fn broadcast_from_party_zero_reaches_all_parties() {
         SimpleNetworkConfig,
         parties.clone(),
         |_| BroadcastProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -633,7 +635,7 @@ fn real_protocol_runs_on_deterministic_core() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| SendRecv,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert_eq!(outcome.outputs[&p0], 1_usize);
@@ -701,7 +703,7 @@ fn metric_hook_fires_on_matching_event() {
         SimpleNetworkConfig,
         vec![p0, p1],
         |_| MultipleSendRecv { n_sends: N_SENDS },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![metrics.clone()],
     );
 
@@ -788,7 +790,7 @@ fn recv_any_collects_a_quorum_without_naming_senders() {
             quorum: 3,
             senders: vec![1, 2, 3],
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -815,7 +817,7 @@ fn recv_any_returns_at_quorum_and_does_not_wait_for_all() {
             quorum: 3,
             senders: vec![1, 2, 3, 4],
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -956,7 +958,7 @@ fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
             straggler: PartyId::from(STRAGGLER_ID),
             late_receiver: PartyId::from(5),
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -1063,7 +1065,7 @@ fn send_many_scatters_distinct_messages_to_each_peer() {
         SimpleNetworkConfig,
         parties,
         |_| ScatterProtocol,
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -1088,7 +1090,7 @@ fn simulation_is_reproducible_across_runs() {
             SimpleNetworkConfig,
             parties.clone(),
             |_| BroadcastProtocol,
-            |_, net| GeneralEnv::new(net),
+            |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
             vec![],
         )
     };

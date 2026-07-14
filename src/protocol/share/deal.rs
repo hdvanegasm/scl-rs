@@ -1,5 +1,5 @@
 use crate::net::{Network, Packet, PartyId};
-use crate::prelude::{Abbreviate, Environment, Error, Protocol};
+use crate::prelude::{Abbreviate, Error, Protocol, RandEnvironment};
 use crate::protocol::ProtocolId;
 use crate::ss::LinearShare;
 
@@ -19,8 +19,10 @@ use crate::ss::LinearShare;
 /// - Only the parties in `receivers` may run the protocol: a party outside that list never gets a
 ///   share and blocks waiting for it.
 ///
-/// Note that dealing draws its randomness from the scheme's trait-level
-/// [`LinearShare::shares_from_secret`], which is not seed-reproducible.
+/// The reconstruction threshold of the sharing is the dealer's choice, passed as the scheme's
+/// [`LinearShare::Threshold`] — the polynomial degree for Shamir, `()` for additive sharing.
+/// Dealing draws its randomness from the environment's session RNG ([`RandEnvironment`]), so a
+/// run with seeded per-party RNGs is reproducible.
 ///
 /// # Security model: passive adversary
 ///
@@ -36,15 +38,17 @@ where
     /// The party that knows the secret and distributes its shares.
     dealer: PartyId,
     /// The dealer-only input; `None` on receivers.
-    secret_info: Option<DealerInfo<S::Value>>,
+    secret_info: Option<DealerInfo<S>>,
 }
 
-/// The input that only the dealer holds: the secret and whom to hand shares to.
-struct DealerInfo<T> {
+/// The input that only the dealer holds: the secret, whom to hand shares to, and the threshold.
+struct DealerInfo<S: LinearShare> {
     /// The secret to split into shares.
-    secret: T,
+    secret: S::Value,
     /// The parties that receive a share, one each; `receivers[i]` gets the `i`-th share.
     receivers: Vec<PartyId>,
+    /// The scheme's reconstruction-threshold parameter (see [`LinearShare::Threshold`]).
+    threshold: S::Threshold,
 }
 
 impl<S> PassiveDealShr<S>
@@ -55,10 +59,23 @@ where
     /// local party) that splits `secret` into one share per party in `receivers` and distributes
     /// them. The dealer must include itself in `receivers` to obtain its own share (see the
     /// preconditions on [`PassiveDealShr`]).
-    pub fn dealer(dealer: PartyId, secret: S::Value, receivers: Vec<PartyId>) -> Self {
+    ///
+    /// `threshold` is the scheme's reconstruction-threshold parameter
+    /// ([`LinearShare::Threshold`]): the polynomial degree for Shamir — any `degree + 1` shares
+    /// reconstruct — and `()` for additive sharing, which always requires every share.
+    pub fn dealer(
+        dealer: PartyId,
+        secret: S::Value,
+        receivers: Vec<PartyId>,
+        threshold: S::Threshold,
+    ) -> Self {
         Self {
             dealer,
-            secret_info: Some(DealerInfo { secret, receivers }),
+            secret_info: Some(DealerInfo {
+                secret,
+                receivers,
+                threshold,
+            }),
         }
     }
 
@@ -76,8 +93,8 @@ where
 impl<S, E> Protocol<E> for PassiveDealShr<S>
 where
     S: LinearShare + Abbreviate,
-    E: Environment,
-    S::Value: Sync + Send,
+    E: RandEnvironment,
+    S::Value: Sync + Send + 'static,
 {
     type Output = S;
 
@@ -87,7 +104,12 @@ where
         // Compute and send the shares if I am the dealer.
         if self.dealer == me {
             let dealer_info = self.secret_info.ok_or(Error::Input)?;
-            let shares = S::shares_from_secret(dealer_info.secret, &dealer_info.receivers);
+            let shares = S::shares_from_secret(
+                dealer_info.secret,
+                &dealer_info.receivers,
+                dealer_info.threshold,
+                env.rng_mut(),
+            )?;
             let mut messages = Vec::with_capacity(shares.len());
             for (recv, share) in dealer_info.receivers.into_iter().zip(shares) {
                 let mut pkt = Packet::empty();

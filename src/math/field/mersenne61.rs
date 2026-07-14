@@ -10,6 +10,7 @@ use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Div;
 use std::ops::Mul;
+use std::ops::Neg;
 use std::ops::Sub;
 
 /// Representation of a field element modulo 2^{61} - 1.
@@ -77,6 +78,14 @@ impl Sub<&Self> for Mersenne61 {
         } else {
             Self::from(self.0 - other.0)
         }
+    }
+}
+
+impl Neg for Mersenne61 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negate()
     }
 }
 

@@ -3,7 +3,7 @@ use crate::math::ring::Ring;
 use crypto_bigint::{Limb, NonZero, RandomMod, Uint};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 const LIMBS: usize = 4;
 
@@ -99,6 +99,14 @@ impl Sub<&Self> for Secp256k1ScalarField {
 
     fn sub(self, other: &Self) -> Self::Output {
         Self(self.0.sub_mod(&other.0, &Self::MODULUS))
+    }
+}
+
+impl Neg for Secp256k1ScalarField {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negate()
     }
 }
 

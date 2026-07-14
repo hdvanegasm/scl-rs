@@ -33,11 +33,12 @@
 
 use std::fs;
 
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
-    prelude::{simulate, Environment, Error, GeneralEnv, Protocol, ProtocolId},
+    prelude::{simulate, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment},
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
     ss::shamir::ShamirSS,
 };
@@ -56,7 +57,7 @@ struct InputPhase {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for InputPhase {
+impl<E: RandEnvironment> Protocol<E> for InputPhase {
     // One share per party in the computation.
     type Output = Vec<Share>;
 
@@ -65,7 +66,11 @@ impl<E: Environment> Protocol<E> for InputPhase {
         let mut shares = Vec::new();
         for dealer in env.network().party_ids() {
             let deal = if dealer == me {
-                PassiveDealShr::dealer(me, self.value, env.network().party_ids())
+                let receivers = env.network().party_ids();
+                // Full-threshold sharing (degree n − 1): every party is needed to reconstruct,
+                // preserving this example's original semantics.
+                let degree = receivers.len() - 1;
+                PassiveDealShr::dealer(me, self.value, receivers, degree)
             } else {
                 PassiveDealShr::receiver(dealer)
             };
@@ -82,7 +87,7 @@ impl<E: Environment> Protocol<E> for InputPhase {
 // The summation logic both phases share: distribute sharings of `value`, add the collected shares
 // locally (free — Shamir sharing is linear), and open the sum. The callers wrap this in protocols
 // with distinct ids so the two phases stay distinguishable in the flamegraph.
-async fn share_sum_open<E: Environment>(
+async fn share_sum_open<E: RandEnvironment>(
     env: &mut E,
     value: Mersenne61,
 ) -> Result<Mersenne61, Error> {
@@ -102,7 +107,7 @@ struct SumValues {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for SumValues {
+impl<E: RandEnvironment> Protocol<E> for SumValues {
     type Output = Mersenne61;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -121,7 +126,7 @@ struct SumSquares {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for SumSquares {
+impl<E: RandEnvironment> Protocol<E> for SumSquares {
     type Output = Mersenne61;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -140,7 +145,7 @@ struct SecStats {
 }
 
 #[async_trait::async_trait]
-impl<E: Environment> Protocol<E> for SecStats {
+impl<E: RandEnvironment> Protocol<E> for SecStats {
     // (Σ values, Σ squares), learned by everyone.
     type Output = (Mersenne61, Mersenne61);
 
@@ -171,7 +176,7 @@ fn main() {
         |pid| SecStats {
             input: Mersenne61::from(inputs[pid.as_usize()]),
         },
-        |_, net| GeneralEnv::new(net),
+        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

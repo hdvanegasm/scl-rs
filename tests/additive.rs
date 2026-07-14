@@ -1,7 +1,7 @@
 use scl_rs::{
     math::{field::mersenne61::Mersenne61, ring::Ring},
     net::PartyId,
-    ss::additive::AdditiveSS,
+    ss::{additive::AdditiveSS, LinearShare},
 };
 
 #[test]
@@ -16,4 +16,22 @@ fn construct_shares_and_reconstruct() {
         let rec_secret = AdditiveSS::secret_from_shares(&shares);
         assert_eq!(secret, rec_secret);
     }
+}
+
+/// Trait-level dealing: the additive threshold is structural (`()` — all shares are always
+/// required), so the only parameterization is the party set and the caller's RNG.
+#[test]
+fn linear_share_deal_roundtrip() {
+    const N_PARTIES: usize = 7;
+
+    let mut rng = rand::rng();
+    let secret = Mersenne61::random(&mut rng);
+    let parties: Vec<PartyId> = (0..N_PARTIES).map(PartyId::from).collect();
+
+    let shares =
+        <AdditiveSS<Mersenne61> as LinearShare>::shares_from_secret(secret, &parties, (), &mut rng)
+            .expect("additive dealing cannot fail");
+    let reconstructed =
+        <AdditiveSS<Mersenne61> as LinearShare>::secret_from_shares(&shares, &parties).unwrap();
+    assert_eq!(secret, reconstructed);
 }

@@ -1,12 +1,15 @@
 /// Generic secret-sharing protocols (dealing and opening) over any [`LinearShare`](crate::ss::LinearShare) scheme.
 pub mod share;
 
+pub mod passive_shamir;
+
 use crate::{
     net::{Network, NetworkError},
     prelude::Ring,
     ss::ShareError,
 };
 use async_trait::async_trait;
+use rand::CryptoRng;
 use std::fmt;
 use thiserror::Error;
 
@@ -131,24 +134,43 @@ pub trait Environment: Send {
     fn network(&self) -> &Self::Net;
 }
 
-/// Environment that provides the network as the sole information that traverses through layers.
+/// An [`Environment`] that additionally carries the session's cryptographically secure RNG.
 ///
-/// This is the most basic environment. If a protocol requires information that needs to be passed
-/// to deep layers of protocol composition, we recommend the API user to create a different struct that
-/// implements the [`Environment`] trait.
-pub struct GeneralEnv<N: Network> {
-    /// Network in which the protocol is being executed.
-    pub network: N,
+/// Protocols that sample secret material — dealing shares, generating correlated randomness —
+/// bound their environment on this trait and draw from [`rng_mut`](RandEnvironment::rng_mut)
+/// instead of a global generator. With per-party seeded RNGs, a simulated protocol run is
+/// reproducible end to end; protocols that never sample should bound on plain [`Environment`] so
+/// they don't over-constrain their callers.
+pub trait RandEnvironment: Environment {
+    /// The RNG used for all sampling in this session. The [`CryptoRng`] bound keeps secret
+    /// material from being derived from a predictable (non-cryptographic) generator.
+    type Rng: CryptoRng + Send;
+
+    /// Returns a mutable reference to the session RNG.
+    fn rng_mut(&mut self) -> &mut Self::Rng;
 }
 
-impl<N: Network> GeneralEnv<N> {
+/// Environment that provides the network and the session RNG that traverse through layers.
+///
+/// This is the most basic environment: it implements both [`Environment`] and
+/// [`RandEnvironment`]. If a protocol requires further information that needs to be passed to deep
+/// layers of protocol composition, we recommend the API user to create a different struct that
+/// implements the [`Environment`] trait.
+pub struct GeneralEnv<N: Network, R: CryptoRng + Send> {
+    /// Network in which the protocol is being executed.
+    pub network: N,
+    /// Session RNG used by protocols that sample secret material (see [`RandEnvironment`]).
+    pub rng: R,
+}
+
+impl<N: Network, R: CryptoRng + Send> GeneralEnv<N, R> {
     /// Creates a new general environment.
-    pub fn new(network: N) -> Self {
-        Self { network }
+    pub fn new(network: N, rng: R) -> Self {
+        Self { network, rng }
     }
 }
 
-impl<N: Network> Environment for GeneralEnv<N> {
+impl<R: CryptoRng + Send, N: Network> Environment for GeneralEnv<N, R> {
     type Net = N;
 
     fn network(&self) -> &Self::Net {
@@ -157,5 +179,12 @@ impl<N: Network> Environment for GeneralEnv<N> {
 
     fn network_mut(&mut self) -> &mut Self::Net {
         &mut self.network
+    }
+}
+
+impl<R: CryptoRng + Send, N: Network> RandEnvironment for GeneralEnv<N, R> {
+    type Rng = R;
+    fn rng_mut(&mut self) -> &mut Self::Rng {
+        &mut self.rng
     }
 }

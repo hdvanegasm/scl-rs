@@ -24,6 +24,7 @@ pub mod shamir;
 use std::ops::{Add, Mul, Neg, Sub};
 
 use crate::{math::ring::Ring, net::PartyId};
+use rand::CryptoRng;
 
 use super::math::poly;
 use serde::{de::DeserializeOwned, Serialize};
@@ -67,6 +68,15 @@ pub enum ShareError<T: Ring> {
     /// One of the parties has index zero when computing the shares.
     #[error("one of the parties has index zero when computing the shares")]
     ZeroPartyId,
+    /// The dealing threshold cannot be satisfied by the given number of parties — e.g. a Shamir
+    /// polynomial degree so high that not even all the dealt shares could reconstruct the secret.
+    #[error("invalid reconstruction threshold {threshold} for {n_parties} parties")]
+    InvalidThreshold {
+        /// The threshold requested by the caller (for Shamir, the polynomial degree).
+        threshold: usize,
+        /// The number of parties the secret was dealt to.
+        n_parties: usize,
+    },
 }
 
 /// A share in a **linear secret sharing scheme**.
@@ -94,6 +104,11 @@ pub enum ShareError<T: Ring> {
 /// linear operation (in polynomial-based schemes it doubles the sharing degree) and cannot be done
 /// locally, so it is provided by a separate interactive protocol (e.g. Beaver multiplication)
 /// rather than an operator.
+///
+/// Dealing is parameterized by the scheme's [`Threshold`](LinearShare::Threshold): schemes with a
+/// caller-chosen reconstruction threshold expose it there (Shamir uses the polynomial degree),
+/// while schemes whose threshold is structural use `()` — additive sharing always needs every
+/// share, so there is nothing for the caller to choose.
 ///
 /// The trait is implemented on the *share* type — the single value a party holds — so a protocol
 /// written generically over `S: LinearShare` runs unchanged on any linear scheme. The built-in
@@ -137,6 +152,14 @@ pub trait LinearShare:
     /// The secret domain: the ring (or field) the shared value and the public constants live in.
     type Value: Ring;
 
+    /// The scheme's reconstruction-threshold parameter for dealing.
+    ///
+    /// Schemes with a caller-chosen threshold expose it here: for Shamir this is the polynomial
+    /// **degree** `t` — any `t + 1` shares reconstruct. Schemes whose threshold is structural use
+    /// `()`: additive sharing always requires **all** shares, so there is nothing to choose — and
+    /// no parameter to silently ignore.
+    type Threshold: Copy + Send + Sync;
+
     /// Maps a party to its point in [`Value`](LinearShare::Value).
     ///
     /// Some schemes locate each party at a distinct point of the secret domain — Shamir sharing,
@@ -176,9 +199,24 @@ pub trait LinearShare:
     /// Splits `secret` into one share per party.
     ///
     /// Returns a share for each entry of `parties`, positionally: the `i`-th returned share belongs
-    /// to `parties[i]`, placed in the field via [`encode_party`](LinearShare::encode_party). The
-    /// sharing is randomized, so repeated calls on the same secret produce different (equally valid)
-    /// shares; any qualifying subset reconstructs the secret via
-    /// [`secret_from_shares`](LinearShare::secret_from_shares).
-    fn shares_from_secret(secret: Self::Value, parties: &[PartyId]) -> Vec<Self>;
+    /// to `parties[i]`, placed in the field via [`encode_party`](LinearShare::encode_party).
+    /// `threshold` is the scheme's [`Threshold`](LinearShare::Threshold) parameter — the polynomial
+    /// degree for Shamir, `()` for additive sharing. Any qualifying subset of the shares
+    /// reconstructs the secret via [`secret_from_shares`](LinearShare::secret_from_shares).
+    ///
+    /// The sharing is randomized: the hiding randomness is drawn from `rng`, so a seeded caller
+    /// gets reproducible dealings, and the [`CryptoRng`] bound keeps secret material from being
+    /// derived from a predictable (non-cryptographic) generator.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ShareError`] if `threshold` cannot be satisfied by `parties` — e.g.
+    /// [`ShareError::InvalidThreshold`] for a Shamir degree that `parties.len()` shares could
+    /// never reconstruct.
+    fn shares_from_secret<R: CryptoRng>(
+        secret: Self::Value,
+        parties: &[PartyId],
+        threshold: Self::Threshold,
+        rng: &mut R,
+    ) -> Result<Vec<Self>, ShareError<Self::Value>>;
 }

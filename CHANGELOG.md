@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.11.0] - 2026-07-14
+
+### Changed
+
+- **Breaking:** `LinearShare` dealing is now threshold- and RNG-aware. The trait gains an
+  associated type `Threshold` — the scheme's reconstruction-threshold parameter — and
+  `shares_from_secret` now takes `(secret, parties, threshold, rng)` and returns
+  `Result<Vec<Self>, ShareError>`. `ShamirSS` uses `Threshold = usize` (the polynomial degree: any
+  `degree + 1` shares reconstruct) instead of hardcoding the full-threshold degree `n − 1`;
+  `AdditiveSS` uses `Threshold = ()`, since additive reconstruction structurally requires every
+  share and there is nothing for the caller to choose. Invalid parameterizations (a Shamir degree
+  that not even all `n` shares could reconstruct) are rejected at dealing time with the new
+  `ShareError::InvalidThreshold` instead of silently producing an unreconstructable sharing.
+- **Breaking:** `PassiveDealShr::dealer` takes the scheme's threshold as a fourth argument, and the
+  protocol's environment bound is now `RandEnvironment`: dealing draws its randomness from the
+  environment's session RNG instead of `rand::rng()`, so simulator runs with seeded per-party RNGs
+  are reproducible end to end.
+- **Breaking:** `Ring` now requires `Neg<Output = Self>` as a supertrait, so ring elements support
+  the `-x` operator and not only the `negate()` method. The three built-in field types implement it;
+  out-of-tree `Ring` implementors must add an `impl Neg`, which can simply forward to `negate()`.
+- `Matrix`'s `is_square`, `get`, `get_mut` and `Vector`'s `len`, `is_empty`, `Index`, `IndexMut` no
+  longer require `T: Ring`, so both types can hold elements that are not ring elements — secret
+  shares, in particular. Purely a relaxation; existing code keeps compiling.
+
+### Added
+
+- **`RandEnvironment`** — an `Environment` that additionally carries the session's
+  cryptographically secure RNG, implemented by `GeneralEnv` (which now holds an `rng` alongside the
+  network) and re-exported from the `prelude`. Protocols that sample secret material bound on it;
+  protocols that never sample keep the plain `Environment` bound.
+- **`protocol::passive_shamir`** — the passive (semi-honest) protocols of Damgård and Nielsen,
+  *Scalable and Unconditionally Secure Multiparty Computation* (CRYPTO 2007), over Shamir sharing.
+  All of them assume every party follows the protocol, and — except for `PassiveRandShr` — require
+  `n >= 2t + 1`:
+  - `PassiveRandShr` (`Random`) — `n - t` degree-`t` sharings of secrets **no party knows**. Every
+    party deals one sharing of a value it samples itself, and the `n` dealt sharings are compressed
+    by a Vandermonde extraction matrix into `n - t` that are uniformly random even if `t` of the
+    dealers colluded in choosing their inputs. This is what makes randomness generation cost `O(n)`
+    work per party rather than `O(n²)`.
+  - `PassiveRandDoubleShr` (`Double-Random`) — the same, but each secret is shared twice, at degree
+    `t` and degree `2t`, yielding `n - t` `DoubleShare`s.
+  - `PassiveOpenToKing` and `BatchedPassiveOpenToKing` (`Open`) — reconstruction through a
+    designated *king*, who collects the shares, interpolates and sends the result back: two rounds
+    and `O(n)` messages instead of the `O(n²)` of an all-to-all open. The batched form opens a whole
+    vector of secrets in those same two rounds, so the round count does not grow with the batch.
+  - `PassiveTriple` — multiplication triples `([a], [b], [a · b])`, all at degree `t`, built from
+    the above. Each triple's masked product is opened, but all of them in a **single** batched
+    round.
+  - `PassiveShamirMul` — Beaver multiplication: spends one triple per product to multiply live
+    sharings, `[x · y] = [a · b] + d · [b] + e · [a] + d · e`, where only the masked `d = x − a` and
+    `e = y − b` are opened. The result comes back at degree `t`, so it can feed the next
+    multiplication. A whole batch of products costs **one** round, so a circuit's round count tracks
+    its multiplicative *depth*, not its number of multiplication gates.
+- **`ShamirSS: Mul<&Self>`** and **`DoubleShare`** — the local product of two Shamir shares, whose
+  degrees add (`[x]_d · [y]_e = [x · y]_(d+e)`), and the correlated randomness needed to bring such
+  a product back down to degree `t`. A `DoubleShare` pairs a degree-`t` with a degree-`2t` sharing
+  of the same secret; it is deliberately **not** `Clone`, because reusing one across two
+  multiplications would mask both products with the same value and leak them.
+- **`Matrix::transpose`**, **`Matrix::vandermonde`**, **`Matrix::ones`**, **`Matrix::set`** and
+  **`Matrix::mul_shares`** — `mul_shares` applies a matrix of public constants to a vector of
+  secret shares, computing each output as a local (communication-free) linear combination of the
+  inputs. It is an inherent method rather than a `Mul` impl, which would overlap with the existing
+  `Mul<&Vector<T>>` under Rust's coherence rules. `Matrix::Error` gains an `IndexOutOfBounds`
+  variant.
+- **`Vector::add_shares`** — adds a vector of public constants to a vector of shares element-wise,
+  the counterpart of `Matrix::mul_shares` — plus `IntoIterator` for `Vector<T>` and `&Vector<T>`,
+  and `Neg` for both (which now needs only `T: Neg + Clone`, so it applies to vectors of shares).
+- An `examples/secure_covariance.rs` example: the **covariance between two parties' private
+  datasets**, the first example with real secure multiplication. Unlike the variance in
+  `secure_stats_flamegraph.rs` — where each party can square its own input locally, dodging
+  multiplication entirely — covariance multiplies one party's `xᵢ` by *another* party's `yᵢ`, so no
+  party can compute the product on its own and DN07's interactive multiplication is unavoidable.
+  The circuit centres both vectors on their (secret) means for free, since Shamir sharing is linear,
+  and multiplies all `ℓ` pairs in a single round. The example splits preprocessing from the online
+  phase and exports a bandwidth flamegraph in which the triple generation dwarfs the multiplication
+  that spends it. Run with `cargo run --example secure_covariance`.
+
 ## [0.10.0] - 2026-07-10
 
 ### Added
@@ -571,7 +648,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.8.2...v0.9.0
