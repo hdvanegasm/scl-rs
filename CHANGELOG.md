@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.11.1] - 2026-07-14
+
+Documentation only — no API or behaviour change.
+
+### Added
+
+- **A bandwidth-profiling walkthrough**, in the README (`## Bandwidth profiling`) and in the crate
+  docs, built around a rendered flamegraph of `examples/secure_covariance.rs`
+  (`docs/cov_bandwidth.svg`). The post-hoc profiler shipped back in `0.10.0`, but nothing showed what
+  it is *for*: the section explains that the simulator needs no instrumentation (it already records
+  every send and every `Protocol::execute` boundary, so `bandwidth_tree_for` reconstructs the call
+  tree afterwards), that flamegraph **width is bytes, not time**, and reads the DN07 example's graph
+  as a cost breakdown — 13% sharing the inputs, 57% preprocessing, 25% the online multiplication, 5%
+  revealing the result.
+
+### Fixed
+
+- Corrected an overstated claim in the `secure_covariance` example, the `0.11.0` changelog entry and
+  the roadmap: they described the preprocessing phase as *dwarfing* the online multiplication, which
+  the measured flamegraph does not support (57% against 25% — a factor of ~2.3, and at `n = 5` the
+  online phase is not remotely negligible). The prose now gives the measured figures and makes the
+  claim that actually holds: most of the traffic is **input-independent**, so it can be generated
+  before the data exists and lifted off the critical path.
+
 ## [0.11.0] - 2026-07-14
 
 ### Changed
@@ -654,7 +678,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.0...v0.9.1
