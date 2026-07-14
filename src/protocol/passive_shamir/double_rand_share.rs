@@ -74,12 +74,12 @@ where
             self.t,
         );
 
-        let own_share_t: ShamirSS<_, _> = deal_protocol_t.execute(environment).await?;
+        let own_share_t: ShamirSS<LIMBS, F> = deal_protocol_t.execute(environment).await?;
         let mut shares_t = Vec::new();
         for party_id in &self.parties {
             if *party_id != environment.network().local_party() {
                 let mut pkt = environment.network_mut().recv_from(*party_id).await?;
-                let other_share_t: ShamirSS<_, _> = pkt.pop()?;
+                let other_share_t: ShamirSS<LIMBS, F> = pkt.pop()?;
                 shares_t.push(other_share_t.clone());
             } else {
                 shares_t.push(own_share_t.clone());
@@ -92,12 +92,12 @@ where
             self.parties.clone(),
             2 * self.t,
         );
-        let own_share_2t: ShamirSS<_, _> = deal_protocol_2t.execute(environment).await?;
+        let own_share_2t: ShamirSS<LIMBS, F> = deal_protocol_2t.execute(environment).await?;
         let mut shares_2t = Vec::new();
         for party_id in &self.parties {
             if *party_id != environment.network().local_party() {
                 let mut pkt = environment.network_mut().recv_from(*party_id).await?;
-                let other_share_2t: ShamirSS<_, _> = pkt.pop()?;
+                let other_share_2t: ShamirSS<LIMBS, F> = pkt.pop()?;
                 shares_2t.push(other_share_2t.clone());
             } else {
                 shares_2t.push(own_share_2t.clone());

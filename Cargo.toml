@@ -20,7 +20,7 @@ thiserror = "2.0"
 rand = "0.10"
 log = "0.4"
 serde_json = "1"
-postcard = { version = "1", features = ["alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
@@ -46,4 +46,4 @@ rcgen = "0.14.8"
 tempfile = "3.27.0"
 itertools = "0.15.0"
 proptest = "1.11.0"
-postcard = { version = "1", features = ["alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }

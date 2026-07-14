@@ -30,6 +30,10 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 - `Matrix`'s `is_square`, `get`, `get_mut` and `Vector`'s `len`, `is_empty`, `Index`, `IndexMut` no
   longer require `T: Ring`, so both types can hold elements that are not ring elements — secret
   shares, in particular. Purely a relaxation; existing code keeps compiling.
+- `postcard` is now depended on with `default-features = false`. Its default `heapless-cas` feature
+  pulled in `heapless` and, transitively, `spin` — none of which the crate uses, since serialization
+  goes through `to_allocvec`/`from_bytes` (the `alloc` feature). This drops 10 transitive
+  dependencies and clears a `cargo audit` warning about the yanked `spin 0.9.8`. No API change.
 
 ### Added
 
