@@ -85,8 +85,10 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   party can compute the product on its own and DN07's interactive multiplication is unavoidable.
   The circuit centres both vectors on their (secret) means for free, since Shamir sharing is linear,
   and multiplies all `ℓ` pairs in a single round. The example splits preprocessing from the online
-  phase and exports a bandwidth flamegraph in which the triple generation dwarfs the multiplication
-  that spends it. Run with `cargo run --example secure_covariance`.
+  phase and exports a bandwidth flamegraph attributing 57% of the traffic to triple generation
+  against 25% for the multiplication that spends it — the majority of the bandwidth depends on no
+  input at all and can be lifted off the critical path. Run with
+  `cargo run --example secure_covariance`.
 
 ## [0.10.0] - 2026-07-10
 

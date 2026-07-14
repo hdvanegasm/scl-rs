@@ -75,6 +75,41 @@ To run an example in the file `<example_name>.rs`, you must run the command
 cargo run --example <example_name>
 ```
 
+## Bandwidth profiling
+
+Communication — not computation — is what an MPC protocol pays for, and in a protocol built by
+composing sub-protocols it is rarely obvious *which* phase spends it. The simulator answers that
+question without any instrumentation on your part: it already records every `SendData` event and
+every `Protocol::execute` entry/exit, so after a run `SimulationOutcome::bandwidth_tree_for(party)`
+reconstructs the call tree of (sub-)protocol invocations and attributes each byte sent to the
+innermost protocol that was running when it went out. `ProtocolBandwidthTree::write_folded` then
+emits [Brendan Gregg's folded-stacks format](https://www.brendangregg.com/flamegraphs.html), which
+[inferno](https://github.com/jonhoo/inferno) renders as a flamegraph — width is bytes, not time:
+
+![Bandwidth flamegraph of the secure-covariance example](docs/cov_bandwidth.svg)
+
+That is `examples/secure_covariance.rs`: five parties computing the covariance of two parties'
+private datasets with the DN07 protocols, 3,633 bytes on the wire in total. The graph is read as a
+cost breakdown of the protocol's own structure. Sharing the two input vectors (`ShareX`, `ShareY`)
+is 13% of the traffic. `Preprocessing` — generating the six multiplication triples, itself a tower of
+`PassiveRandShr` / `PassiveRandDoubleShr` dealing plus a `PassiveShamirTriple` batched open — is the
+single largest phase at 57%. The online `PassiveShamirMul` that *spends* those triples costs 25%,
+essentially all of it the one batched open of the masked values, and revealing the result is the
+last 5%.
+
+The actionable insight is the one you would want from a profiler: the majority of the bandwidth sits
+in a phase that does not depend on the inputs at all, so it can be moved off the critical path and
+run before the data even exists. Generate the folded file for the example yourself with
+
+```text
+cargo run --example secure_covariance
+inferno-flamegraph --countname bytes < covariance_bandwidth.folded > covariance_bandwidth.svg
+```
+
+Concatenating several parties' trees into one file is valid — renderers sum duplicate paths, so the
+picture becomes network-wide totals per call path. See also `examples/bandwidth_flamegraph.rs` (the
+minimal introduction) and `examples/secure_stats_flamegraph.rs` (nested phases).
+
 ## Writing a protocol
 
 A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`) and

@@ -569,9 +569,11 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       covariance between two parties' private datasets, an arithmetic circuit whose multiplications
       are *unavoidable* (the operands live on different machines, so no party can pre-compute a
       product locally the way `secure_stats_flamegraph.rs` sidesteps squaring). It runs on the
-      simulator and exports a bandwidth flamegraph in which the preprocessing dwarfs the online phase
-      that spends it. Regression tests in `tests/passive_shamir.rs`. _Non-breaking (new protocols);
-      the enabling `LinearShare` threshold/RNG change above was the breaking part._
+      simulator and exports a bandwidth flamegraph (`docs/cov_bandwidth.svg`, reproduced in the
+      README) that attributes 57% of the 3,633 bytes to preprocessing against 25% for the online
+      multiplication — most of the traffic is input-independent and can leave the critical path.
+      Regression tests in `tests/passive_shamir.rs`. _Non-breaking (new protocols); the enabling
+      `LinearShare` threshold/RNG change above was the breaking part._
 
 **Recommended first release (a coherent `0.8.0`):** the two shipped Tier-1 items — the
 `LinearShare` trait (with the local operators) and the passive deal/open protocols. That is a

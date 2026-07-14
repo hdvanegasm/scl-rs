@@ -40,9 +40,12 @@
 //! Beaver multiplication spends one triple per product, and triples do not depend on the inputs. The
 //! example makes that split explicit — a `Preprocessing` phase generating six triples (`Random`,
 //! `Random`, `Double-Random`, then triple generation), and an online phase that spends them. The
-//! flamegraph shows the result plainly: preprocessing dwarfs everything, while the online
-//! multiplication is a sliver. In a real deployment the preprocessing would run overnight, and the
-//! actual computation would finish in milliseconds.
+//! bandwidth flamegraph this example writes puts numbers on the split: of the 3,633 bytes that cross
+//! the wire, `Preprocessing` is the largest phase at 57%, against 25% for the online
+//! `PassiveShamirMul` that spends its output (13% goes to sharing the inputs, 5% to revealing the
+//! result). The point is not that the online phase is negligible — at `n = 5` it plainly is not —
+//! but that the majority of the traffic depends on **nothing**, so it can be generated before the
+//! data exists and lifted off the critical path entirely.
 //!
 //! Run it with `cargo run --example secure_covariance`.
 

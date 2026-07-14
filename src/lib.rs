@@ -179,6 +179,42 @@
 //! appended to a party's trace, for measuring or steering a run. The built-in
 //! [`MetricHook`](net::simulation::hook::MetricHook) totals the bytes each party sends.
 //!
+//! ### Profiling bandwidth by protocol
+//!
+//! Communication, not computation, is what an MPC protocol pays for — and once protocols are built
+//! by composing other protocols, it is rarely obvious *which* phase is spending it. The simulator
+//! answers that with no instrumentation on your part: it already records every send and every
+//! [`Protocol::execute`](protocol::Protocol::execute) entry and exit, so after a run
+//! [`SimulationOutcome::bandwidth_tree_for`](net::simulation::simulator::SimulationOutcome::bandwidth_tree_for)
+//! rebuilds the call tree of (sub-)protocol invocations and charges every byte to the innermost
+//! protocol that was running when it went out.
+//! [`ProtocolBandwidthTree::write_folded`](net::simulation::simulator::ProtocolBandwidthTree::write_folded)
+//! emits [Brendan Gregg's folded-stacks format](https://www.brendangregg.com/flamegraphs.html),
+//! which [inferno](https://github.com/jonhoo/inferno) renders as a flamegraph — where **width is
+//! bytes, not time**:
+//!
+//! <img
+//!   src="https://raw.githubusercontent.com/hdvanegasm/scl-rs/main/docs/cov_bandwidth.png"
+//!   alt="Bandwidth flamegraph of the secure-covariance example, showing Preprocessing as the widest phase"
+//!   width="100%">
+//!
+//! That is `examples/secure_covariance.rs` — five parties computing the covariance of two parties'
+//! private datasets with the DN07 protocols of [`protocol::passive_shamir`], 3,633 bytes on the wire
+//! in total — and the graph is a cost breakdown of the protocol's own structure. Sharing the two
+//! input vectors (`ShareX`, `ShareY`) accounts for 13% of the traffic. `Preprocessing`, which
+//! generates the six multiplication triples and is itself a tower of
+//! [`PassiveRandShr`](protocol::passive_shamir::rand_share::PassiveRandShr) /
+//! [`PassiveRandDoubleShr`](protocol::passive_shamir::double_rand_share::PassiveRandDoubleShr)
+//! dealing plus a batched open, is the largest phase at 57%. The online
+//! [`PassiveShamirMul`](protocol::passive_shamir::mul::PassiveShamirMul) that *spends* those triples
+//! costs 25%, almost all of it the single batched open of the masked values, and revealing the
+//! result is the remaining 5%.
+//!
+//! That is exactly the insight a profiler is for: most of the bandwidth sits in a phase that does
+//! not depend on the inputs, so it can be lifted off the critical path and run before the data even
+//! exists. Concatenating several parties' trees into one folded file is valid — renderers sum
+//! duplicate paths, so the picture becomes network-wide totals per call path.
+//!
 //! ### Running on a real network
 //!
 //! The same `SendRecvProtocol` runs unchanged over real TLS. Every party runs the same binary,
