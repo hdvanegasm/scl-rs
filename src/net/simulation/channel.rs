@@ -185,7 +185,10 @@ impl ChannelConfig {
             let throughput_loss = self.lossy_throughput();
             actual_throughput = f64::min(throughput_loss, actual_throughput);
         }
-        let t = total_size_bits / actual_throughput + self.rtt.to_secs();
+        // `message_delay` is the one-way time until the recipient receives the message, so the
+        // propagation term is a single one-way hop (RTT/2), not a full round trip. The
+        // serialization term uses the steady-state throughput formulas above.
+        let t = total_size_bits / actual_throughput + self.rtt.to_secs() / 2.0;
         Duration::from_secs_f64(t)
     }
 

@@ -302,16 +302,19 @@
 //!
 //! ## Benchmarks
 //!
-//! We executed some naïve and quick benchmarks to compare the simulated execution times with the
-//! `tc` Linux command utility. The results show that for 8-byte payload relayed for 10 sequential
-//! rounds over a 100 ms, 1 Mbit/s link with no loss, the real execution takes +0.14 ms (0.014 %)
-//! more than the simulated execution.
+//! We executed some naïve and quick benchmarks to compare the simulated execution time against a
+//! real mutually-authenticated-TLS run over a loopback link shaped with the `tc netem` Linux utility
+//! to match the simulated network parameters. For a two-party ping-pong — a 20 KB payload relayed
+//! for 20 sequential rounds over a 100 ms RTT, 1 Mbit/s, loss-less link — the real execution took
+//! ~8.51 s against ~8.58 s simulated, so the simulator over-predicts by ~0.8 %.
 //!
 //! The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is
 //! that "I ran this in the simulator and it took X" lets you expect a real run to
 //! behave similarly. The fidelity guarantee therefore holds _for protocols that suspend only through
-//! the abstractions the simulator models_ (the `Network` trait). Effects it doesn't represent
-//! (a Nagle/delayed-ACK stall, in our case) aren't silently wrong — the validation harness surfaces them.
+//! the abstractions the simulator models_ (the `Network` trait), and in the regime its analytic
+//! model captures — messages large enough that per-packet effects it does not represent (TCP slow
+//! start, Nagle/delayed-ACK stalls on tiny messages) stay negligible. Where such effects do bite,
+//! the results aren't silently wrong: a `tc`-shaped validation run surfaces the gap.
 
 //!
 //! ## Status and roadmap

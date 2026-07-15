@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [0.11.2] - 2026-07-15
+
+### Fixed
+
+- **The simulator's network timing model charged a full RTT of propagation per message, where a
+  message only crosses the wire one way.** `ChannelConfig::message_delay` returns the one-way time
+  until the recipient receives a message, but `recv_time_tcp` added a whole `rtt` (a round trip) to
+  the serialization time instead of `rtt / 2` (a single one-way hop). The serialization term and the
+  steady-state throughput formulas it builds on (window/RTT for the loss-less case, the Mathis
+  `√(3/2p)·MSS/RTT` for the lossy case) were already correct — only the propagation term was doubled.
+  A full RTT is a *round* trip, i.e. two one-way messages, so a request/response exchange was billed
+  two RTTs where the physics spends one. Validated against a real mutually-authenticated-TLS run over
+  a `tc netem`-shaped loopback link (1 Mbit/s, 100 ms RTT): a 20-round, 20 KB ping-pong measured
+  ~8.51 s, against 10.58 s simulated before the fix (+24%) and 8.58 s after (+0.8%). **This shifts
+  every simulated timing** — all propagation terms halve — so figures quoted from earlier simulator
+  runs will differ; it does not affect the real `TcpNetwork` backend, which never used this model.
+
 ## [0.11.1] - 2026-07-14
 
 Documentation only — no API or behaviour change.
@@ -678,7 +695,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.9.1...v0.10.0

@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.11.1"
+version = "0.11.2"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
