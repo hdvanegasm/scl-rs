@@ -304,18 +304,43 @@
 //!
 //! We executed some naïve and quick benchmarks to compare the simulated execution time against a
 //! real mutually-authenticated-TLS run over a loopback link shaped with the `tc netem` Linux utility
-//! to match the simulated network parameters. For a two-party ping-pong — a 20 KB payload relayed
-//! for 20 sequential rounds over a 100 ms RTT, 1 Mbit/s, loss-less link — the real execution took
-//! ~8.51 s against ~8.58 s simulated, so the simulator over-predicts by ~0.8 %.
+//! to match the simulated network parameters. The simulator is meant to be a _useful_ predictor, not
+//! a perfect one: the goal is that "I ran this in the simulator and it took X" lets you expect a real
+//! run to behave similarly. That fidelity holds _for protocols that suspend only through the
+//! abstractions the simulator models_ (the `Network` trait), and only in the regimes measured below —
+//! which do not come out equal.
 //!
-//! The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is
-//! that "I ran this in the simulator and it took X" lets you expect a real run to
-//! behave similarly. The fidelity guarantee therefore holds _for protocols that suspend only through
-//! the abstractions the simulator models_ (the `Network` trait), and in the regime its analytic
-//! model captures — messages large enough that per-packet effects it does not represent (TCP slow
-//! start, Nagle/delayed-ACK stalls on tiny messages) stay negligible. Where such effects do bite,
-//! the results aren't silently wrong: a `tc`-shaped validation run surfaces the gap.
-
+//! **Bandwidth-limited and loss-less: validated.** For a two-party ping-pong — a 20 KB payload
+//! relayed for 20 sequential rounds over a 100 ms RTT, 1 Mbit/s, loss-less link — the real execution
+//! took ~8.51 s against ~8.58 s simulated, so the simulator over-predicts by ~0.8 %.
+//!
+//! **Window-limited and loss-less: the model's form is validated, but the window size must be
+//! calibrated.** For a 2 MB bulk transfer over a 100 Mbit/s link, doubling the RTT multiplied the
+//! real time by 1.95× where the model predicts exactly 2×, and halving the bandwidth changed it by
+//! 3.9 % where the model predicts no change at all (the window binds instead); inverting three
+//! differently-shaped runs for the window they imply recovers the same value within ±3 %. The
+//! default of 65,536 bytes, however, sat ~18 % below the window Linux actually delivered, so the
+//! simulator over-predicted by 16–24 %; feeding the measured window back in brings all three runs
+//! within 3.3 %. See [`WindowSize`](net::simulation::channel::WindowSize) for why a configured
+//! window and a real one differ, and how to calibrate.
+//!
+//! **Lossy channels: a standard formula, applied outside its validity domain.** With
+//! [`PackageLoss`](net::simulation::channel::PackageLoss) above zero the channel switches onto the
+//! widely-used `√(3/2p)` square-root formula, which is implemented faithfully; what does not carry
+//! over is the question we ask of it. The literature states it as an _asymptotic_ result, valid as
+//! `p → 0`, for the _almost-sure mean_ throughput of a _long-lived_ TCP _Reno_ flow — whereas this
+//! crate reads a single number off it to price one short message. Measured against a shaped run it
+//! over-predicted a 2 MB transfer by 73–181 % at 0.25 % and 1 % loss, its `1/√p` scaling did not
+//! hold, and — more decisively than any error bar — the real runs are not reproducible: three
+//! identical 1 % loss trials spanned 3.87 s to 10.24 s, which is precisely the deviation-from-the-
+//! mean that the formula makes no claim about. Treat simulated timings on a lossy channel as
+//! order-of-magnitude only.
+//!
+//! Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
+//! surfaces the gap. A stronger, more detailed and statistically relevant benchmark will be added in
+//! the future. The untested axis that matters most is concurrency: every measurement so far keeps a
+//! single message in flight, so the per-link independent-bandwidth assumption has never been
+//! stressed by simultaneous transfers.
 //!
 //! ## Status and roadmap
 //!

@@ -77,11 +77,57 @@ pub struct Mss(usize);
 
 /// Fraction of packages loss.
 ///
-/// This is a number betewen 0 and 1.
+/// This is a number between 0 and 1.
+///
+/// # Validity domain
+///
+/// A non-zero value switches the channel onto the square-root throughput formula,
+/// `sqrt(3 / (2p))` packets per RTT. That formula is the standard, widely-used one and is
+/// implemented here faithfully. The caveat is not the algebra but the question we ask of it: the
+/// literature states it as an *asymptotic* result, valid as `p -> 0`, for the *almost-sure mean*
+/// throughput of a *long-lived* TCP *Reno* flow. This crate instead reads a single number off it
+/// to price one short message. Validation against `tc netem`-shaped runs measured what that costs:
+///
+/// - **Not long-lived.** The mean is a limit as the flow's length in RTTs grows. A 2 MB message
+///   over a 100 ms RTT link lasts one to four AIMD sawtooth cycles and is dominated by slow start,
+///   which the bare formula does not model. Real runs came in 73–181 % faster than predicted.
+/// - **Not Reno.** Linux defaults to CUBIC, which is more loss-tolerant and diverged from the
+///   formula further than Reno did.
+/// - **Not a mean.** Three identical 1 % loss trials spanned 3.87 s to 10.24 s. The formula
+///   predicts an ensemble average; a deterministic simulator answers with one number, and no
+///   single number is faithful to a spread that wide.
+/// - **Not `p -> 0`.** Those runs used `p` of 1 % and 0.25 %.
+///
+/// So treat simulated timings on a lossy channel as order-of-magnitude only. Extensions covering
+/// slow start, timeouts and non-Reno variants exist in the literature; none are implemented here.
+///
+/// Note also that the lossy path is *linearly* proportional to [`Mss`], where the loss-less path
+/// uses the MSS only to price header overhead, so a mis-set MSS distorts a lossy channel far more
+/// than a loss-less one.
+///
+/// See Loiseau et al., "Modeling TCP Throughput: an Elaborated Large-Deviations-Based Model and
+/// its Empirical Validation", *Performance Evaluation*, 2010, eq. (1), which states the formula in
+/// exactly this asymptotic, long-lived, Reno, mean-only form — and whose own subject is that the
+/// mean alone does not characterize a single flow's deviations from it.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct PackageLoss(f64);
 
 /// TCP window size of the channel, in bytes.
+///
+/// This is the *effective* end-to-end window — the unacknowledged data actually kept in flight —
+/// and not a socket buffer size. The two are not interchangeable: a kernel derives its advertised
+/// window from `SO_RCVBUF`/`tcp_rmem` through an overhead factor, and then only part of that window
+/// is realized in steady state. Pinning `tcp_rmem` to 131,072 bytes on one Linux host produced a
+/// ~97.5 KB advertised window of which ~79.5 KB was realized: three different numbers for what a
+/// configuration calls "the window".
+///
+/// It binds whenever the bandwidth-delay product exceeds it, and then it alone sets the rate:
+/// throughput becomes `window * 8 / RTT` and [`Bandwidth`] is ignored entirely. On such a link,
+/// leaving this at its 65,536-byte default misprices every message — the default measured ~18 %
+/// below the window a real loopback run delivered (see the crate-level "Benchmarks" section).
+///
+/// Calibrate it by measurement rather than by reading a buffer setting: time a bulk transfer of
+/// known size over a link of known RTT, take its throughput `T`, and set this to `T * RTT / 8`.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct WindowSize(usize);
 
