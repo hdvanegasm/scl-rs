@@ -85,7 +85,7 @@ where
     let secret = Mersenne61::from(123_456_789u64);
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |pid| DealThenOpen::<S> {
             deal: deal_for(pid, dealer, secret, threshold),
@@ -153,7 +153,7 @@ where
     let b = Mersenne61::from(13u64);
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |pid| DealAffineOpen::<S> {
             deal: deal_for(pid, dealer, secret, threshold),
@@ -223,7 +223,7 @@ where
     let secret = Mersenne61::from(31_337u64);
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |pid| DealThenOpenTo::<S> {
             deal: deal_for(pid, dealer, secret, threshold),

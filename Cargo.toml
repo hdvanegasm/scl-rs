@@ -13,6 +13,15 @@ description = "Rust toolkit for prototyping and testing secure multiparty comput
 license = "AGPL-3.0-or-later"
 exclude = ["certs/", "gen_self_signed_certs.sh"]
 
+# `benches/comparison` is a driver with its own subcommands, not a set of libtest benchmarks, so it
+# is declared explicitly with autodiscovery off.
+autobenches = false
+
+[[bench]]
+name = "comparison"
+path = "benches/comparison/main.rs"
+harness = false
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

@@ -7,8 +7,10 @@
 //! turns those, together
 //! with a message size, into the transit [`Duration`](std::time::Duration) the switchboard schedules
 //! deliveries with. [`SimpleNetworkConfig`](crate::net::simulation::channel::SimpleNetworkConfig)
-//! supplies sensible defaults (with zero-delay self-links),
-//! and [`ChannelConfigBuilder`] builds custom per-link configurations.
+//! applies one channel configuration to every inter-party link (with zero-delay self-links), either
+//! the builder defaults or its [`lan`](crate::net::simulation::channel::SimpleNetworkConfig::lan)
+//! and [`wan`](crate::net::simulation::channel::SimpleNetworkConfig::wan) presets, and
+//! [`ChannelConfigBuilder`] builds custom per-link configurations.
 
 use crate::net::simulation::{Result, SimulationError};
 use crate::net::PartyId;
@@ -364,19 +366,151 @@ impl Default for ChannelConfigBuilder {
     }
 }
 
-/// A default [`NetworkConfig`] that gives every inter-party channel the
-/// [`ChannelConfigBuilder`] defaults, and makes a party's channel to itself
-/// [`Instant`](NetworkType::Instant) (zero delay).
+/// A [`NetworkConfig`] that gives every inter-party channel the same [`ChannelConfig`], and makes
+/// a party's channel to itself [`Instant`](NetworkType::Instant) (zero delay).
+///
+/// [`Default`] reproduces the [`ChannelConfigBuilder`] defaults; [`lan`](Self::lan) and
+/// [`wan`](Self::wan) provide loss-less presets for the two deployment settings usually reported in
+/// the MPC literature.
 #[derive(Debug, Clone)]
-pub struct SimpleNetworkConfig;
+pub struct SimpleNetworkConfig {
+    channel_config: ChannelConfig,
+}
+
+impl SimpleNetworkConfig {
+    /// Bandwidth of the [`lan`](Self::lan) preset: 1 Gbps.
+    const LAN_BANDWIDTH: Bandwidth = Bandwidth(1_000_000_000);
+    /// RTT of the [`lan`](Self::lan) preset: 1 ms.
+    const LAN_RTT: Rtt = Rtt(1);
+    /// Window size of the [`lan`](Self::lan) preset: 128 KiB, above the 125 kB BDP.
+    const LAN_WINDOW_SIZE: WindowSize = WindowSize(131_072);
+
+    /// Bandwidth of the [`wan`](Self::wan) preset: 100 Mbps.
+    const WAN_BANDWIDTH: Bandwidth = Bandwidth(100_000_000);
+    /// RTT of the [`wan`](Self::wan) preset: 100 ms.
+    const WAN_RTT: Rtt = Rtt(100);
+    /// Window size of the [`wan`](Self::wan) preset: the 1.25 MB BDP of the link above.
+    const WAN_WINDOW_SIZE: WindowSize = WindowSize(1_250_000);
+
+    /// Builds a configuration where every inter-party link uses `channel_config`.
+    pub fn from_channel_config(channel_config: ChannelConfig) -> Self {
+        Self { channel_config }
+    }
+
+    /// A loss-less LAN: 1 Gbps, 1 ms RTT, 1460-byte MSS, 128 KiB window.
+    ///
+    /// The window is chosen above the 125 kB bandwidth-delay product, so bandwidth is the binding
+    /// constraint and the link delivers its nominal 1 Gbps.
+    pub fn lan() -> Self {
+        let channel_config = ChannelConfigBuilder::default()
+            .bandwidth(Self::LAN_BANDWIDTH)
+            .rtt(Self::LAN_RTT)
+            .package_loss(PackageLoss::new(0.0))
+            .window_size(Self::LAN_WINDOW_SIZE)
+            .build()
+            // SAFETY: the preset values are valid, so this cannot panic.
+            .unwrap();
+        Self { channel_config }
+    }
+
+    /// A loss-less WAN: 100 Mbps, 100 ms RTT, 1460-byte MSS, 1.25 MB window.
+    ///
+    /// The window is set to the bandwidth-delay product of the link, i.e. this models a *tuned*,
+    /// window-scaled stack that actually realizes 100 Mbps over a long fat pipe. An untuned stack
+    /// is window-bound instead: at the 64 KiB default the same link delivers ~5.2 Mbps. See
+    /// [`WindowSize`] for how to calibrate it against a real deployment.
+    pub fn wan() -> Self {
+        let channel_config = ChannelConfigBuilder::default()
+            .bandwidth(Self::WAN_BANDWIDTH)
+            .rtt(Self::WAN_RTT)
+            .package_loss(PackageLoss::new(0.0))
+            .window_size(Self::WAN_WINDOW_SIZE)
+            .build()
+            // SAFETY: the preset values are valid, so this cannot panic.
+            .unwrap();
+        Self { channel_config }
+    }
+}
+
+impl Default for SimpleNetworkConfig {
+    fn default() -> Self {
+        // SAFETY: the builder defaults are valid, so this cannot panic.
+        Self::from_channel_config(ChannelConfigBuilder::default().build().unwrap())
+    }
+}
 
 impl NetworkConfig for SimpleNetworkConfig {
     fn channel_config(&self, link: Link) -> ChannelConfig {
-        let mut default_config = ChannelConfigBuilder::default();
+        let mut config = self.channel_config.clone();
         if link.sender == link.recipient {
-            default_config = default_config.net_type(NetworkType::Instant);
+            config.net_type = NetworkType::Instant;
         }
-        // SAFETY: The default values are correct. Hence, this will not panic.
-        default_config.build().unwrap()
+        config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The directed link from party 0 to party 1.
+    fn inter_party_link() -> Link {
+        Link::new(PartyId::from(0_usize), PartyId::from(1_usize))
+    }
+
+    /// The link party 0 has to itself.
+    fn self_link() -> Link {
+        let p0 = PartyId::from(0_usize);
+        Link::new(p0, p0)
+    }
+
+    /// Throughput a link is capped at by its window alone, in bits per second.
+    fn window_bound(config: &ChannelConfig) -> f64 {
+        8.0 * config.window_size.value() as f64 / config.rtt.to_secs()
+    }
+
+    #[test]
+    fn presets_are_lossless() {
+        for config in [SimpleNetworkConfig::lan(), SimpleNetworkConfig::wan()] {
+            let channel = config.channel_config(inter_party_link());
+            assert_eq!(channel.package_loss.value(), 0.0);
+        }
+    }
+
+    /// Both presets pick a window at or above the link's bandwidth-delay product, so the nominal
+    /// bandwidth — and not the window — is what sets the rate.
+    #[test]
+    fn presets_are_bandwidth_bound() {
+        for config in [SimpleNetworkConfig::lan(), SimpleNetworkConfig::wan()] {
+            let channel = config.channel_config(inter_party_link());
+            assert!(window_bound(&channel) >= channel.bandwidth.value() as f64);
+            assert_eq!(
+                channel.lossless_throughput(),
+                channel.bandwidth.value() as f64
+            );
+        }
+    }
+
+    /// The WAN preset is the slower link: same message, strictly longer delay.
+    #[test]
+    fn wan_is_slower_than_lan() {
+        let link = inter_party_link();
+        let lan = SimpleNetworkConfig::lan().channel_config(link);
+        let wan = SimpleNetworkConfig::wan().channel_config(link);
+        assert!(wan.message_delay(1 << 20) > lan.message_delay(1 << 20));
+    }
+
+    /// A party's link to itself carries no delay, whichever preset is in use.
+    #[test]
+    fn self_links_are_instant() {
+        for config in [
+            SimpleNetworkConfig::default(),
+            SimpleNetworkConfig::lan(),
+            SimpleNetworkConfig::wan(),
+        ] {
+            let channel = config.channel_config(self_link());
+            assert_eq!(channel.net_type, NetworkType::Instant);
+            assert_eq!(channel.message_delay(1 << 20), Duration::ZERO);
+        }
     }
 }

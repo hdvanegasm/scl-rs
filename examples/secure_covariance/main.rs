@@ -224,7 +224,7 @@ fn main() {
     let data_y: Vec<Mersenne61> = DATA_Y.iter().copied().map(Mersenne61::from).collect();
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |pid| SecureCovariance {
             parties: (0..N_PARTIES).map(PartyId::from).collect(),

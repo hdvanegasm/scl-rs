@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes may occur in any
 `0.x` release and are bumped in the minor position (`0.y`).
 
+## [Unreleased]
+
+### Added
+
+- **LAN and WAN presets for `SimpleNetworkConfig`.** `SimpleNetworkConfig::lan()` models a
+  1 Gbps, 1 ms-RTT link and `SimpleNetworkConfig::wan()` a 100 Mbps, 100 ms-RTT link; both are
+  loss-less and keep the 1460-byte MSS. `SimpleNetworkConfig::from_channel_config` applies an
+  arbitrary `ChannelConfig` to every inter-party link. Self-links stay instantaneous in all cases.
+  Each preset sets its window size at or above the link's bandwidth-delay product (128 KiB for the
+  LAN, 1.25 MB for the WAN), so the nominal bandwidth is what sets the rate — at the 64 KiB default
+  window the WAN link would be window-bound to ~5.2 Mbps instead of its nominal 100 Mbps. See
+  `WindowSize` for why that number must be calibrated by measurement rather than read off a socket
+  buffer setting.
+
+### Changed
+
+- **BREAKING: `SimpleNetworkConfig` is no longer a unit struct.** It now carries the `ChannelConfig`
+  it applies, so that the presets above can exist. Replace the bare value `SimpleNetworkConfig` with
+  `SimpleNetworkConfig::default()`, which reproduces the previous behaviour exactly (the
+  `ChannelConfigBuilder` defaults on every inter-party link, instantaneous self-links). No simulated
+  timing changes for existing code.
+
+### Fixed
+
+- Corrected the README and crate-doc claim that "`SimpleNetworkConfig` uses instantaneous channels".
+  Only a party's link to *itself* has ever been instantaneous; inter-party links have always used the
+  default TCP parameters (1 Mbps, 100 ms RTT).
+
 ## [0.11.2] - 2026-07-15
 
 ### Fixed

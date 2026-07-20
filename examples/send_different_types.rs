@@ -68,7 +68,7 @@ fn main() {
     let p1 = PartyId::from(1);
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),

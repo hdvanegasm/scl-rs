@@ -117,7 +117,7 @@ fn main() {
     // element as its private input. No hooks are registered: the bandwidth profile below is
     // reconstructed purely from the traces the simulator records anyway.
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |_| SecSumShamirShr {
             input: Mersenne61::random(&mut rand::rng()),

@@ -39,7 +39,7 @@ fn silent_party_times_out() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SilentPartyProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -84,7 +84,7 @@ fn prompt_sender_succeeds() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| PromptSenderProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -126,7 +126,7 @@ fn recv_any_all_silent_times_out() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| AllSilentProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -136,8 +136,8 @@ fn recv_any_all_silent_times_out() {
 }
 
 /// P1 sends, but the link delay (tens of milliseconds of virtual time under
-/// `SimpleNetworkConfig`) exceeds P0's 1 ms timeout. The receive must resolve to `Timeout(None)`
-/// instead of returning the packet past the deadline; the late packet stays queued.
+/// `SimpleNetworkConfig::default()`) exceeds P0's 1 ms timeout. The receive must resolve to
+/// `Timeout(None)` instead of returning the packet past the deadline; the late packet stays queued.
 pub struct LateSenderProtocol;
 
 #[async_trait::async_trait]
@@ -174,7 +174,7 @@ fn recv_any_late_packet_times_out() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| LateSenderProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -223,7 +223,7 @@ fn recv_any_prompt_sender_succeeds() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| PromptAnyProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),

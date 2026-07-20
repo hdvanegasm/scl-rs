@@ -147,7 +147,7 @@
 //! let p1 = PartyId::from(1_usize);
 //!
 //! let outcome = simulate(
-//!     SimpleNetworkConfig,
+//!     SimpleNetworkConfig::default(),
 //!     vec![p0, p1],
 //!     |_| SendRecvProtocol,
 //!     |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
@@ -170,9 +170,12 @@
 //! Party 1 output: 0
 //! ```
 //!
-//! `SimpleNetworkConfig` uses instantaneous channels; supply your own `NetworkConfig` to model latency,
-//! bandwidth, and other parameters, and the reported timings will approximate a real deployment under
-//! those conditions.
+//! `SimpleNetworkConfig` applies one channel configuration to every inter-party link, and makes a
+//! party's link to itself instantaneous. `::default()` uses the default TCP parameters (1 Mbps,
+//! 100 ms RTT); `SimpleNetworkConfig::lan()` and `SimpleNetworkConfig::wan()` are loss-less presets
+//! for a 1 Gbps/1 ms LAN and a 100 Mbps/100 ms WAN. Supply your own `NetworkConfig` to vary latency,
+//! bandwidth, and other parameters per link, and the reported timings will approximate a real
+//! deployment under those conditions.
 //!
 //! The last argument to `simulate` — empty above — is a list of
 //! [`TriggeredHook`](net::simulation::hook::TriggeredHook)s: callbacks that fire as each event is

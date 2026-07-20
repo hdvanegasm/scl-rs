@@ -198,7 +198,7 @@ let p0 = PartyId::from(0_usize);
 let p1 = PartyId::from(1_usize);
 
 let outcome = simulate(
-    SimpleNetworkConfig,
+    SimpleNetworkConfig::default(),
     vec![p0, p1],
     // Per-party protocol factory.
     |_| SendRecvProtocol,
@@ -219,9 +219,12 @@ Party 0 output: 1
 Party 1 output: 0
 ```
 
-`SimpleNetworkConfig` uses instantaneous channels; supply your own `NetworkConfig` to model latency,
-bandwidth, and other parameters, and the reported timings will approximate a real deployment under
-those conditions.
+`SimpleNetworkConfig` applies one channel configuration to every inter-party link, and makes a
+party's link to itself instantaneous. `::default()` uses the default TCP parameters (1 Mbps, 100 ms
+RTT); `SimpleNetworkConfig::lan()` and `SimpleNetworkConfig::wan()` are loss-less presets for a
+1 Gbps/1 ms LAN and a 100 Mbps/100 ms WAN. Supply your own `NetworkConfig` to vary latency,
+bandwidth, and other parameters per link, and the reported timings will approximate a real
+deployment under those conditions.
 
 #### Event traces and element labels
 
@@ -278,7 +281,7 @@ let metrics = Arc::new(MetricHook::new(
 ));
 
 simulate(
-    SimpleNetworkConfig,
+    SimpleNetworkConfig::default(),
     vec![p0, p1],
     |_| SendRecvProtocol,
     |_, net| GeneralEnv::new(net),

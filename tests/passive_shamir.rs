@@ -86,7 +86,7 @@ fn triples_satisfy_c_equals_a_times_b() {
     let king = all[0];
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         all.clone(),
         |_| GenTriples { king },
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -135,7 +135,7 @@ fn double_random_halves_hide_the_same_secret() {
     let all = parties();
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         all.clone(),
         |_| GenDoubles,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -221,7 +221,7 @@ fn beaver_multiplication_shares_the_product() {
     let all = parties();
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         all.clone(),
         |_| MulRandomPairs { king: all[0] },
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),

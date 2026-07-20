@@ -198,7 +198,7 @@ fn main() {
     // `Environment` that the protocol runs in. Because the parties' inputs are random, the printed
     // sum changes from run to run, but all three parties always agree on it.
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties,
         |_| {
             let mut rng = rand::rng();

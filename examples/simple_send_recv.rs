@@ -71,9 +71,11 @@ fn main() {
     // To simulate a protocol, you need to call the function `simulate` which returns a
     // `SimulationOutcome`. The function receives also a network configuration that specifies the
     // network parameters for each specific point-to-point connection. For this example, we will use
-    // the built-in `SimpleNetworkConfig` where there are no delays between any two parties.
+    // the built-in `SimpleNetworkConfig::default()`, which applies the default TCP channel
+    // parameters to every inter-party link. Use `SimpleNetworkConfig::lan()` or `::wan()` for the
+    // loss-less LAN and WAN presets.
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),

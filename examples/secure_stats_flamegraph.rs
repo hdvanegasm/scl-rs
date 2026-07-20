@@ -171,7 +171,7 @@ fn main() {
         .collect();
 
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |pid| SecStats {
             input: Mersenne61::from(inputs[pid.as_usize()]),

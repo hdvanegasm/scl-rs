@@ -63,7 +63,7 @@
 //!
 //! let parties = vec![PartyId::from(0), PartyId::from(1)];
 //! let outcome = simulate(
-//!     SimpleNetworkConfig,
+//!     SimpleNetworkConfig::default(),
 //!     parties,
 //!     |_| SendRecvProtocol,
 //!     |_, net| GeneralEnv::new(net),

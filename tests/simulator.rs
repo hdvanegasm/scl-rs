@@ -43,7 +43,7 @@ fn send_recv_simulation() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -113,7 +113,7 @@ fn ping_pong_preserves_message_order() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| PingPongProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -174,7 +174,7 @@ fn smaller_later_message_does_not_overtake_on_same_link() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SizedFifoProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -244,7 +244,7 @@ fn chained_protocols_pass_state_between_stages() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| ChainedFirstStage,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -400,7 +400,7 @@ fn trace_arrows_reflect_each_party_perspective() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -471,7 +471,7 @@ fn one_way_communication_does_not_require_prior_send() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| OneWayProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -533,7 +533,7 @@ impl<E: Environment> Protocol<E> for BroadcastProtocol {
 fn broadcast_from_party_zero_reaches_all_parties() {
     let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |_| BroadcastProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -632,7 +632,7 @@ fn real_protocol_runs_on_deterministic_core() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecv,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -700,7 +700,7 @@ fn metric_hook_fires_on_matching_event() {
     ));
 
     simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| MultipleSendRecv { n_sends: N_SENDS },
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -783,7 +783,7 @@ fn recv_any_collects_a_quorum_without_naming_senders() {
     // Five parties: party 0 collects, parties 1..=3 send, party 4 stays silent.
     let parties: Vec<PartyId> = (0..5).map(PartyId::from).collect();
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |_| QuorumCollect {
             collector: 0,
@@ -810,7 +810,7 @@ fn recv_any_returns_at_quorum_and_does_not_wait_for_all() {
     // collector must stop after the first three and never block waiting for the fourth.
     let parties: Vec<PartyId> = (0..5).map(PartyId::from).collect();
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties.clone(),
         |_| QuorumCollect {
             collector: 0,
@@ -1062,7 +1062,7 @@ impl<E: Environment> Protocol<E> for ScatterProtocol {
 fn send_many_scatters_distinct_messages_to_each_peer() {
     let parties: Vec<PartyId> = (0..4).map(PartyId::from).collect();
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         parties,
         |_| ScatterProtocol,
         |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -1087,7 +1087,7 @@ fn simulation_is_reproducible_across_runs() {
     let parties: Vec<PartyId> = (0..BROADCAST_N_PARTIES).map(PartyId::from).collect();
     let run = || {
         simulate(
-            SimpleNetworkConfig,
+            SimpleNetworkConfig::default(),
             parties.clone(),
             |_| BroadcastProtocol,
             |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
@@ -1186,7 +1186,7 @@ fn capability_env_supplies_extra_state_to_protocol() {
     let p0 = PartyId::from(0_usize);
     let p1 = PartyId::from(1_usize);
     let outcome = simulate(
-        SimpleNetworkConfig,
+        SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| DeltaExchange,
         // The factory must supply the extra capability: party i carries `delta = 10 * (i + 1)`.
