@@ -31,10 +31,13 @@
 //!
 //! # What is deliberately not corrected for
 //!
-//! Each real repetition runs over a fresh TCP connection, so it pays TCP slow start; the simulator
-//! models a steady-state throughput and does not. That gap is left in rather than warmed away,
-//! because it is a real cost a short MPC protocol actually pays and the comparison is of the model
-//! as it stands.
+//! Each real repetition runs over a fresh connection and carries per-transfer costs the simulator's
+//! idealized steady-state model omits: the shaped link's real goodput falls a little short of the
+//! nominal rate (protocol framing and the rate limiter's own accounting), and — on a high
+//! bandwidth-delay-product link, where the initial congestion window is well below the pipe — the
+//! flow additionally pays TCP slow start while the window ramps. These are left in rather than
+//! warmed away, because they are costs a short MPC protocol actually pays and the comparison is of
+//! the model as it stands.
 
 mod protocols;
 mod scenarios;

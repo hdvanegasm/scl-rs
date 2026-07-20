@@ -54,9 +54,9 @@ pub struct Scenario {
 
 /// Value `tcp_rmem`/`tcp_wmem` are pinned to when [`Scenario::pin_tcp_window`] is set.
 ///
-/// This is the setting the README reports measuring: pinning it here produced a ~97.5 KB advertised
-/// window of which ~79.5 KB was realized — neither of them the 65,536 bytes the simulator assumes
-/// by default. Recovering that realized number is exactly what the calibration step exists for.
+/// Pinning it and recovering the window a real bulk transfer actually delivered gave ~70 KB — above
+/// the 65,536 bytes the simulator assumes by default, and not a value any socket setting names
+/// directly. Recovering that realized number is exactly what the calibration step exists for.
 pub const PINNED_TCP_MEM_BYTES: usize = 131_072;
 
 /// Bandwidth-limited and loss-less: the regime the README reports as validated.
@@ -98,8 +98,8 @@ pub const WINDOW_LIMITED: Scenario = Scenario {
 /// Lossy: the regime where a standard formula is applied outside its validity domain.
 ///
 /// 1 % loss puts the square-root term at 1.43 Mbit/s, below the 5.24 Mbit/s window ceiling, so the
-/// loss formula binds. The README's finding is that real runs here are not merely mispredicted but
-/// *not reproducible* — three identical trials spanned 3.87 s to 10.24 s — which is why this
+/// loss formula binds. The finding here is that real runs are not merely mispredicted but *not
+/// reproducible* — 50 identical bulk-transfer trials spanned 0.73 s to 7.11 s — which is why this
 /// harness repeats every measurement rather than reporting a single number.
 pub const LOSSY: Scenario = Scenario {
     name: "lossy",

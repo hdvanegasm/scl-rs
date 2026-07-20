@@ -60,13 +60,14 @@
 //! use scl_rs::net::simulation::simulator::simulate;
 //! use scl_rs::net::PartyId;
 //! use scl_rs::protocol::GeneralEnv;
+//! use rand::{rngs::StdRng, SeedableRng};
 //!
 //! let parties = vec![PartyId::from(0), PartyId::from(1)];
 //! let outcome = simulate(
 //!     SimpleNetworkConfig::default(),
 //!     parties,
 //!     |_| SendRecvProtocol,
-//!     |_, net| GeneralEnv::new(net),
+//!     |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
 //!     vec![],
 //! );
 //! let output_p0 = &outcome.outputs[&PartyId::from(0)];

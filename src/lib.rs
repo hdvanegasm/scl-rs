@@ -227,6 +227,7 @@
 //! ```ignore
 //! use scl_rs::net::{NetworkConfig, TcpNetwork};
 //! use scl_rs::protocol::{GeneralEnv, Environment, Protocol};
+//! use rand::{rngs::StdRng, SeedableRng};
 //! use std::path::Path;
 //!
 //! #[tokio::main]
@@ -239,7 +240,7 @@
 //!
 //!     // `create` performs the TLS handshake with every peer, so it is async.
 //!     let network = TcpNetwork::create(my_id, config).await?;
-//!     let mut env = GeneralEnv::new(network);
+//!     let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
 //!
 //!     // The very same protocol that ran on the simulator now runs over real TLS.
 //!     let output = SendRecvProtocol.execute(&mut env).await?;
@@ -305,44 +306,66 @@
 //!
 //! ## Benchmarks
 //!
-//! We executed some naïve and quick benchmarks to compare the simulated execution time against a
-//! real mutually-authenticated-TLS run over a loopback link shaped with the `tc netem` Linux utility
-//! to match the simulated network parameters. The simulator is meant to be a _useful_ predictor, not
-//! a perfect one: the goal is that "I ran this in the simulator and it took X" lets you expect a real
-//! run to behave similarly. That fidelity holds _for protocols that suspend only through the
-//! abstractions the simulator models_ (the `Network` trait), and only in the regimes measured below —
-//! which do not come out equal.
+//! We compare the simulated execution time against a real mutually-authenticated-TLS run over a
+//! loopback link shaped with the `tc netem` Linux utility to match the simulated network parameters.
+//! The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is that "I ran this
+//! in the simulator and it took X" lets you expect a real run to behave similarly. That fidelity
+//! holds _for protocols that suspend only through the abstractions the simulator models_ (the
+//! `Network` trait), and only in the regimes measured below — which do not come out equal.
 //!
-//! **Bandwidth-limited and loss-less: validated.** For a two-party ping-pong — a 20 KB payload
-//! relayed for 20 sequential rounds over a 100 ms RTT, 1 Mbit/s, loss-less link — the real execution
-//! took ~8.51 s against ~8.58 s simulated, so the simulator over-predicts by ~0.8 %.
+//! The numbers below come from the `benches/comparison` harness, which runs each of the three
+//! regimes 50 times over shaped loopback against a **round-dominated** protocol (`PingPong`, 30
+//! sequential 1 KB round trips) and a **bandwidth-dominated** one (`BulkTransfer`, a single 0.5–1 MB
+//! message), reporting the connection initiator's median over 50 repetitions unless stated.
 //!
-//! **Window-limited and loss-less: the model's form is validated, but the window size must be
-//! calibrated.** For a 2 MB bulk transfer over a 100 Mbit/s link, doubling the RTT multiplied the
-//! real time by 1.95× where the model predicts exactly 2×, and halving the bandwidth changed it by
-//! 3.9 % where the model predicts no change at all (the window binds instead); inverting three
-//! differently-shaped runs for the window they imply recovers the same value within ±3 %. The
-//! default of 65,536 bytes, however, sat ~18 % below the window Linux actually delivered, so the
-//! simulator over-predicted by 16–24 %; feeding the measured window back in brings all three runs
-//! within 3.3 %. See [`WindowSize`](net::simulation::channel::WindowSize) for why a configured
-//! window and a real one differ, and how to calibrate.
+//! **The split that runs through every regime is round- versus bandwidth-dominated.** A protocol
+//! whose running time is a sum of round trips is predicted within a few percent in _every_ regime
+//! measured here — including under packet loss (the round-dominated `PingPong` came in at −0.7 % at
+//! 1 % loss). Round trips are priced by the RTT term, which every regime gets right; the throughput
+//! terms, where the model's uncertainty lives, barely enter. The error lives on the
+//! bandwidth-dominated side.
+//!
+//! **Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT,
+//! 1 Mbit/s, loss-less link the simulator under-predicts by 3.4 % for `PingPong` and 10.6 % for
+//! `BulkTransfer` (real 3.63 s and 4.93 s; simulated 3.51 s and 4.41 s). The simulator prices an
+//! idealized steady-state throughput, and the shaped link's real goodput falls a little short of it
+//! — from protocol framing and the shaping tooling's own rate accounting the model does not
+//! reproduce — a shortfall that grows with bytes moved, so the bulk transfer's gap exceeds the
+//! latency-bound ping-pong's. The real distributions are extremely tight (coefficient of variation
+//! 0.0–0.1 % over 50 runs), so this is a genuine bias, not measurement noise. It is not TCP slow
+//! start: at 1 Mbit/s the bandwidth-delay product is below Linux's initial congestion window, so the
+//! pipe fills within the first round trip.
+//!
+//! **Window-limited and loss-less: the model's form holds, and the window size must be calibrated.**
+//! When the bandwidth-delay product exceeds the TCP window, the window alone sets the rate
+//! (`window · 8 / RTT`) and the configured bandwidth is ignored. Over a 100 ms RTT, 100 Mbit/s link
+//! (BDP 1.25 MB, far above the 64 KiB default window) the nominal prediction over-predicts by 2.3 %
+//! (`PingPong`) and 7.0 % (`BulkTransfer`). Recovering the window Linux actually delivered from the
+//! real bulk transfers yields ~70 KB, only 7.5 % above the default. Re-simulating with it drives the
+//! bulk-transfer error to zero, but that is circular — the window was fit to that transfer's own
+//! median — and this run has no independent window-bound workload to cross-check it, since the
+//! round-dominated protocol is latency-bound and barely moves whatever the window. It demonstrates
+//! the calibration recipe rather than pinning the number down. See
+//! [`WindowSize`](net::simulation::channel::WindowSize) for why a configured window and a real one
+//! differ, and how to calibrate.
 //!
 //! **Lossy channels: a standard formula, applied outside its validity domain.** With
 //! [`PackageLoss`](net::simulation::channel::PackageLoss) above zero the channel switches onto the
 //! widely-used `√(3/2p)` square-root formula, which is implemented faithfully; what does not carry
 //! over is the question we ask of it. The literature states it as an _asymptotic_ result, valid as
 //! `p → 0`, for the _almost-sure mean_ throughput of a _long-lived_ TCP _Reno_ flow — whereas this
-//! crate reads a single number off it to price one short message. Measured against a shaped run it
-//! over-predicted a 2 MB transfer by 73–181 % at 0.25 % and 1 % loss, its `1/√p` scaling did not
-//! hold, and — more decisively than any error bar — the real runs are not reproducible: three
-//! identical 1 % loss trials spanned 3.87 s to 10.24 s, which is precisely the deviation-from-the-
-//! mean that the formula makes no claim about. Treat simulated timings on a lossy channel as
-//! order-of-magnitude only.
+//! crate reads a single number off it to price one short message. Two consequences show up in the
+//! data. First, because the formula enters only through throughput, its error is **confined to
+//! bandwidth-dominated protocols**: at 1 % loss the round-dominated `PingPong` is predicted within
+//! 0.7 %, while `BulkTransfer` on the same link is over-predicted by ~400 % against the median
+//! (~211 % against the mean). Second — more decisively than any error bar — the real runs are not
+//! reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to 7.11 s, precisely the
+//! deviation-from-the-mean that the formula makes no claim about. Treat simulated timings for a
+//! bandwidth-dominated protocol on a lossy channel as order-of-magnitude only.
 //!
 //! Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
-//! surfaces the gap. A stronger, more detailed and statistically relevant benchmark will be added in
-//! the future. The untested axis that matters most is concurrency: every measurement so far keeps a
-//! single message in flight, so the per-link independent-bandwidth assumption has never been
+//! surfaces the gap. The untested axis that matters most is concurrency: every measurement so far
+//! keeps a single message in flight, so the per-link independent-bandwidth assumption has never been
 //! stressed by simultaneous transfers.
 //!
 //! ## Status and roadmap

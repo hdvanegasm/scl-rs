@@ -68,7 +68,7 @@ the usual research / prototyping, not-audited status still applies.
 
 ## Examples
 
-In the `examples/` folder, you wil find a set of examples that show how to use the library.
+In the `examples/` folder, you will find a set of examples that show how to use the library.
 To run an example in the file `<example_name>.rs`, you must run the command
 
 ```text
@@ -88,7 +88,7 @@ emits [Brendan Gregg's folded-stacks format](https://www.brendangregg.com/flameg
 
 ![Bandwidth flamegraph of the secure-covariance example](docs/cov_bandwidth.svg)
 
-That is `examples/secure_covariance.rs`: five parties computing the covariance of two parties'
+That is `examples/secure_covariance/main.rs`: five parties computing the covariance of two parties'
 private datasets with the DN07 protocols, 3,633 bytes on the wire in total. The graph is read as a
 cost breakdown of the protocol's own structure. Sharing the two input vectors (`ShareX`, `ShareY`)
 is 13% of the traffic. `Preprocessing` — generating the six multiplication triples, itself a tower of
@@ -193,6 +193,7 @@ use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::PartyId;
 use scl_rs::protocol::GeneralEnv;
+use rand::{rngs::StdRng, SeedableRng};
 
 let p0 = PartyId::from(0_usize);
 let p1 = PartyId::from(1_usize);
@@ -202,8 +203,8 @@ let outcome = simulate(
     vec![p0, p1],
     // Per-party protocol factory.
     |_| SendRecvProtocol,
-    // Per-party environment factory: wrap the simulated network in the default environment.
-    |_, net| GeneralEnv::new(net),
+    // Per-party environment factory: wrap the simulated network with a session RNG.
+    |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
     vec![],
 );
 
@@ -284,7 +285,7 @@ simulate(
     SimpleNetworkConfig::default(),
     vec![p0, p1],
     |_| SendRecvProtocol,
-    |_, net| GeneralEnv::new(net),
+    |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
     vec![metrics.clone()],
 );
 
@@ -305,6 +306,7 @@ from command-line arguments):
 ```rust
 use scl_rs::net::{NetworkConfig, TcpNetwork};
 use scl_rs::protocol::{GeneralEnv, Protocol};
+use rand::{rngs::StdRng, SeedableRng};
 use std::path::Path;
 
 #[tokio::main]
@@ -317,7 +319,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // `create` performs the TLS handshake with every peer, so it is async.
     let network = TcpNetwork::create(my_id, config).await?;
-    let mut env = GeneralEnv::new(network);
+    let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
 
     // The very same protocol that ran on the simulator now runs over real TLS.
     let output = SendRecvProtocol.execute(&mut env).await?;
@@ -383,69 +385,74 @@ certificates whose subject alternative name matches each host's address.
 
 ## Benchmarks
 
-We executed some naïve and quick benchmarks to compare the simulated execution time against a real
-mutually-authenticated-TLS run over a loopback link shaped with the `tc netem` Linux utility to match
-the simulated network parameters. The simulator is meant to be a _useful_ predictor, not a perfect
-one: the goal is that "I ran this in the simulator and it took X" lets you expect a real run to
-behave similarly. That fidelity holds _for protocols that suspend only through the abstractions the
-simulator models_ (the `Network` trait), and only in the regimes measured below — which do not come
-out equal.
+We compare the simulated execution time against a real mutually-authenticated-TLS run over a
+loopback link shaped with the `tc netem` Linux utility to match the simulated network parameters.
+The simulator is meant to be a _useful_ predictor, not a perfect one: the goal is that "I ran this in
+the simulator and it took X" lets you expect a real run to behave similarly. That fidelity holds _for
+protocols that suspend only through the abstractions the simulator models_ (the `Network` trait), and
+only in the regimes measured below — which do not come out equal.
 
-**Bandwidth-limited and loss-less: validated.** For a two-party ping-pong — a 20 KB payload relayed
-for 20 sequential rounds over a 100 ms RTT, 1 Mbit/s, loss-less link — the real execution took
-~8.51 s against ~8.58 s simulated, so the simulator over-predicts by ~0.8 %.
-
-**Window-limited and loss-less: the model's form is validated, but `window_size` must be
-calibrated.** For a 2 MB bulk transfer over a 100 Mbit/s link, doubling the RTT multiplied the real
-time by 1.95× where the model predicts exactly 2×, and halving the bandwidth changed it by 3.9 %
-where the model predicts no change at all (the window binds instead); inverting three
-differently-shaped runs for the window they imply recovers the same value within ±3 %. The default
-`window_size` of 65,536 bytes, however, sat ~18 % below the window Linux actually delivered, so the
-simulator over-predicted by 16–24 %; feeding the measured window back in brings all three runs
-within 3.3 %. See the `WindowSize` documentation for why a configured window and a real one differ,
-and how to calibrate.
-
-**Lossy (`package_loss` above zero): a standard formula, applied outside its validity domain.** The
-`√(3/2p)` square-root formula is the widely-used one from the literature, and it is implemented
-faithfully; what does not carry over is the question we ask of it. It is stated there as an
-_asymptotic_ result, valid as `p → 0`, for the _almost-sure mean_ throughput of a _long-lived_ TCP
-_Reno_ flow — whereas scl-rs reads a single number off it to price one short message. Measured
-against a shaped run it over-predicted a 2 MB transfer by 73–181 % at 0.25 % and 1 % loss, its
-`1/√p` scaling did not hold, and — more decisively than any error bar — the real runs are not
-reproducible: three identical 1 % loss trials spanned 3.87 s to 10.24 s, which is precisely the
-deviation-from-the-mean that the formula makes no claim about. Treat simulated timings on a lossy
-channel as order-of-magnitude only; the `PackageLoss` documentation gives the conditions and the
-citation.
-
-Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
-surfaces the gap. The untested axis that matters most is concurrency: every measurement so far keeps
-a single message in flight, so the per-link independent-bandwidth assumption has never been stressed
-by simultaneous transfers.
-
-### Reproducing this, and the current figures
-
-The numbers quoted above come from the early, ad-hoc measurements. They are now superseded by a
-repeatable harness in [`benches/comparison`](benches/comparison/), which runs each of the three
-regimes 50 times over shaped loopback against a round-dominated and a bandwidth-dominated protocol,
-and plots every repetition against the simulator's prediction:
+The numbers below come from the harness in [`benches/comparison`](benches/comparison/), which runs
+each of the three regimes 50 times over shaped loopback against a **round-dominated** protocol
+(`PingPong`, 30 sequential 1 KB round trips) and a **bandwidth-dominated** one (`BulkTransfer`, a
+single 0.5–1 MB message). Figures are for the connection initiator, as the median over 50
+repetitions unless stated. See [`benches/comparison/README.md`](benches/comparison/README.md) for the
+per-scenario figures, the full results table, and how to reproduce them:
 
 ```bash
 ./benches/comparison/run_all.sh        # ~26 min; shapes loopback with tc, restores it on exit
 python3 benches/comparison/plot.py     # one figure per scenario, plus a summary table
 ```
 
-See [`benches/comparison/README.md`](benches/comparison/README.md) for the figures and the full
-results table. Two findings from that run refine what is written above:
+**The split that runs through every regime is round- versus bandwidth-dominated.** A protocol whose
+running time is a sum of round trips is predicted within a few percent in _every_ regime measured
+here — including under packet loss (the round-dominated `PingPong` came in at −0.7 % at 1 % loss).
+Round trips are priced by the RTT term, which every regime gets right; the throughput terms, where
+the model's uncertainty lives, barely enter. The error lives on the bandwidth-dominated side.
 
-- **The loss-formula error is confined to bandwidth-dominated protocols.** Under 1 % loss on the
-  same shaped link, the round-dominated protocol is predicted to within 0.7 % while the
-  bandwidth-dominated one is over-predicted by ~400 % (~211 % against the mean). The `√(3/2p)` term
-  enters only through throughput, so a protocol dominated by round trips barely touches it. The
-  spread is the more important result: 50 identical trials spanned 0.73 s to 7.11 s.
-- **The bandwidth-limited regime under-predicts by 3–11 %**, rather than over-predicting by ~0.8 %.
-  Each repetition opens a fresh connection and so pays TCP slow start, which the simulator's
-  steady-state throughput does not model — and a single large transfer pays it proportionally more
-  than many small round trips do.
+**Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT,
+1 Mbit/s, loss-less link the simulator under-predicts by 3.4 % for `PingPong` and 10.6 % for
+`BulkTransfer` (real 3.63 s and 4.93 s; simulated 3.51 s and 4.41 s). The simulator prices an
+idealized steady-state throughput; the shaped link's real goodput falls a little short of it — from
+protocol framing and the `tc` rate limiter's own accounting that the model does not reproduce — and
+the shortfall grows with bytes moved, so the bulk transfer's gap exceeds the latency-bound
+ping-pong's. The real distributions are extremely tight (coefficient of variation 0.0–0.1 % over 50
+runs), so this is a genuine bias, not measurement noise. (It is *not* TCP slow start: at 1 Mbit/s the
+bandwidth-delay product is 12.5 KB, below Linux's initial congestion window, so the connection
+reaches full rate within the first round trip.)
+
+**Window-limited and loss-less: the model's form holds, and `window_size` must be calibrated.** When
+the bandwidth-delay product exceeds the TCP window, the window alone sets the rate (`window · 8 /
+RTT`) and the configured bandwidth is ignored. Over a 100 ms RTT, 100 Mbit/s link (BDP 1.25 MB, far
+above the 64 KiB default window) the nominal prediction over-predicts by 2.3 % (`PingPong`) and 7.0 %
+(`BulkTransfer`). Recovering the window Linux actually delivered from the real bulk transfers — the
+procedure the `WindowSize` documentation prescribes — yields 70,422 bytes, only 7.5 % above the
+default. Re-simulating with it drives the bulk-transfer error to zero, but that is circular (the
+window was fit to that transfer's own median), and this run has no independent window-bound workload
+to cross-check it: the round-dominated protocol is latency-bound and barely moves — +2.3 % to
++2.1 % — whatever the window. So the run demonstrates the calibration recipe rather than pinning the
+number down; a real cross-check needs differently-shaped runs, as the `WindowSize` documentation
+describes. The default and delivered windows are close on this host, so the miss is mild; where they
+diverge more, leaving the default in place misprices every message.
+
+**Lossy (`package_loss` above zero): a standard formula, applied outside its validity domain.** The
+`√(3/2p)` square-root formula is the widely-used one from the literature, and it is implemented
+faithfully; what does not carry over is the question we ask of it. It is stated there as an
+_asymptotic_ result, valid as `p → 0`, for the _almost-sure mean_ throughput of a _long-lived_ TCP
+_Reno_ flow — whereas scl-rs reads a single number off it to price one short message. Two
+consequences show up in the data. First, because the formula enters only through throughput, its
+error is **confined to bandwidth-dominated protocols**: at 1 % loss the round-dominated `PingPong` is
+predicted within 0.7 %, while `BulkTransfer` on the same link is over-predicted by ~400 % against the
+median (~211 % against the mean). Second — more decisively than any error bar — the real runs are not
+reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to 7.11 s, precisely the
+deviation-from-the-mean that the formula makes no claim about. Treat simulated timings for a
+bandwidth-dominated protocol on a lossy channel as order-of-magnitude only; the `PackageLoss`
+documentation gives the conditions and the citation.
+
+Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
+surfaces the gap. The untested axis that matters most is concurrency: every measurement so far keeps
+a single message in flight, so the per-link independent-bandwidth assumption has never been stressed
+by simultaneous transfers.
 
 ## Status and roadmap
 

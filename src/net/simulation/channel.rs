@@ -90,14 +90,16 @@ pub struct Mss(usize);
 /// throughput of a *long-lived* TCP *Reno* flow. This crate instead reads a single number off it
 /// to price one short message. Validation against `tc netem`-shaped runs measured what that costs:
 ///
-/// - **Not long-lived.** The mean is a limit as the flow's length in RTTs grows. A 2 MB message
+/// - **Not long-lived.** The mean is a limit as the flow's length in RTTs grows. A 1 MB message
 ///   over a 100 ms RTT link lasts one to four AIMD sawtooth cycles and is dominated by slow start,
-///   which the bare formula does not model. Real runs came in 73–181 % faster than predicted.
+///   which the bare formula does not model. Real runs came in far faster than predicted — the
+///   bandwidth-dominated transfer over-predicted by ~400 % against the median (~211 % against the
+///   mean), while a round-dominated one on the same link stayed within 0.7 %.
 /// - **Not Reno.** Linux defaults to CUBIC, which is more loss-tolerant and diverged from the
 ///   formula further than Reno did.
-/// - **Not a mean.** Three identical 1 % loss trials spanned 3.87 s to 10.24 s. The formula
-///   predicts an ensemble average; a deterministic simulator answers with one number, and no
-///   single number is faithful to a spread that wide.
+/// - **Not a mean.** 50 identical 1 % loss trials of the bandwidth-dominated transfer spanned
+///   0.73 s to 7.11 s. The formula predicts an ensemble average; a deterministic simulator answers
+///   with one number, and no single number is faithful to a spread that wide.
 /// - **Not `p -> 0`.** Those runs used `p` of 1 % and 0.25 %.
 ///
 /// So treat simulated timings on a lossy channel as order-of-magnitude only. Extensions covering
@@ -119,14 +121,14 @@ pub struct PackageLoss(f64);
 /// This is the *effective* end-to-end window — the unacknowledged data actually kept in flight —
 /// and not a socket buffer size. The two are not interchangeable: a kernel derives its advertised
 /// window from `SO_RCVBUF`/`tcp_rmem` through an overhead factor, and then only part of that window
-/// is realized in steady state. Pinning `tcp_rmem` to 131,072 bytes on one Linux host produced a
-/// ~97.5 KB advertised window of which ~79.5 KB was realized: three different numbers for what a
-/// configuration calls "the window".
+/// is realized in steady state. Pinning `tcp_rmem` to 131,072 bytes on one Linux host and recovering
+/// the window a real bulk transfer actually delivered gave ~70 KB — well under the 128 KiB
+/// configured, and not a number any socket setting names directly.
 ///
 /// It binds whenever the bandwidth-delay product exceeds it, and then it alone sets the rate:
 /// throughput becomes `window * 8 / RTT` and [`Bandwidth`] is ignored entirely. On such a link,
-/// leaving this at its 65,536-byte default misprices every message — the default measured ~18 %
-/// below the window a real loopback run delivered (see the crate-level "Benchmarks" section).
+/// leaving this at its 65,536-byte default misprices every message — on that host the default sat
+/// ~7 % below the window the real loopback run delivered (see the crate-level "Benchmarks" section).
 ///
 /// Calibrate it by measurement rather than by reading a buffer setting: time a bulk transfer of
 /// known size over a link of known RTT, take its throughput `T`, and set this to `T * RTT / 8`.

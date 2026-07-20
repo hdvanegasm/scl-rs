@@ -71,10 +71,12 @@ mean-based error (+211 %) and the median-based one (+400 %) tell different stori
 claims to predict an ensemble *mean*, which is why both are tabulated.
 
 **The bandwidth-limited regime under-predicts**, by 3.4 % (`ping_pong`) and 10.6 % (`bulk_transfer`).
-The direction and the split both point at TCP slow start: each repetition opens a fresh connection,
-and the simulator models a steady-state throughput. A single large transfer pays that cost
-proportionally more than 30 small round trips do. This is left uncorrected deliberately — it is a
-cost a short MPC protocol genuinely pays.
+The simulator prices an idealized steady-state throughput, and the shaped link's real goodput falls a
+little short of it — from protocol framing and the `tc` rate limiter's own accounting the model does
+not reproduce — a shortfall that grows with bytes moved, so the bulk transfer's gap exceeds the
+latency-bound ping-pong's. It is not TCP slow start: at 1 Mbit/s the bandwidth-delay product is
+12.5 KB, below Linux's initial congestion window, so the pipe fills within the first round trip. This
+is left uncorrected deliberately — it is overhead a short MPC protocol genuinely pays.
 
 **Loss-less runs are extremely reproducible** — CV of 0.0–0.1 % over 50 repetitions — so the
 distributions in the first two figures are honestly that tight, not a rendering artifact.
