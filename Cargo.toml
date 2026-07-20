@@ -11,7 +11,9 @@ keywords = ["mpc", "secret-sharing", "cryptography"]
 categories = ["cryptography"]
 description = "Rust toolkit for prototyping and testing secure multiparty computation (MPC) protocols inspired in Secure Computation Library."
 license = "AGPL-3.0-or-later"
-exclude = ["certs/", "gen_self_signed_certs.sh"]
+# `docs/comparison/` holds ~1.2 MB of benchmark figures that are only ever viewed on the repository
+# host (crates.io renders the top-level README alone), so they are kept out of the published crate.
+exclude = ["certs/", "gen_self_signed_certs.sh", "docs/comparison/"]
 
 # `benches/comparison` is a driver with its own subcommands, not a set of libtest benchmarks, so it
 # is declared explicitly with autodiscovery off.

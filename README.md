@@ -418,10 +418,34 @@ channel as order-of-magnitude only; the `PackageLoss` documentation gives the co
 citation.
 
 Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
-surfaces the gap. A stronger, more detailed and statistically relevant benchmark will be added in
-the future. The untested axis that matters most is concurrency: every measurement so far keeps a
-single message in flight, so the per-link independent-bandwidth assumption has never been stressed
+surfaces the gap. The untested axis that matters most is concurrency: every measurement so far keeps
+a single message in flight, so the per-link independent-bandwidth assumption has never been stressed
 by simultaneous transfers.
+
+### Reproducing this, and the current figures
+
+The numbers quoted above come from the early, ad-hoc measurements. They are now superseded by a
+repeatable harness in [`benches/comparison`](benches/comparison/), which runs each of the three
+regimes 50 times over shaped loopback against a round-dominated and a bandwidth-dominated protocol,
+and plots every repetition against the simulator's prediction:
+
+```bash
+./benches/comparison/run_all.sh        # ~26 min; shapes loopback with tc, restores it on exit
+python3 benches/comparison/plot.py     # one figure per scenario, plus a summary table
+```
+
+See [`benches/comparison/README.md`](benches/comparison/README.md) for the figures and the full
+results table. Two findings from that run refine what is written above:
+
+- **The loss-formula error is confined to bandwidth-dominated protocols.** Under 1 % loss on the
+  same shaped link, the round-dominated protocol is predicted to within 0.7 % while the
+  bandwidth-dominated one is over-predicted by ~400 % (~211 % against the mean). The `√(3/2p)` term
+  enters only through throughput, so a protocol dominated by round trips barely touches it. The
+  spread is the more important result: 50 identical trials spanned 0.73 s to 7.11 s.
+- **The bandwidth-limited regime under-predicts by 3–11 %**, rather than over-predicting by ~0.8 %.
+  Each repetition opens a fresh connection and so pays TCP slow start, which the simulator's
+  steady-state throughput does not model — and a single large transfer pays it proportionally more
+  than many small round trips do.
 
 ## Status and roadmap
 
