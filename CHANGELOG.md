@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-20
+
 ### Added
 
 - **LAN and WAN presets for `SimpleNetworkConfig`.** `SimpleNetworkConfig::lan()` models a
@@ -20,6 +22,18 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   window the WAN link would be window-bound to ~5.2 Mbps instead of its nominal 100 Mbps. See
   `WindowSize` for why that number must be calibrated by measurement rather than read off a socket
   buffer setting.
+- **Simulated-vs-real benchmark harness (`benches/comparison`).** A `tc netem`-shaped,
+  mutually-authenticated-TLS comparison across the three regimes the crate models
+  (bandwidth-limited, window-limited, lossy), each run 50 times against a round-dominated
+  (`PingPong`) and a bandwidth-dominated (`BulkTransfer`) protocol, plus a Python plotting script
+  that renders one figure per scenario and a summary table. It supersedes the ad-hoc figures
+  previously quoted in the README's "Benchmarks" section; see
+  [`benches/comparison/README.md`](benches/comparison/README.md) for the method and results. Two
+  findings refine the earlier text: the loss-formula error is confined to bandwidth-dominated
+  protocols (a round-dominated protocol under 1% loss is predicted within 0.7%, while a
+  bandwidth-dominated one on the same link is over-predicted by ~400%), and the bandwidth-limited
+  regime under-predicts by 3–11% because each fresh connection pays TCP slow start, which the
+  simulator's steady-state model does not charge.
 
 ### Changed
 
