@@ -9,6 +9,32 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-07-21
+
+Internal only — no API or behaviour change, and no change to any simulated timing.
+
+### Changed
+
+- **Expanded the simulator's internal documentation** — the executor's waker plumbing, the
+  ready-queue loop and its deadlock panic, and `Switchboard::deliver_next` are now documented at
+  the level the rest of `net::simulation` already was.
+- Renamed three crate-private items in `net::simulation` to say what they do:
+  `executor::run_with_idle` → `executor::run_simulation_with_idle`, `executor::Idle` →
+  `executor::IdleOutcome`, and `simulator::drive` → `simulator::drive_party_to_completion`. All
+  three are `pub(crate)`; the public API is untouched.
+
+### Fixed
+
+- **A self-deadlock in the simulator's executor loop, introduced on `main` after `0.12.0` and never
+  present in a release.** While documenting the loop, the ready-queue pop was folded into the
+  `match` scrutinee (`match ready_queue.lock()…pop_front() { … }`). A temporary in a `match`
+  scrutinee lives until the end of the whole `match`, so the `MutexGuard` stayed alive across every
+  arm — including `None => on_idle()`, which delivers the next event and calls `Waker::wake`, and
+  `wake` re-locks that same queue. On the simulator's single thread that is an unconditional
+  deadlock the first time any party parks on a receive. Restoring the `let next_task = …;` binding
+  drops the guard at the end of the statement, before the `match` runs. **Users of released
+  versions were never affected**; only builds tracking `main` between the two commits could hang.
+
 ## [0.12.0] - 2026-07-20
 
 ### Added
@@ -737,7 +763,9 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.10.0...v0.11.0

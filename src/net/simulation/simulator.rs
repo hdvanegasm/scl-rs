@@ -227,7 +227,7 @@ where
         }));
     }
 
-    // Run the simulation executing all the party tasks. When there are
+    // Run the simulation executing all the party tasks.
     run_simulation_with_idle(tasks, || {
         switchboard
             .lock()

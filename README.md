@@ -43,7 +43,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.12.0"
+scl-rs = "0.12.1"
 ```
 
 ### Releases vs. `main`
