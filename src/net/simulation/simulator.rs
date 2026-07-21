@@ -23,7 +23,7 @@ use crate::{
         simulation::{
             channel::NetworkConfig,
             event::Event,
-            executor::run_with_idle,
+            executor::run_simulation_with_idle,
             hook::TriggeredHook,
             network::SimNetwork,
             switchboard::{ConfigDelay, Switchboard},
@@ -200,19 +200,26 @@ where
     P::Output: Serialize + Send + Clone + 'static,
     E: Environment<Net = SimNetwork> + 'static,
 {
+    // A switchboard is a shared space in memory. During an execution, all the tasks may change and
+    // read the swithchboard by sending and receiving messages, creating events and executing actions.
     let switchboard = Arc::new(Mutex::new(Switchboard::new(ConfigDelay(config), hooks)));
     let outputs = Arc::new(Mutex::new(HashMap::new()));
 
     let mut tasks: Vec<Pin<Box<dyn Future<Output = ()>>>> = Vec::new();
     for party in &parties {
+        // The network contains the switchboard because receiving and sending a message must be
+        // recorded.
         let network = SimNetwork::new(*party, parties.clone(), switchboard.clone());
+
         let outputs = outputs.clone();
         let switchboard = switchboard.clone();
         let party = *party;
         let protocol = make_protocol(party);
         let mut env = make_env(party, network);
+
+        // Each task is: drive the current party to completion.
         tasks.push(Box::pin(async move {
-            let result = drive(party, protocol, switchboard, &mut env).await;
+            let result = drive_party_to_completion(party, protocol, switchboard, &mut env).await;
             outputs
                 .lock()
                 .expect("lock must be free")
@@ -220,15 +227,22 @@ where
         }));
     }
 
-    run_simulation(switchboard.clone(), tasks);
+    // Run the simulation executing all the party tasks. When there are
+    run_simulation_with_idle(tasks, || {
+        switchboard
+            .lock()
+            .expect("the mutex should be free")
+            .deliver_next()
+    });
 
+    // Wrap the outputs.
     let outputs = outputs.lock().expect("lock must be free").clone();
     let traces = switchboard.lock().expect("lock must be free").take_traces();
     SimulationOutcome { outputs, traces }
 }
 
 /// Runs a party's protocol to completion, recording its lifecycle events and returning its output.
-async fn drive<P, E>(
+async fn drive_party_to_completion<P, E>(
     party: PartyId,
     protocol: P,
     switchboard: Arc<Mutex<Switchboard>>,
@@ -257,18 +271,4 @@ where
     record_event(&switchboard, party, |t| Event::Stop { timestamp: t });
 
     result
-}
-
-/// Drives the party tasks to completion, delivering scheduled network events in
-/// virtual-time order whenever no party can make progress.
-fn run_simulation(
-    switchboard: Arc<Mutex<Switchboard>>,
-    tasks: Vec<Pin<Box<dyn Future<Output = ()>>>>,
-) {
-    run_with_idle(tasks, || {
-        switchboard
-            .lock()
-            .expect("the mutex should be free")
-            .deliver_next()
-    });
 }

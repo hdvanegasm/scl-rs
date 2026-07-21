@@ -23,7 +23,7 @@ use crate::net::{
     simulation::{
         channel::{Link, NetworkConfig},
         event::Event,
-        executor::Idle,
+        executor::IdleOutcome,
         hook::TriggeredHook,
         SimulationTrace,
     },
@@ -167,16 +167,22 @@ impl Switchboard {
         }));
     }
 
-    pub(crate) fn deliver_next(&mut self) -> Idle {
+    /// Takes the next scheduled event and executes it.
+    ///
+    /// If there is an event in the `switchboard` that makes the simulation to progress, then the
+    /// function returns that the simulation progressed, otherwise, it returns that the simulation is
+    /// deadlocked. The deadlock occurs when all tasks are parked and there is no event that makes
+    /// the simulation to progress.
+    pub(crate) fn deliver_next(&mut self) -> IdleOutcome {
         match self.events.pop() {
             Some(Reverse(event)) => {
-                let recipient_clock = self.clocks.entry(event.link.recipient()).or_default();
                 // Update the recipient clock for the event. The event may be behind in time.
                 //
                 // This advance is sound even for a *stale* timer (one whose timed receive already
                 // resolved): `deliver_next` only runs once every task is finished or parked, so a
                 // party whose clock jumps here is genuinely idle through this instant — anything
                 // it still waits for fires later than this event.
+                let recipient_clock = self.clocks.entry(event.link.recipient()).or_default();
                 *recipient_clock = (*recipient_clock).max(event.arrival);
                 if let EventKind::Delivery(packet) = event.kind {
                     self.msg_queues
@@ -184,12 +190,15 @@ impl Switchboard {
                         .or_default()
                         .push_back(packet);
                 }
+                // We can wake the current link as the task may progress with the new delivered message.
                 if let Some(waker) = self.parked.remove(&event.link) {
                     waker.wake();
                 }
-                Idle::Progressed
+                IdleOutcome::Progressed
             }
-            None => Idle::Deadlocked,
+            // There are no more events in the queue, and this function is called on idle. Hence the
+            // simulator has no way to continue.
+            None => IdleOutcome::Deadlocked,
         }
     }
 

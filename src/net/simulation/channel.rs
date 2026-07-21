@@ -50,6 +50,8 @@ impl Link {
 }
 
 /// Configuration of a network.
+///
+/// A network configuration is a per-link configuration.
 pub trait NetworkConfig: Clone + Send + Sync {
     /// Returns the configuration for the directed `link` (`sender` → `recipient`).
     ///
