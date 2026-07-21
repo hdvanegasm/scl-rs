@@ -101,11 +101,11 @@ pub(crate) fn run_simulation_with_idle<F>(
 
     let mut remaining_tasks = tasks.len();
     while remaining_tasks > 0 {
-        match ready_queue
+        let next_task = ready_queue
             .lock()
             .expect("the ready queue is poisoned")
-            .pop_front()
-        {
+            .pop_front();
+        match next_task {
             Some(id) => {
                 if let Some(task) = tasks[id].as_mut() {
                     let mut ctxt = Context::from_waker(&wakers[id]);
