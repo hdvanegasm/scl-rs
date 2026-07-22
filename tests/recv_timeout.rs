@@ -9,7 +9,6 @@ use std::time::Duration;
 /// P0 waits with a timeout; P1 never sends. The recv must resolve to a Timeout error.
 pub struct SilentPartyProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SilentPartyProtocol {
     type Output = bool;
 
@@ -51,7 +50,6 @@ fn silent_party_times_out() {
 /// P1 sends promptly; the timed recv must succeed well before the deadline.
 pub struct PromptSenderProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for PromptSenderProtocol {
     type Output = bool;
 
@@ -97,7 +95,6 @@ fn prompt_sender_succeeds() {
 /// `Timeout(None)`: no single party is identifiable as the culprit.
 pub struct AllSilentProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for AllSilentProtocol {
     type Output = bool;
 
@@ -140,7 +137,6 @@ fn recv_any_all_silent_times_out() {
 /// `Timeout(None)` instead of returning the packet past the deadline; the late packet stays queued.
 pub struct LateSenderProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for LateSenderProtocol {
     type Output = bool;
 
@@ -190,7 +186,6 @@ fn recv_any_late_packet_times_out() {
 /// sender.
 pub struct PromptAnyProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for PromptAnyProtocol {
     type Output = bool;
 

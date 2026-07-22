@@ -16,7 +16,6 @@ pub struct SendRecvProtocol;
 // environment wraps — instead of being tied to a concrete network. This is the key to scl-rs'
 // portability: the very same protocol runs on the deterministic simulator (`SimNetwork`, used in
 // `main` below) and over a real TLS deployment (`TcpNetwork`), without any changes to its logic.
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // Here, you define what is the output of the protocol. This output can be arbitrary: it may be
     // a share, a party ID, a stream of bytes, etc.

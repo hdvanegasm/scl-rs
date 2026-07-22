@@ -40,7 +40,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for PassiveOpenShr<S>
 where
     S: LinearShare + Abbreviate,
@@ -117,7 +116,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for PassiveOpenToParty<S>
 where
     S: LinearShare + Abbreviate,

@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.12.1"
+version = "0.13.0"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
@@ -33,7 +33,6 @@ log = "0.4"
 serde_json = "1"
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 serde = { version = "1.0", features = ["derive"] }
-async-trait = "0.1"
 crypto-bigint = { version = "0.7", features = ["serde"] }
 tokio = { version = "1", features = [
   "net",
@@ -51,7 +50,6 @@ futures-util = "0.3"
 rustls-webpki = "0.103"
 
 [dev-dependencies]
-async-trait = "0.1"
 rand_chacha = "0.10.0"
 rcgen = "0.14.8"
 tempfile = "3.27.0"

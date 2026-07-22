@@ -150,7 +150,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, C, E> Protocol<E> for SchnorrPok<LIMBS, C>
 where
     C: EllipticCurve<LIMBS> + Send + Sync + Abbreviate,

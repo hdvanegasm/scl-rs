@@ -229,6 +229,9 @@ release rather than dribbling breaks out continuously.
       bound; both `SimNetwork` and `TcpNetwork` already satisfy it. (`src/net/mod.rs`.) The crate-doc
       protocol + simulator examples are now **compiled** doctests (the simulator one runs and asserts),
       so this class of rot is caught going forward; `async-trait` was added to `[dev-dependencies]`.
+      _(The `Send` requirement still holds and `Network: Send` remains, but as of **0.13.0** it is
+      carried by `-> impl Future + Send` in the trait definitions rather than by `#[async_trait]`;
+      see the entry below.)_
 - [x] **`Environment::clock()` removed.** The vestigial wall-clock `Clock` (it reported real elapsed
       time, meaningless under the deterministic simulator) and its accessor are gone; `Environment<N>`
       is now just `{ pub network: N }` — kept deliberately as the ambient-context seam so future
@@ -253,6 +256,17 @@ release rather than dribbling breaks out continuously.
       `Network::record_protocol_begin`/`record_protocol_end` and the `ProtocolBegin`/`ProtocolEnd`
       events carry `ProtocolId` accordingly. Breaking (every `impl Protocol` updates), so a minor
       bump per §2.
+- [x] **`async-trait` dependency dropped (0.13.0).** `Protocol` and `Network` now use native
+      async-fn-in-trait, stable since Rust 1.75 and comfortably inside the `1.85.1` MSRV. Their async
+      methods are declared `fn … -> impl Future<Output = …> + Send` rather than `async fn`: a bare
+      `async fn` in a public trait leaves the future's auto traits unspecified, so the explicit
+      `+ Send` is what preserves the guarantee `#[async_trait]` used to provide (and what the
+      `Network: Send` entry above depends on). Implementors write a plain `async fn` and delete the
+      attribute. Breaking (every `impl Protocol`/`impl Network` updates), so a minor bump per §2.
+      Gives up `dyn Protocol`/`dyn Network`, which nothing used; boxing a protocol's *future* still
+      works, so the simulator's executor is unaffected. Also removes a proc-macro from the build
+      graph and the per-call `Pin<Box<dyn Future>>` allocation, and un-hides clippy inside trait
+      method bodies (clippy skips macro-expanded code — two latent lints surfaced and were fixed).
 - [x] **Naming/visibility audit — done in 0.4.0.** Simulator internals demoted to `pub(crate)`
       (`Switchboard::send`/`try_recv_any`/`park_any`/`new`, the `Recv`/`RecvAny` futures); the vestigial
       `Channel` trait and `LoopBackChannel` removed. (The `ss::ec` doc nit was already moot — `math/ec`

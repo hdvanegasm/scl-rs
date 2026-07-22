@@ -9,6 +9,59 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-22
+
+Drops the `async-trait` dependency. The crate now uses native `async fn` in traits, stable since
+Rust 1.75 and well within the crate's `1.85.1` MSRV, which is unchanged.
+
+### Changed
+
+- **BREAKING: `Protocol` and `Network` no longer use `#[async_trait]`.** Both traits declare their
+  async methods natively. Implementors must **delete the `#[async_trait]` / `#[async_trait::async_trait]`
+  attribute** from every `impl Protocol for …` and `impl Network for …` block, and may drop
+  `async-trait` from their own `Cargo.toml` if it was pulled in only for this. The method bodies
+  themselves do not change — they stay plain `async fn run(self, env: &mut E) -> …`:
+
+  ```rust
+  // before
+  #[async_trait]
+  impl<E: Environment> Protocol<E> for MyProtocol {
+      type Output = usize;
+      async fn run(self, env: &mut E) -> Result<usize, Error> { /* … */ }
+      fn id(&self) -> ProtocolId { "MyProtocol".into() }
+  }
+
+  // after — the attribute is the only line that goes away
+  impl<E: Environment> Protocol<E> for MyProtocol {
+      type Output = usize;
+      async fn run(self, env: &mut E) -> Result<usize, Error> { /* … */ }
+      fn id(&self) -> ProtocolId { "MyProtocol".into() }
+  }
+  ```
+
+  In the trait _definitions_ the async methods are spelled
+  `fn … -> impl Future<Output = …> + Send` rather than `async fn`. That is deliberate and not
+  cosmetic: a bare `async fn` in a public trait leaves the returned future's auto traits
+  unspecified, so an implementor could return a non-`Send` future and callers driving a protocol on
+  a multi-threaded runtime would fail to compile. The explicit `+ Send` preserves exactly the
+  guarantee `#[async_trait]` used to provide (see the `Network: Send` note in 0.4.0). Callers and
+  implementors are unaffected by this spelling.
+
+  The one capability given up is `dyn` compatibility: `Box<dyn Protocol<…>>` and `Box<dyn Network>`
+  are no longer possible. Neither was used anywhere in the crate, its tests, or its examples, and
+  boxing a protocol's _future_ (as the simulator's executor does) is unaffected.
+- Removed `async-trait` from both `[dependencies]` and `[dev-dependencies]`. Each async trait-method
+  call no longer heap-allocates a `Pin<Box<dyn Future>>`; the effect on end-to-end protocol timings
+  is below measurement noise next to field arithmetic, serialization and TLS, so no benchmark
+  numbers in the README change.
+
+### Fixed
+
+- A needless `return` in `TcpNetwork::recv_from_with_timeout` and an unused `mut` on
+  `PassiveShamirOpenKing::run`'s receiver. Both were pre-existing and invisible to clippy, which
+  skips macro-expanded code — `#[async_trait]` had been suppressing lints inside every trait method
+  body in the crate.
+
 ## [0.12.1] - 2026-07-21
 
 Internal only — no API or behaviour change, and no change to any simulated timing.
@@ -763,7 +816,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.1...v0.11.2

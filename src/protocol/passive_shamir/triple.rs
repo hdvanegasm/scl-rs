@@ -113,7 +113,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, F, E> Protocol<E> for PassiveTriple<LIMBS, F>
 where
     E: RandEnvironment,

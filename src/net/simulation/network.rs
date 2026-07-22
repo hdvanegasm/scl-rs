@@ -15,7 +15,6 @@ use crate::net::simulation::switchboard::{
 };
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use crate::protocol::ProtocolId;
-use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -55,7 +54,6 @@ impl SimNetwork {
     }
 }
 
-#[async_trait]
 impl Network for SimNetwork {
     fn local_party(&self) -> PartyId {
         self.local

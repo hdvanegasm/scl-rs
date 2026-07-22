@@ -98,7 +98,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, E, F> Protocol<E> for PassiveShamirMul<LIMBS, F>
 where
     F: FiniteField<LIMBS> + Send + Sync + From<u64> + Abbreviate + 'static,

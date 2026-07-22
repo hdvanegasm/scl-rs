@@ -43,7 +43,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.12.1"
+scl-rs = "0.13.0"
 ```
 
 ### Releases vs. `main`
@@ -78,7 +78,7 @@ cargo run --example <example_name>
 ## Bandwidth profiling
 
 Communication — not computation — is what an MPC protocol pays for, and in a protocol built by
-composing sub-protocols it is rarely obvious *which* phase spends it. The simulator answers that
+composing sub-protocols it is rarely obvious _which_ phase spends it. The simulator answers that
 question without any instrumentation on your part: it already records every `SendData` event and
 every `Protocol::execute` entry/exit, so after a run `SimulationOutcome::bandwidth_tree_for(party)`
 reconstructs the call tree of (sub-)protocol invocations and attributes each byte sent to the
@@ -93,7 +93,7 @@ private datasets with the DN07 protocols, 3,633 bytes on the wire in total. The 
 cost breakdown of the protocol's own structure. Sharing the two input vectors (`ShareX`, `ShareY`)
 is 13% of the traffic. `Preprocessing` — generating the six multiplication triples, itself a tower of
 `PassiveRandShr` / `PassiveRandDoubleShr` dealing plus a `PassiveShamirTriple` batched open — is the
-single largest phase at 57%. The online `PassiveShamirMul` that *spends* those triples costs 25%,
+single largest phase at 57%. The online `PassiveShamirMul` that _spends_ those triples costs 25%,
 essentially all of it the one batched open of the masked values, and revealing the result is the
 last 5%.
 
@@ -116,7 +116,6 @@ A protocol implements the `Protocol` trait. It declares the typed value it produ
 its behavior in `run`; network operations return a `Result`, so errors propagate with `?`:
 
 ```rust
-#[async_trait]
 pub trait Protocol<E: Environment>: Send + Sync {
     /// The typed value this protocol produces.
     type Output;
@@ -142,7 +141,6 @@ use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
 
 pub struct SendRecvProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // This protocol returns the other party's id.
     type Output = usize;
@@ -417,7 +415,7 @@ idealized steady-state throughput; the shaped link's real goodput falls a little
 protocol framing and the `tc` rate limiter's own accounting that the model does not reproduce — and
 the shortfall grows with bytes moved, so the bulk transfer's gap exceeds the latency-bound
 ping-pong's. The real distributions are extremely tight (coefficient of variation 0.0–0.1 % over 50
-runs), so this is a genuine bias, not measurement noise. (It is *not* TCP slow start: at 1 Mbit/s the
+runs), so this is a genuine bias, not measurement noise. (It is _not_ TCP slow start: at 1 Mbit/s the
 bandwidth-delay product is 12.5 KB, below Linux's initial congestion window, so the connection
 reaches full rate within the first round trip.)
 

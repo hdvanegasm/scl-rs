@@ -48,7 +48,6 @@ pub struct PingPong {
     pub payload_bytes: usize,
 }
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for PingPong {
     /// Total bytes this party received over the run, summed across rounds.
     type Output = usize;
@@ -98,7 +97,6 @@ pub struct BulkTransfer {
     pub payload_bytes: usize,
 }
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for BulkTransfer {
     /// Total bytes this party received over the run.
     type Output = usize;

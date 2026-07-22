@@ -17,9 +17,9 @@ pub use tcp::TcpNetwork;
 use crate::abbreviate::Abbreviate;
 use crate::net::channel::ChannelError;
 use crate::protocol::ProtocolId;
-use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
@@ -442,13 +442,20 @@ impl NetworkConfig<'_> {
 /// Represents a network used to execute a protocol.
 ///
 /// `Network` requires [`Send`] so that protocols generic over an `Environment` (whose associated
-/// `Net: Network` threads through every layer) can be implemented with the `#[async_trait]`
-/// `Protocol` trait, whose `run` future is `Send`. Both `SimNetwork` and `TcpNetwork` already
-/// satisfy this.
-#[async_trait]
+/// `Net: Network` threads through every layer) can be implemented with the `Protocol` trait, whose
+/// `run` future is `Send`. Both `SimNetwork` and `TcpNetwork` already satisfy this.
+///
+/// The async methods are declared as `fn … -> impl Future<Output = …> + Send` rather than as
+/// `async fn`, because a bare `async fn` in a trait leaves the returned future's auto traits
+/// unspecified: an implementor could return a non-`Send` future and callers spawning a protocol on
+/// a multi-threaded runtime would not compile. Implementors still write a plain `async fn`.
 pub trait Network: Send {
     /// Sends a `packet` to the party with ID `party_id`.
-    async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize>;
+    fn send_to(
+        &mut self,
+        party_id: PartyId,
+        packet: &Packet,
+    ) -> impl Future<Output = Result<usize>> + Send;
 
     /// Sends each `(party, packet)` in `messages`, returning once every packet has been handed to
     /// the network.
@@ -464,18 +471,23 @@ pub trait Network: Send {
     ///
     /// Each peer should appear at most once in `messages`; to send several packets to the same peer,
     /// call [`send_to`](Network::send_to) in sequence.
-    async fn send_many(&mut self, messages: &[(PartyId, Packet)]) -> Result<()> {
-        for (party_id, packet) in messages {
-            self.send_to(*party_id, packet).await?;
+    fn send_many(
+        &mut self,
+        messages: &[(PartyId, Packet)],
+    ) -> impl Future<Output = Result<()>> + Send {
+        async move {
+            for (party_id, packet) in messages {
+                self.send_to(*party_id, packet).await?;
+            }
+            Ok(())
         }
-        Ok(())
     }
 
     /// Receives a `packet` from the party with ID `party_id`.
-    async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet>;
+    fn recv_from(&mut self, party_id: PartyId) -> impl Future<Output = Result<Packet>> + Send;
 
     /// Receives a `packet` from any party returning also the party ID of the sender.
-    async fn recv_any(&mut self) -> Result<(PartyId, Packet)>;
+    fn recv_any(&mut self) -> impl Future<Output = Result<(PartyId, Packet)>> + Send;
 
     /// Receives a `packet` from a party within a `timeout`.
     ///
@@ -483,11 +495,11 @@ pub trait Network: Send {
     ///
     /// If the current party does not receive the message within the provided `timeout`, the
     /// function will return a [`NetworkError::Timeout`] with the ID of the delayed party.
-    async fn recv_from_with_timeout(
+    fn recv_from_with_timeout(
         &mut self,
         party_id: PartyId,
         timeout: Duration,
-    ) -> Result<Packet>;
+    ) -> impl Future<Output = Result<Packet>> + Send;
 
     /// Receives a `packet` from any party within a `timeout`, returning also the party ID of the
     /// sender.
@@ -497,10 +509,13 @@ pub trait Network: Send {
     /// If no message arrives from any party within the provided `timeout`, the function will
     /// return a [`NetworkError::Timeout`] carrying `None`, as no single party can be identified
     /// as the cause of the timeout.
-    async fn recv_any_with_timeout(&mut self, timeout: Duration) -> Result<(PartyId, Packet)>;
+    fn recv_any_with_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<(PartyId, Packet)>> + Send;
 
     /// Closes the connection with the network.
-    async fn close(&mut self) -> Result<()>;
+    fn close(&mut self) -> impl Future<Output = Result<()>> + Send;
 
     /// Returns the ID of the party executing the current node.
     fn local_party(&self) -> PartyId;

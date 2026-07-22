@@ -46,7 +46,6 @@ struct DistrAdditiveShr<F> {
     secret: F,
 }
 
-#[async_trait::async_trait]
 impl<E, R> Protocol<E> for DistrAdditiveShr<R>
 where
     E: Environment,
@@ -103,7 +102,6 @@ struct ReconstrAdditiveShr<R> {
     share: AdditiveSS<R>,
 }
 
-#[async_trait::async_trait]
 impl<E, R> Protocol<E> for ReconstrAdditiveShr<R>
 where
     E: Environment,
@@ -151,7 +149,6 @@ struct SecureAddition<R> {
     input: R,
 }
 
-#[async_trait::async_trait]
 impl<E, R> Protocol<E> for SecureAddition<R>
 where
     R: Ring + Send + Sync,

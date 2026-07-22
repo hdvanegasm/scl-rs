@@ -8,9 +8,9 @@ use crate::{
     prelude::Ring,
     ss::ShareError,
 };
-use async_trait::async_trait;
 use rand::CryptoRng;
 use std::fmt;
+use std::future::Future;
 use thiserror::Error;
 
 /// Error that may occur during a protocol execution.
@@ -84,12 +84,15 @@ impl fmt::Display for ProtocolId {
 }
 
 /// Represents a protocol.
-#[async_trait]
 pub trait Protocol<E: Environment>: Send + Sync {
     /// The output of the protocol.
     type Output;
     /// Behavior of the protocol when run.
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
+    ///
+    /// Declared as `fn … -> impl Future + Send` rather than `async fn` so the returned future is
+    /// guaranteed [`Send`] and a protocol can be driven on a multi-threaded runtime; implementors
+    /// still write a plain `async fn run`.
+    fn run(self, environment: &mut E) -> impl Future<Output = Result<Self::Output, Error>> + Send;
     /// Identifier of the protocol, used to label its scope in a trace. See [`ProtocolId`].
     fn id(&self) -> ProtocolId;
 
@@ -105,15 +108,20 @@ pub trait Protocol<E: Environment>: Send + Sync {
     ///
     /// Prefer calling `execute` over `run`: `run` defines a protocol's behavior, while `execute`
     /// invokes it with tracing.
-    async fn execute(self, environment: &mut E) -> Result<Self::Output, Error>
+    fn execute(
+        self,
+        environment: &mut E,
+    ) -> impl Future<Output = Result<Self::Output, Error>> + Send
     where
         Self: Sized,
     {
-        let id = self.id();
-        environment.network_mut().record_protocol_begin(id);
-        let output = self.run(environment).await;
-        environment.network_mut().record_protocol_end(id);
-        output
+        async move {
+            let id = self.id();
+            environment.network_mut().record_protocol_begin(id);
+            let output = self.run(environment).await;
+            environment.network_mut().record_protocol_end(id);
+            output
+        }
     }
 }
 

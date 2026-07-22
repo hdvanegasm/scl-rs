@@ -56,7 +56,6 @@ where
     deal: PassiveDealShr<S>,
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for DealThenOpen<S>
 where
     S: LinearShare + Abbreviate,
@@ -120,7 +119,6 @@ where
     b: S::Value,
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for DealAffineOpen<S>
 where
     S: LinearShare + Abbreviate,
@@ -190,7 +188,6 @@ where
     receiver: PartyId,
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for DealThenOpenTo<S>
 where
     S: LinearShare + Abbreviate,

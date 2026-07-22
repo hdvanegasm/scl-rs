@@ -44,7 +44,6 @@
 //! its behavior in `run`; network operations return a `Result`, so errors propagate with `?`:
 //!
 //! ```ignore
-//! #[async_trait]
 //! pub trait Protocol<E: Environment>: Send + Sync {
 //!     /// The output of the protocol.
 //!     type Output;
@@ -65,13 +64,11 @@
 //! written **generic over `E: Environment`**, the very same code runs on either without changes:
 //!
 //! ```rust
-//! use async_trait::async_trait;
 //! use scl_rs::net::{Network, Packet};
 //! use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
 //!
 //! pub struct SendRecvProtocol;
 //!
-//! #[async_trait]
 //! impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //!     // This protocol returns the other party's id.
 //!     type Output = usize;
@@ -116,11 +113,10 @@
 //! clock and returns a `SimulationOutcome` with each party's typed output and its event trace:
 //!
 //! ```rust
-//! # use async_trait::async_trait;
 //! # use scl_rs::net::{Network, Packet};
 //! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol, ProtocolId};
 //! # pub struct SendRecvProtocol;
-//! # #[async_trait]
+//! #
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //! #     type Output = usize;
 //! #     async fn run(self, env: &mut E) -> Result<usize, Error> {

@@ -19,7 +19,6 @@ pub struct Preprocessing {
     pub king: PartyId,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for Preprocessing {
     type Output = Vec<Triple>;
 

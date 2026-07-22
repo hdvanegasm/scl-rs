@@ -56,7 +56,6 @@ use scl_rs::{
 /// this protocol implementation.
 pub struct SendRecvProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     type Output = usize;
 

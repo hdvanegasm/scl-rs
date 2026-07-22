@@ -56,7 +56,6 @@ struct InputPhase {
     value: Mersenne61,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for InputPhase {
     // One share per party in the computation.
     type Output = Vec<Share>;
@@ -106,7 +105,6 @@ struct SumValues {
     input: Mersenne61,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for SumValues {
     type Output = Mersenne61;
 
@@ -125,7 +123,6 @@ struct SumSquares {
     input: Mersenne61,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for SumSquares {
     type Output = Mersenne61;
 
@@ -144,7 +141,6 @@ struct SecStats {
     input: Mersenne61,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for SecStats {
     // (Σ values, Σ squares), learned by everyone.
     type Output = (Mersenne61, Mersenne61);

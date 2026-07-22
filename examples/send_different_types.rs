@@ -17,7 +17,6 @@ use scl_rs::{
 
 pub struct SendRecvProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     type Output = (
         Secp256k1ScalarField,

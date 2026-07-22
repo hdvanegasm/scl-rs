@@ -89,7 +89,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S, E> Protocol<E> for PassiveDealShr<S>
 where
     S: LinearShare + Abbreviate,

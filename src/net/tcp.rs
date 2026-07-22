@@ -7,7 +7,6 @@ use crate::net::Element;
 
 use super::channel;
 use super::{Network, NetworkConfig, NetworkError, Packet, PartyId, Result};
-use async_trait::async_trait;
 use futures_util::future::try_join_all;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -249,7 +248,6 @@ impl TcpNetwork {
     }
 }
 
-#[async_trait]
 impl Network for TcpNetwork {
     fn party_ids(&self) -> Vec<PartyId> {
         self.writers.keys().copied().collect()
@@ -327,7 +325,7 @@ impl Network for TcpNetwork {
 
         match tokio::time::timeout(timeout, reader.next()).await {
             Ok(result) => result.ok_or(NetworkError::ConnectionClosed(Some(party_id)))?,
-            Err(_) => return Err(NetworkError::Timeout(Some(party_id))),
+            Err(_) => Err(NetworkError::Timeout(Some(party_id))),
         }
     }
 

@@ -51,7 +51,6 @@ struct GenTriples {
     king: PartyId,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for GenTriples {
     // `ShamirTriple` is deliberately one-shot (not `Clone`), like `DoubleShare`, so the shares are
     // handed back destructured.
@@ -111,7 +110,6 @@ fn triples_satisfy_c_equals_a_times_b() {
 /// Runs `Double-Random` and hands back both halves of each double sharing.
 struct GenDoubles;
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for GenDoubles {
     type Output = Vec<(Share, Share)>;
 
@@ -179,7 +177,6 @@ struct MulRandomPairs {
     king: PartyId,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for MulRandomPairs {
     type Output = Vec<(Share, Share, Share)>;
 

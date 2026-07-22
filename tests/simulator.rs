@@ -13,7 +13,6 @@ use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
 
 pub struct SendRecvProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     type Output = usize;
 
@@ -76,7 +75,6 @@ fn send_recv_simulation() {
 /// transport delivers multiple messages in FIFO order.
 pub struct PingPongProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for PingPongProtocol {
     type Output = Vec<usize>;
 
@@ -134,7 +132,6 @@ fn ping_pong_preserves_message_order() {
 /// party 1 must see the large payload first.
 pub struct SizedFifoProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for SizedFifoProtocol {
     type Output = Vec<usize>;
 
@@ -190,7 +187,6 @@ fn smaller_later_message_does_not_overtake_on_same_link() {
 /// protocol can call another protocol and consume its typed return directly.
 pub struct ChainedFirstStage;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for ChainedFirstStage {
     type Output = usize;
 
@@ -226,7 +222,6 @@ pub struct ChainedSecondStage {
     received: usize,
 }
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for ChainedSecondStage {
     type Output = usize;
 
@@ -290,7 +285,6 @@ const BULK_PAYLOAD_LEN: usize = 200_000;
 /// Used to observe how bandwidth and latency affect the simulated reception time.
 pub struct BulkTransferProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for BulkTransferProtocol {
     type Output = Vec<u8>;
 
@@ -440,7 +434,6 @@ fn trace_arrows_reflect_each_party_perspective() {
 /// receive on a channel unless it had previously sent on it.
 pub struct OneWayProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for OneWayProtocol {
     type Output = Option<usize>;
 
@@ -494,7 +487,6 @@ const BROADCAST_VALUE: usize = 7;
 /// multi-party (5 parties) simulation with a single sender fanning out to all receivers.
 pub struct BroadcastProtocol;
 
-#[async_trait::async_trait]
 impl<E: Environment> Protocol<E> for BroadcastProtocol {
     type Output = usize;
 
@@ -600,11 +592,8 @@ fn output_event_elides_large_payloads() {
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
-
 struct SendRecv;
 
-#[async_trait]
 impl<E: Environment> Protocol<E> for SendRecv {
     type Output = usize;
 
@@ -662,7 +651,6 @@ struct MultipleSendRecv {
     n_sends: usize,
 }
 
-#[async_trait]
 impl<E: Environment> Protocol<E> for MultipleSendRecv {
     type Output = usize;
 
@@ -733,7 +721,6 @@ struct QuorumCollect {
     senders: Vec<usize>,
 }
 
-#[async_trait]
 impl<E: Environment> Protocol<E> for QuorumCollect {
     /// For the collector: the sorted ids it heard from. For everyone else: empty.
     type Output = Vec<usize>;
@@ -888,7 +875,6 @@ struct StragglerScenario {
     late_receiver: PartyId,
 }
 
-#[async_trait]
 impl<E: Environment> Protocol<E> for StragglerScenario {
     /// Collector: the sorted ids it heard. Late receiver: the straggler id it eventually got.
     /// Everyone else: empty.
@@ -1023,7 +1009,6 @@ fn straggler_delivery_after_quorum_does_not_distort_collector_time() {
 /// it. Verifies the scatter primitive delivers the right packet to each peer.
 struct ScatterProtocol;
 
-#[async_trait]
 impl<E: Environment> Protocol<E> for ScatterProtocol {
     /// Party 0: 0. Every other party: the value it received from party 0.
     type Output = usize;
@@ -1157,7 +1142,6 @@ impl<N: Network> DeltaEnv for GeneralDeltaEnv<N> {
 /// capability the base [`Environment`] does not provide.
 struct DeltaExchange;
 
-#[async_trait]
 impl<E: DeltaEnv> Protocol<E> for DeltaExchange {
     type Output = u64;
 

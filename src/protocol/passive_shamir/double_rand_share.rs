@@ -54,7 +54,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, E, F> Protocol<E> for PassiveRandDoubleShr<LIMBS, F>
 where
     F: FiniteField<LIMBS> + Send + Sync + From<u64> + 'static,

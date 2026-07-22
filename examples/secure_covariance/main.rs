@@ -97,7 +97,6 @@ struct DealVector {
     id: ProtocolId,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for DealVector {
     /// One share of each of the owner's values.
     type Output = Vec<Share>;
@@ -149,7 +148,6 @@ struct SecureCovariance {
     y: Option<Vec<Mersenne61>>,
 }
 
-#[async_trait::async_trait]
 impl<E: RandEnvironment> Protocol<E> for SecureCovariance {
     /// The covariance — the one and only value anybody learns.
     type Output = Mersenne61;

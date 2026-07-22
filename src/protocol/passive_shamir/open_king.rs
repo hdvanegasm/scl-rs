@@ -41,7 +41,6 @@ impl<const LIMBS: usize, F> PassiveOpenToKing<LIMBS, F> {
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, E, F> Protocol<E> for PassiveOpenToKing<LIMBS, F>
 where
     F: FiniteField<LIMBS> + Send + Sync + From<u64> + Abbreviate + 'static,
@@ -49,7 +48,7 @@ where
 {
     type Output = F;
 
-    async fn run(mut self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
         let me = environment.network().local_party();
         if me == self.king {
             let mut shares = Vec::new();
@@ -114,7 +113,6 @@ impl<const LIMBS: usize, F> BatchedPassiveOpenToKing<LIMBS, F> {
     }
 }
 
-#[async_trait::async_trait]
 impl<const LIMBS: usize, E, F> Protocol<E> for BatchedPassiveOpenToKing<LIMBS, F>
 where
     F: FiniteField<LIMBS> + Send + Sync + From<u64> + Abbreviate + 'static,
@@ -122,7 +120,7 @@ where
 {
     type Output = Vec<F>;
 
-    async fn run(mut self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
         let me = environment.network().local_party();
         if me == self.king {
             let n_shares = self.own_shares.len();
