@@ -264,6 +264,9 @@ fn main() {
          everything else was local.\n"
     );
 
+    println!("party {OWNER_X} trace");
+    println!("{}\n", outcome.traces[&parties[0]]);
+
     // Export every party's bandwidth call tree into one folded-stacks file; renderers sum duplicate
     // paths, so the graph shows network-wide totals per call path.
     let mut folded = Vec::new();
