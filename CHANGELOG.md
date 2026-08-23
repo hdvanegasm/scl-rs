@@ -39,8 +39,13 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
   `Mersenne61` changes most visibly. It used to serialize as a `u64`, which postcard encodes as a
   varint — 1 byte for `1`, 2 for `300`, 6 for `2^40` — so a share's length on the wire correlated
-  with the magnitude of the value it carried. It is now a constant 9 bytes. Bandwidth figures
-  reported by the simulator move accordingly.
+  with the magnitude of the value it carried. It is now a constant 9 bytes.
+
+  This makes simulated bandwidth **reproducible**, which it previously was not: five runs of
+  `examples/secure_covariance` used to report 3634, 3640, 3632, 3637 and 3644 bytes, because the
+  totals moved with whichever values the run happened to sample. The same example now reports
+  3648 bytes every time. Figures quoted in `README.md` and in the example docs were updated
+  accordingly.
 
 - Deserialization now rejects out-of-range values. `ConstMontyForm`'s `Deserialize` refuses any
   encoding whose value is `>= modulus`; the previous derived implementations accepted such input
@@ -51,6 +56,11 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   whole number of limbs, so `Mersenne61::BIT_SIZE` is `64` rather than `61`.
 
 ### Fixed
+
+- **`Debug` on a field element printed its Montgomery form.** The derived implementation exposed
+  the internal representation, which differs from the value by a factor of $R$ — `Mersenne61::ONE`
+  displayed as `0x8`, not `1`. `Fp` now formats the canonical representative, so a field element
+  debug-prints the number it denotes.
 
 - **`Mersenne61` divided in the wrong direction.** `a / b` computed `b / a`, and the error case
   was inverted along with it: `0 / x` failed with `ZeroInverse` while `x / 0` succeeded. The

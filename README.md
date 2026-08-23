@@ -10,8 +10,10 @@ debug a protocol locally and then run the _same_ code over a real TLS network, u
 
 It offers:
 
-- **Finite field arithmetic** — a `FiniteField` trait, the Mersenne-61 field
-  ($\mathbb{Z}_p$ with $p = 2^{61}-1$), and the secp256k1 base and scalar fields.
+- **Finite field arithmetic** — a `FiniteField` trait and `Fp`, a prime field generic over a
+  modulus fixed at compile time, with Montgomery arithmetic. Ships with the Mersenne-61 field
+  ($\mathbb{Z}_p$ with $p = 2^{61}-1$) and the secp256k1 base and scalar fields; declaring another
+  takes one macro call.
 - **Elliptic curves** — secp256k1 in affine coordinates.
 - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
 - **Linear algebra** — matrices and vectors over arbitrary rings.
@@ -86,16 +88,20 @@ innermost protocol that was running when it went out. `ProtocolBandwidthTree::wr
 emits [Brendan Gregg's folded-stacks format](https://www.brendangregg.com/flamegraphs.html), which
 [inferno](https://github.com/jonhoo/inferno) renders as a flamegraph — width is bytes, not time:
 
-![Bandwidth flamegraph of the secure-covariance example](docs/cov_bandwidth.svg)
+![Bandwidth flamegraph of the secure-covariance example](docs/cov_bandwidth.png)
 
 That is `examples/secure_covariance/main.rs`: five parties computing the covariance of two parties'
-private datasets with the DN07 protocols, 3,633 bytes on the wire in total. The graph is read as a
+private datasets with the DN07 protocols, 3,648 bytes on the wire in total. The graph is read as a
 cost breakdown of the protocol's own structure. Sharing the two input vectors (`ShareX`, `ShareY`)
 is 13% of the traffic. `Preprocessing` — generating the six multiplication triples, itself a tower of
 `PassiveRandShr` / `PassiveRandDoubleShr` dealing plus a `PassiveShamirTriple` batched open — is the
-single largest phase at 57%. The online `PassiveShamirMul` that _spends_ those triples costs 25%,
+single largest phase at 56%. The online `PassiveShamirMul` that _spends_ those triples costs 25%,
 essentially all of it the one batched open of the masked values, and revealing the result is the
 last 5%.
+
+That figure is exact, and re-running the example reproduces it byte for byte: field elements
+serialize at a fixed width, so what a protocol costs does not depend on which values it happened to
+sample.
 
 The actionable insight is the one you would want from a profiler: the majority of the bandwidth sits
 in a phase that does not depend on the inputs at all, so it can be moved off the critical path and
@@ -103,8 +109,13 @@ run before the data even exists. Generate the folded file for the example yourse
 
 ```text
 cargo run --example secure_covariance
-inferno-flamegraph --countname bytes < covariance_bandwidth.folded > covariance_bandwidth.svg
+inferno-flamegraph --countname bytes --title "Secure covariance: bandwidth by protocol" \
+    < covariance_bandwidth.folded > covariance_bandwidth.svg
 ```
+
+The SVG is interactive — click a frame to zoom, and search with `Ctrl-F`. The image above is a
+static 2× rasterization of it (`rsvg-convert -z 2 covariance_bandwidth.svg -o cov_bandwidth.png`),
+because GitHub does not run the SVG's scripts when it renders a README.
 
 Concatenating several parties' trees into one file is valid — renderers sum duplicate paths, so the
 picture becomes network-wide totals per call path. See also `examples/bandwidth_flamegraph.rs` (the
