@@ -9,8 +9,10 @@
 //!
 //! It offers:
 //!
-//! - **Finite field arithmetic** — a `FiniteField` trait, the Mersenne-61 field
-//!   ($\mathbb{Z}_p$ with $p = 2^{61}-1$), and the secp256k1 base and scalar fields.
+//! - **Finite field arithmetic** — a `FiniteField` trait and `Fp`, a prime field generic over a
+//!   modulus fixed at compile time, with Montgomery arithmetic. Ships with the Mersenne-61 field
+//!   ($\mathbb{Z}_p$ with $p = 2^{61}-1$) and the secp256k1 base and scalar fields; declaring
+//!   another takes one macro call.
 //! - **Elliptic curves** — secp256k1 in affine coordinates.
 //! - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
 //! - **Linear algebra** — matrices and vectors over arbitrary rings.
@@ -197,17 +199,18 @@
 //!   alt="Bandwidth flamegraph of the secure-covariance example, showing Preprocessing as the widest phase"
 //!   width="100%">
 //!
-//! That is `examples/secure_covariance.rs` — five parties computing the covariance of two parties'
-//! private datasets with the DN07 protocols of [`protocol::passive_shamir`], 3,633 bytes on the wire
-//! in total — and the graph is a cost breakdown of the protocol's own structure. Sharing the two
+//! That is `examples/secure_covariance/main.rs` — five parties computing the covariance of two
+//! parties' private datasets with the DN07 protocols of [`protocol::passive_shamir`], 3,648 bytes on
+//! the wire in total — and the graph is a cost breakdown of the protocol's own structure. Sharing the two
 //! input vectors (`ShareX`, `ShareY`) accounts for 13% of the traffic. `Preprocessing`, which
 //! generates the six multiplication triples and is itself a tower of
 //! [`PassiveRandShr`](protocol::passive_shamir::rand_share::PassiveRandShr) /
 //! [`PassiveRandDoubleShr`](protocol::passive_shamir::double_rand_share::PassiveRandDoubleShr)
-//! dealing plus a batched open, is the largest phase at 57%. The online
+//! dealing plus a batched open, is the largest phase at 56%. The online
 //! [`PassiveShamirMul`](protocol::passive_shamir::mul::PassiveShamirMul) that *spends* those triples
 //! costs 25%, almost all of it the single batched open of the masked values, and revealing the
-//! result is the remaining 5%.
+//! result is the remaining 5%. The total is exact and reproducible run to run: field elements
+//! serialize at a fixed width, so a protocol's cost does not depend on which values it sampled.
 //!
 //! That is exactly the insight a profiler is for: most of the bandwidth sits in a phase that does
 //! not depend on the inputs, so it can be lifted off the critical path and run before the data even

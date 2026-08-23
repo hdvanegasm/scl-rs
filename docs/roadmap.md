@@ -79,9 +79,10 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
 
 **What exists and works** (`cargo build`, `cargo test`, `cargo doc -D warnings` all clean; ~5.6 kLOC):
 
-- **`math`** — `Ring` and `FiniteField<const LIMBS>` traits; Mersenne‑61 field; secp256k1 base
-  field, scalar field, and curve; rings, polynomials (Lagrange interpolation), matrices, vectors,
-  NAF. Reasonable unit-test coverage.
+- **`math`** — `Ring` and `FiniteField<const LIMBS>` traits; `Fp`, a prime field generic over a
+  compile-time modulus, with the Mersenne‑61 and secp256k1 base and scalar fields as aliases for
+  it; the secp256k1 curve; rings, polynomials (Lagrange interpolation), matrices, vectors, NAF.
+  Reasonable unit-test coverage.
 - **`ss`** — additive sharing, Shamir, Feldman VSS, with a generic `ShareError<T: Ring>`.
 - **`net`** — real TLS point-to-point networking (`TcpNetwork` over `tokio-rustls`) **and** a
   single-threaded deterministic discrete-event simulator (`SimNetwork` + `Switchboard` + virtual
@@ -288,9 +289,11 @@ release rather than dribbling breaks out continuously.
       (off-curve commitment, tampered share, wrong commitment-vector length, length mismatch) and
       point-level on-curve regression tests. Breaking (new trait method) → minor bump per §2.
 - [ ] **Constant-time review** — _deliberately deferred while the library is research/prototyping
-      (decided 2026-06-22); not a near-term priority._ secp256k1 field sampling uses
-      `random_mod_vartime`; a future audit would check field/curve ops for data-dependent timing on
-      secret inputs and either provide constant-time paths or document the absence precisely. The
+      (decided 2026-06-22); not a near-term priority._ Field sampling still goes through
+      `random_mod_vartime`, though inversion became constant-time incidentally when the fields moved
+      onto `Fp` (`ConstMontyForm::invert` is safegcd). A future audit would check field/curve ops for
+      data-dependent timing on secret inputs and either provide constant-time paths or document the
+      absence precisely. The
       current "no side-channel guarantees" posture is already stated in `SECURITY.md`.
 - [x] **Supply-chain hygiene.** `cargo-audit` (RUSTSEC advisories) runs in CI via a dedicated
       `Security audit` workflow (`.github/workflows/audit.yml`): on push/PR to `main` and a weekly
@@ -412,8 +415,16 @@ CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inceptio
 
 These are not strictly required, but shape how "complete" the stable `0.x` surface feels.
 
-- [ ] **Arbitrary prime-`p` field** (open README item): a general `F_p` instead of only the
-      hand-written Mersenne‑61 / secp256k1 fields.
+- [x] **Arbitrary prime-`p` field — done (unreleased).** `math::field::fp::Fp<M, LIMBS>` is a
+      prime field generic over a modulus fixed at compile time, carried in the type as a
+      `crypto-bigint` `ConstMontyParams` implementation and declared with one `const_monty_params!`
+      call. Arithmetic runs in Montgomery form. All three built-in fields — `Mersenne61`,
+      `Secp256k1PrimeField`, `Secp256k1ScalarField` — are now type aliases for it, which deleted
+      352 lines of hand-written modular arithmetic and made multiplication ~4.5× faster on the
+      secp256k1 fields. Breaking: elements serialize their Montgomery representation at fixed
+      width, so the encoding is not compatible with 0.13.0 (see `CHANGELOG.md` `[Unreleased]`).
+      The migration also fixed a latent bug in `Mersenne61`'s `Div`, which inverted the wrong
+      operand, and closed the test gap that hid it — division is now proptested on every field.
 - [ ] **Test-coverage gap** (open README item): "write missing tests for all functionalities."
       _Progress: `matrix`/`shamir`/`vector`/`naf` landed in 0.5.2; `ss::feldman` adversarial +
       point-level on-curve tests shipped in 0.7.0 (§6); testing-plan **Tier 2** complete
@@ -583,8 +594,9 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
       covariance between two parties' private datasets, an arithmetic circuit whose multiplications
       are *unavoidable* (the operands live on different machines, so no party can pre-compute a
       product locally the way `secure_stats_flamegraph.rs` sidesteps squaring). It runs on the
-      simulator and exports a bandwidth flamegraph (`docs/cov_bandwidth.svg`, reproduced in the
-      README) that attributes 57% of the 3,633 bytes to preprocessing against 25% for the online
+      simulator and exports a bandwidth flamegraph (`docs/cov_bandwidth.svg`, rasterized to
+      `docs/cov_bandwidth.png` for the README) that attributes 56% of the 3,648 bytes to
+      preprocessing against 25% for the online
       multiplication — most of the traffic is input-independent and can leave the critical path.
       Regression tests in `tests/passive_shamir.rs`. _Non-breaking (new protocols); the enabling
       `LinearShare` threshold/RNG change above was the breaking part._
@@ -645,10 +657,11 @@ Prerequisites for most higher protocols; all build directly on Tier 1.
       Tier-1 scheme-generic `Shared` trait. _Non-breaking (new scheme in `ss`/`mpc`)._
 - [ ] **Packed Shamir sharing.** Amortized, SIMD-style sharing (several secrets per polynomial) for
       throughput. Slots into the same `Shared` abstraction. _Non-breaking._
-- [ ] **Arbitrary prime-`p` field** (also the open §10 item). A general `F_p` instead of only the
-      hand-written Mersenne-61 / secp256k1 fields, so all of the above can run over a caller-chosen
-      modulus. This is the one item likely to interact with existing trait bounds
-      (`FiniteField<const LIMBS>`), so scope its API impact deliberately — possibly a **minor** bump.
+- [x] **Arbitrary prime-`p` field — done (unreleased)** (also the §10 item, where the details are).
+      `Fp<M, LIMBS>` carries the modulus in the type, so everything above now runs over a
+      caller-chosen modulus. The anticipated interaction with `FiniteField<const LIMBS>` did not
+      materialize — `Fp` implements the existing trait unchanged, and the three built-in fields
+      became aliases for it, so no call site moved. Breaking only in the serialized encoding.
 - [x] **Virtual-time timeout / deadline primitive — DONE (0.8.2 + 0.9.0)** (also tracked in §14).
       Shipped as `Network::recv_from_with_timeout` (0.8.2) and `Network::recv_any_with_timeout`
       (0.9.0): a virtual-time timer event on the switchboard that races the message
@@ -684,7 +697,7 @@ Tier 2  rand_shared/bit ─► coin-toss     linear algebra (Tier 3)
    ▼                         ▼
 Tier 2  broadcast (recv_any) ─────────────► needs §14 timeout ✅ [0.9.0]
 Tier 3  commitments ─► coin-toss ; bit-decomp ─► comparison (needs rand_bit)
-Tier 4  replicated / packed SS ─► reuse Shared trait ; F_p ─► general modulus
+Tier 4  replicated / packed SS ─► reuse Shared trait ; F_p ─► general modulus ✅
 ```
 
 ---

@@ -9,6 +9,65 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- **`Fp<M, LIMBS>`, a generic prime field** (`math::field::fp`). The modulus is carried in the
+  type as a `crypto-bigint` `ConstMontyParams` implementation, so declaring a new field no longer
+  means writing another `Ring` + `FiniteField` implementation by hand:
+
+  ```rust
+  use crypto_bigint::{const_monty_params, U64};
+  use scl_rs::math::{field::fp::Fp, ring::Ring};
+
+  const_monty_params!(Mod61, U64, "1FFFFFFFFFFFFFFF", "The Mersenne prime 2^61 - 1.");
+  type F = Fp<Mod61, { U64::LIMBS }>;
+
+  let two = F::ONE + &F::ONE;
+  ```
+
+  Arithmetic is performed in Montgomery form. `Fp::new` and `Fp::retrieve` convert between an
+  ordinary integer and that representation.
+
+- Division is now covered by property tests for every field.
+
+### Changed
+
+- **BREAKING: field elements have a new serialized encoding.** `Mersenne61`,
+  `Secp256k1PrimeField` and `Secp256k1ScalarField` are now type aliases for `Fp` and serialize
+  their *Montgomery* representation at fixed width. The bytes are not interchangeable with
+  `0.13.0`, on the wire or on disk, so every party in a deployment must run the same version.
+
+  `Mersenne61` changes most visibly. It used to serialize as a `u64`, which postcard encodes as a
+  varint — 1 byte for `1`, 2 for `300`, 6 for `2^40` — so a share's length on the wire correlated
+  with the magnitude of the value it carried. It is now a constant 9 bytes.
+
+  This makes simulated bandwidth **reproducible**, which it previously was not: five runs of
+  `examples/secure_covariance` used to report 3634, 3640, 3632, 3637 and 3644 bytes, because the
+  totals moved with whichever values the run happened to sample. The same example now reports
+  3648 bytes every time. Figures quoted in `README.md` and in the example docs were updated
+  accordingly.
+
+- Deserialization now rejects out-of-range values. `ConstMontyForm`'s `Deserialize` refuses any
+  encoding whose value is `>= modulus`; the previous derived implementations accepted such input
+  and carried it into arithmetic that assumes a reduced operand.
+
+- **`Ring::BIT_SIZE` is now specified as the width of the representation** — the number of bits an
+  element occupies when it is stored or sent — rather than the width of the largest value. It is a
+  whole number of limbs, so `Mersenne61::BIT_SIZE` is `64` rather than `61`.
+
+### Fixed
+
+- **`Debug` on a field element printed its Montgomery form.** The derived implementation exposed
+  the internal representation, which differs from the value by a factor of $R$ — `Mersenne61::ONE`
+  displayed as `0x8`, not `1`. `Fp` now formats the canonical representative, so a field element
+  debug-prints the number it denotes.
+
+- **`Mersenne61` divided in the wrong direction.** `a / b` computed `b / a`, and the error case
+  was inverted along with it: `0 / x` failed with `ZeroInverse` while `x / 0` succeeded. The
+  implementation inverted `self` where it should have inverted `rhs`. No other field was
+  affected, and no code in the crate used the operator — `Lagrange` interpolation divides through
+  `inverse()` directly — so protocol results were never wrong.
+
 ## [0.13.0] - 2026-07-22
 
 Drops the `async-trait` dependency. The crate now uses native `async fn` in traits, stable since

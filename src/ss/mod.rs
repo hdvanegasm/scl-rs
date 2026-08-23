@@ -147,7 +147,7 @@ pub trait LinearShare:
     + for<'a> Sub<&'a Self, Output = Self>
     + for<'a> Sub<&'a Self::Value, Output = Self>
     + for<'a> Mul<&'a Self::Value, Output = Self>
-    + for<'a> Neg<Output = Self>
+    + Neg<Output = Self>
 {
     /// The secret domain: the ring (or field) the shared value and the public constants live in.
     type Value: Ring;

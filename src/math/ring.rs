@@ -22,7 +22,12 @@ pub trait Ring:
     + Copy
     + Hash
 {
-    /// Bit size of an element of the ring.
+    /// Bit size of the representation of a ring element, that is, the number of bits the element
+    /// occupies when it is stored or sent over the network.
+    ///
+    /// This is the width of the representation, not the width of the largest value: for a ring of
+    /// integers modulo $m$ the elements are stored in whole limbs, so `BIT_SIZE` is a multiple of
+    /// the limb size and is at least $\lceil \log_2 m \rceil$.
     const BIT_SIZE: usize;
 
     /// Additive identity of the ring.
