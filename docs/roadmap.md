@@ -1,13 +1,17 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-07-10
+**Date:** 2026-08-23
 
-**Current version:** 0.10.0 (released 2026-07-10) — simulation hooks, typed protocol ids, and
-post-hoc bandwidth profiling with flamegraph export. Before that: 0.9.1 (2026-07-08), an internal
-waker-cleanup patch on top of 0.9.0 (released the same day), which completed the virtual-time
-timeout primitive begun in 0.8.2 (2026-07-07). The MPC arithmetic layer landed in 0.8.0
-(2026-07-06), with the simulator FIFO fix in 0.8.1 (same day). Before that: 0.7.1/0.7.0
-(2026-06-30), 0.6.0 (2026-06-25), 0.5.2 (2026-06-23).
+**Current version:** 0.14.0 (released 2026-08-23) — the finite fields rebuilt on `Fp`, a prime
+field generic over a compile-time modulus, closing the long-standing §10/§11 "arbitrary prime-`p`
+field" item. Before that: 0.13.0 (2026-07-22) dropped the `async-trait` dependency for native
+`async fn` in traits; 0.12.1 (2026-07-21) an internal patch on 0.12.0 (2026-07-20), which added the
+LAN/WAN `SimpleNetworkConfig` presets and the `benches/comparison` simulated-vs-real harness;
+0.11.2 (2026-07-15) fixed the simulator charging a full RTT of propagation per message, on top of
+0.11.1 (2026-07-14, docs) and 0.11.0 (same day), which made `LinearShare` dealing threshold- and
+RNG-aware. Before that: 0.10.0 (2026-07-10) — simulation hooks, typed protocol ids, and post-hoc
+bandwidth profiling with flamegraph export — 0.9.1/0.9.0 (2026-07-08), 0.8.2 (2026-07-07),
+0.8.1/0.8.0 (2026-07-06), 0.7.1/0.7.0 (2026-06-30), 0.6.0 (2026-06-25), 0.5.2 (2026-06-23).
 
 **0.10.0 contents:** a **simulation-hook module** — `TriggeredHook` moved out of `switchboard` into
 its own `net::simulation::hook`, joined by the first built-in hook, `MetricHook`, which totals the
@@ -415,14 +419,14 @@ CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inceptio
 
 These are not strictly required, but shape how "complete" the stable `0.x` surface feels.
 
-- [x] **Arbitrary prime-`p` field — done (unreleased).** `math::field::fp::Fp<M, LIMBS>` is a
+- [x] **Arbitrary prime-`p` field — done (0.14.0).** `math::field::fp::Fp<M, LIMBS>` is a
       prime field generic over a modulus fixed at compile time, carried in the type as a
       `crypto-bigint` `ConstMontyParams` implementation and declared with one `const_monty_params!`
       call. Arithmetic runs in Montgomery form. All three built-in fields — `Mersenne61`,
       `Secp256k1PrimeField`, `Secp256k1ScalarField` — are now type aliases for it, which deleted
       352 lines of hand-written modular arithmetic and made multiplication ~4.5× faster on the
       secp256k1 fields. Breaking: elements serialize their Montgomery representation at fixed
-      width, so the encoding is not compatible with 0.13.0 (see `CHANGELOG.md` `[Unreleased]`).
+      width, so the encoding is not compatible with 0.13.0 (see `CHANGELOG.md` `[0.14.0]`).
       The migration also fixed a latent bug in `Mersenne61`'s `Div`, which inverted the wrong
       operand, and closed the test gap that hid it — division is now proptested on every field.
 - [ ] **Test-coverage gap** (open README item): "write missing tests for all functionalities."
@@ -657,7 +661,7 @@ Prerequisites for most higher protocols; all build directly on Tier 1.
       Tier-1 scheme-generic `Shared` trait. _Non-breaking (new scheme in `ss`/`mpc`)._
 - [ ] **Packed Shamir sharing.** Amortized, SIMD-style sharing (several secrets per polynomial) for
       throughput. Slots into the same `Shared` abstraction. _Non-breaking._
-- [x] **Arbitrary prime-`p` field — done (unreleased)** (also the §10 item, where the details are).
+- [x] **Arbitrary prime-`p` field — done (0.14.0)** (also the §10 item, where the details are).
       `Fp<M, LIMBS>` carries the modulus in the type, so everything above now runs over a
       caller-chosen modulus. The anticipated interaction with `FiniteField<const LIMBS>` did not
       materialize — `Fp` implements the existing trait unchanged, and the three built-in fields
@@ -724,6 +728,13 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.9.0**       | _recv-any timeout — timeout primitive complete_ ✅ **RELEASED 2026-07-08** | Completes the §14 timeout primitive: **`Network::recv_any_with_timeout(timeout)`** returns the next packet from *any* party together with its sender, or `NetworkError::Timeout(None)` at the deadline (no single culprit). Same switchboard virtual-clock timer design as 0.8.2 (one timer per call; the deadline is checked on the empty path, so an all-silent quorum times out instead of deadlocking the scheduler; post-deadline packets stay queued). Batched breaking changes per §2: `Timeout` carries `Option<PartyId>`, `recv_any` returns `(PartyId, Packet)`, and the new method is required on `Network`. Regression tests (all-silent / late-packet / prompt sender) in `tests/recv_timeout.rs`; module docs for the simulation internals. See `CHANGELOG.md` `[0.9.0]`. |
 | **0.9.1**       | _recv-any timeout cleanup_ ✅ **RELEASED 2026-07-08** | Internal bug-fix patch per §2: `recv_any_with_timeout`'s timeout path now clears the wakers it parked on each inbound link, matching the success path (the leftovers were harmless — an extra ignored re-poll at worst — but the bookkeeping is now symmetric). No API change. See `CHANGELOG.md` `[0.9.1]`. |
 | **0.10.0**      | _Hooks, protocol ids & bandwidth profiling_ ✅ **RELEASED 2026-07-10** | The `TriggeredHook` extension point extracted from `switchboard` into `net::simulation::hook`, plus the first built-in hook, **`MetricHook`** (totals the payload bytes each party sends, in aggregate and per sender; self-sends excluded). Plus **`Protocol::name` → `Protocol::id`**, returning the `Copy` `ProtocolId` newtype over `&'static str` (prelude-exported) that also types the `protocol_name` field on the `ProtocolBegin`/`ProtocolEnd` events. Both breaking, so a minor bump per §2. On top of these, **post-hoc bandwidth profiling**: `SimulationOutcome::bandwidth_tree_for` rebuilds the per-protocol call tree (`ProtocolBandwidthTree`, self bytes per node) from a party's trace, and `write_folded` exports it in the folded-stacks flamegraph format (§14), demoed in `examples/bandwidth_flamegraph.rs` and `examples/secure_stats_flamegraph.rs`. See `CHANGELOG.md` `[0.10.0]`. |
+| **0.11.0**      | _Threshold- and RNG-aware dealing_ ✅ **RELEASED 2026-07-14** | `LinearShare` dealing became threshold- and RNG-aware: the trait gained a threshold parameter and `PassiveDealShr::dealer` takes the scheme's threshold as a fourth argument. Breaking, so a minor bump per §2. See `CHANGELOG.md` `[0.11.0]`. |
+| **0.11.1**      | _Docs patch_ ✅ **RELEASED 2026-07-14**            | Documentation only — no API or behaviour change. See `CHANGELOG.md` `[0.11.1]`. |
+| **0.11.2**      | _Propagation-delay fix_ ✅ **RELEASED 2026-07-15**  | Bug-fix patch per §2: the simulator's network timing model charged a full RTT of propagation per message where it should have charged one-way latency, so every simulated timing was inflated. See `CHANGELOG.md` `[0.11.2]`. |
+| **0.12.0**      | _Network presets & benchmark harness_ ✅ **RELEASED 2026-07-20** | `SimpleNetworkConfig::lan()` / `::wan()` presets, plus the `tc netem`-shaped simulated-vs-real benchmark harness in `benches/comparison` that backs the README's fidelity claims. See `CHANGELOG.md` `[0.12.0]`. |
+| **0.12.1**      | _Internal patch_ ✅ **RELEASED 2026-07-21**         | Internal only — no API or behaviour change, and no change to any simulated timing. See `CHANGELOG.md` `[0.12.1]`. |
+| **0.13.0**      | _Native `async fn` in traits_ ✅ **RELEASED 2026-07-22** | Drops the `async-trait` dependency; `Protocol` and `Network` declare their async methods natively (stable since Rust 1.75, well within the 1.85.1 MSRV, which is unchanged). Implementors delete the `#[async_trait]` attribute. Breaking, so a minor bump per §2. See `CHANGELOG.md` `[0.13.0]`. |
+| **0.14.0**      | _Generic prime field_ ✅ **RELEASED 2026-08-23**    | The §10/§11 **arbitrary prime-`p` field**: `math::field::fp::Fp<M, LIMBS>` carries the modulus in the type as a `crypto-bigint` `ConstMontyParams` implementation, declared with one `const_monty_params!` call, with Montgomery arithmetic. `Mersenne61`, `Secp256k1PrimeField` and `Secp256k1ScalarField` are now aliases for it — 352 lines of hand-written modular arithmetic deleted, multiplication ~4.5× faster on the secp256k1 fields. Also fixed a latent `Mersenne61` `Div` operand swap (untested until now; division is proptested on every field) and a `Debug` impl that printed the Montgomery form as the value. Breaking: elements serialize their Montgomery representation at fixed width, incompatible with 0.13.0 — so a minor bump per §2. See `CHANGELOG.md` `[0.14.0]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |

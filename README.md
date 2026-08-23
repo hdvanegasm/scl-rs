@@ -45,17 +45,18 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.13.0"
+scl-rs = "0.14.0"
 ```
 
 ### Releases vs. `main`
 
 The supported way to use scl-rs is the latest **released crate on crates.io**; the
-installation instructions above refer to it.
+installation instructions above refer to it. Each release is tagged `vX.Y.Z`, so a released
+version can always be recovered from the tag.
 
-The **`main` branch** is the development tip. It is kept green on CI (`fmt`, `clippy`,
-`test`, `doc`) on every commit, so it builds and its tests pass — but it is **unreleased**,
-and its public API may **change between commits** without a version bump or notice.
+The **`main` branch** is the development tip. It is kept green on CI (`fmt`, `clippy`, `test`,
+`doc`) on every commit, so it builds and its tests pass — but it is **unreleased**, and its
+public API may **change between commits** without a version bump or notice.
 
 To use unreleased work, depend on a specific commit and pin the `rev`:
 

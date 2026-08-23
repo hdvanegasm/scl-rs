@@ -9,6 +9,15 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-23
+
+Rebuilds the finite fields on `Fp`, a prime field generic over a modulus fixed at compile time,
+with Montgomery arithmetic. `Mersenne61`, `Secp256k1PrimeField` and `Secp256k1ScalarField` become
+aliases for it, which deletes 352 lines of hand-written modular arithmetic and makes multiplication
+~4.5× faster on the secp256k1 fields. Declaring a further field is now one macro call. Breaking:
+elements serialize their Montgomery representation at fixed width, so the encoding is not
+compatible with `0.13.0`.
+
 ### Added
 
 - **`Fp<M, LIMBS>`, a generic prime field** (`math::field::fp`). The modulus is carried in the
@@ -875,7 +884,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.11.2...v0.12.0
