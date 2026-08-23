@@ -1,5 +1,6 @@
+use crypto_bigint::U256;
 use scl_rs::math::{
-    field::{secp256k1_prime::Secp256k1PrimeField, FiniteField},
+    field::{secp256k1_prime::Secp256k1PrimeField, FieldError, FiniteField},
     ring::Ring,
 };
 use std::ops::{Mul, Sub};
@@ -19,6 +20,17 @@ fn inverse() {
     let inverse = value.inverse().unwrap();
     let mult = value.mul(&inverse);
     assert_eq!(mult, Secp256k1PrimeField::ONE);
+}
+
+/// Reads `MODULUS`, which forces const-evaluation of the associated constant. Nothing else in the
+/// crate reads it, so without this a malformed definition (such as a self-referential one) would
+/// compile clean and only fail at the first real use.
+#[test]
+fn modulus_is_correct() {
+    assert_eq!(
+        Secp256k1PrimeField::MODULUS.get(),
+        U256::from_be_hex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F")
+    );
 }
 
 use proptest::prelude::*;
@@ -91,5 +103,21 @@ proptest! {
     #[test]
     fn postcard_roundtrip(a in element()) {
         roundtrip(a)?;
+    }
+
+    #[test]
+    fn div_inverts_mul(a in element(), b in element()) {
+        prop_assume!(b != Secp256k1PrimeField::ZERO);
+        prop_assert_eq!((a / &b).unwrap() * &b, a);
+    }
+
+    #[test]
+    fn div_by_one_is_identity(a in element()) {
+        prop_assert_eq!((a / &Secp256k1PrimeField::ONE).unwrap(), a);
+    }
+
+    #[test]
+    fn div_by_zero_errors(a in element()) {
+        prop_assert!(matches!(a / &Secp256k1PrimeField::ZERO, Err(FieldError::ZeroInverse)));
     }
 }

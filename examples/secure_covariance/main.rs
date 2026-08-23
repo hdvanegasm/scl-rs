@@ -40,8 +40,8 @@
 //! Beaver multiplication spends one triple per product, and triples do not depend on the inputs. The
 //! example makes that split explicit — a `Preprocessing` phase generating six triples (`Random`,
 //! `Random`, `Double-Random`, then triple generation), and an online phase that spends them. The
-//! bandwidth flamegraph this example writes puts numbers on the split: of the 3,633 bytes that cross
-//! the wire, `Preprocessing` is the largest phase at 57%, against 25% for the online
+//! bandwidth flamegraph this example writes puts numbers on the split: of the 3,648 bytes that cross
+//! the wire, `Preprocessing` is the largest phase at 56%, against 25% for the online
 //! `PassiveShamirMul` that spends its output (13% goes to sharing the inputs, 5% to revealing the
 //! result). The point is not that the online phase is negligible — at `n = 5` it plainly is not —
 //! but that the majority of the traffic depends on **nothing**, so it can be generated before the
@@ -263,6 +263,9 @@ fn main() {
         "{VECTOR_LEN} secure multiplications, all in a single online round; \
          everything else was local.\n"
     );
+
+    println!("party {OWNER_X} trace");
+    println!("{}\n", outcome.traces[&parties[0]]);
 
     // Export every party's bandwidth call tree into one folded-stacks file; renderers sum duplicate
     // paths, so the graph shows network-wide totals per call path.

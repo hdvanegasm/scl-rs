@@ -13,8 +13,12 @@ use std::{fmt::Debug, ops::Div};
 use thiserror::Error;
 
 /// This module contains an implementation of the field Mersenne 61 which is the
-/// finite field of integers modulo $2^61 - 1$.
+/// finite field of integers modulo $2^{61} - 1$.
 pub mod mersenne61;
+
+/// This module contains a generic prime field $\mathbb{Z}_p$ whose modulus is fixed at compile
+/// time, implemented on top of the constant-modulus Montgomery arithmetic of `crypto-bigint`.
+pub mod fp;
 
 /// This module contains the field used to define the elliptic curve secp256k1.
 pub mod secp256k1_prime;
