@@ -1,6 +1,7 @@
+use crypto_bigint::U64;
 use rand::Rng;
 use scl_rs::math::{
-    field::{mersenne61::Mersenne61, FiniteField},
+    field::{mersenne61::Mersenne61, FieldError, FiniteField},
     ring::Ring,
 };
 use std::ops::{Add, Mul, Sub};
@@ -82,6 +83,17 @@ fn mult_conmutativity() {
     }
 }
 
+/// Reads `MODULUS`, which forces const-evaluation of the associated constant. Nothing else in the
+/// crate reads it, so without this a malformed definition (such as a self-referential one) would
+/// compile clean and only fail at the first real use.
+#[test]
+fn modulus_is_correct() {
+    assert_eq!(
+        Mersenne61::MODULUS.get(),
+        U64::from_be_hex("1FFFFFFFFFFFFFFF")
+    );
+}
+
 use proptest::prelude::*;
 
 mod common;
@@ -145,5 +157,21 @@ proptest! {
     #[test]
     fn sub_equals_add_negate(a in element(), b in element()) {
         prop_assert_eq!(a - &b, a + &b.negate());
+    }
+
+    #[test]
+    fn div_inverts_mul(a in element(), b in element()) {
+        prop_assume!(b != Mersenne61::ZERO);
+        prop_assert_eq!((a / &b).unwrap() * &b, a);
+    }
+
+    #[test]
+    fn div_by_one_is_identity(a in element()) {
+        prop_assert_eq!((a / &Mersenne61::ONE).unwrap(), a);
+    }
+
+    #[test]
+    fn div_by_zero_errors(a in element()) {
+        prop_assert!(matches!(a / &Mersenne61::ZERO, Err(FieldError::ZeroInverse)));
     }
 }
