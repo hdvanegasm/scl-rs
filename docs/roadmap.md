@@ -1,17 +1,21 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-08-23
+**Date:** 2026-08-24
 
-**Current version:** 0.14.0 (released 2026-08-23) — the finite fields rebuilt on `Fp`, a prime
-field generic over a compile-time modulus, closing the long-standing §10/§11 "arbitrary prime-`p`
-field" item. Before that: 0.13.0 (2026-07-22) dropped the `async-trait` dependency for native
-`async fn` in traits; 0.12.1 (2026-07-21) an internal patch on 0.12.0 (2026-07-20), which added the
-LAN/WAN `SimpleNetworkConfig` presets and the `benches/comparison` simulated-vs-real harness;
-0.11.2 (2026-07-15) fixed the simulator charging a full RTT of propagation per message, on top of
-0.11.1 (2026-07-14, docs) and 0.11.0 (same day), which made `LinearShare` dealing threshold- and
-RNG-aware. Before that: 0.10.0 (2026-07-10) — simulation hooks, typed protocol ids, and post-hoc
-bandwidth profiling with flamegraph export — 0.9.1/0.9.0 (2026-07-08), 0.8.2 (2026-07-07),
-0.8.1/0.8.0 (2026-07-06), 0.7.1/0.7.0 (2026-06-30), 0.6.0 (2026-06-25), 0.5.2 (2026-06-23).
+**Current version:** 0.14.1 (released 2026-08-24) — `Vector` and `Matrix` widened past ring
+elements: their operators are bounded on the element operation itself rather than on `Ring`, so both
+containers hold secret shares as well as ring elements, and the linear operations over shares stay
+local, with `mul_constant` for scaling by a public constant. On top of 0.14.0 (2026-08-23), the
+finite fields rebuilt on `Fp`, a prime field generic over a compile-time modulus, closing the
+long-standing §10/§11 "arbitrary prime-`p` field" item. Before that: 0.13.0 (2026-07-22) dropped the
+`async-trait` dependency for native `async fn` in traits; 0.12.1 (2026-07-21) an internal patch on
+0.12.0 (2026-07-20), which added the LAN/WAN `SimpleNetworkConfig` presets and the
+`benches/comparison` simulated-vs-real harness; 0.11.2 (2026-07-15) fixed the simulator charging a
+full RTT of propagation per message, on top of 0.11.1 (2026-07-14, docs) and 0.11.0 (same day),
+which made `LinearShare` dealing threshold- and RNG-aware. Before that: 0.10.0 (2026-07-10) —
+simulation hooks, typed protocol ids, and post-hoc bandwidth profiling with flamegraph export —
+0.9.1/0.9.0 (2026-07-08), 0.8.2 (2026-07-07), 0.8.1/0.8.0 (2026-07-06), 0.7.1/0.7.0 (2026-06-30),
+0.6.0 (2026-06-25), 0.5.2 (2026-06-23).
 
 **0.10.0 contents:** a **simulation-hook module** — `TriggeredHook` moved out of `switchboard` into
 its own `net::simulation::hook`, joined by the first built-in hook, `MetricHook`, which totals the
@@ -646,6 +650,9 @@ Prerequisites for most higher protocols; all build directly on Tier 1.
       reusing the existing `math::matrix` / `math::vector` types with Tier-1 `Shared<F>` entries and
       the Beaver `mul` (batch all the products into one preprocessing draw + one opening round). Cheap
       once Tier 1 exists; a good showcase of amortized `open_many`. _Non-breaking._
+      _The local half landed in 0.14.1_: both containers now take `S: LinearShare` entries and
+      support the communication-free operations (`±`, unary `-`, `mul_constant`). What remains is
+      the interactive half — the products, which need Beaver `mul`.
 - [ ] **Bit-decomposition and comparison** (`<`, `≤`, `==`, `is_zero`, `msb`). The gateway from
       arithmetic MPC to non-arithmetic MPC (sorting, selection, thresholding). This is a **larger
       effort** — it needs shared random bits (Tier 2), bitwise sub-protocols, and careful field-size
@@ -735,6 +742,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.12.1**      | _Internal patch_ ✅ **RELEASED 2026-07-21**         | Internal only — no API or behaviour change, and no change to any simulated timing. See `CHANGELOG.md` `[0.12.1]`. |
 | **0.13.0**      | _Native `async fn` in traits_ ✅ **RELEASED 2026-07-22** | Drops the `async-trait` dependency; `Protocol` and `Network` declare their async methods natively (stable since Rust 1.75, well within the 1.85.1 MSRV, which is unchanged). Implementors delete the `#[async_trait]` attribute. Breaking, so a minor bump per §2. See `CHANGELOG.md` `[0.13.0]`. |
 | **0.14.0**      | _Generic prime field_ ✅ **RELEASED 2026-08-23**    | The §10/§11 **arbitrary prime-`p` field**: `math::field::fp::Fp<M, LIMBS>` carries the modulus in the type as a `crypto-bigint` `ConstMontyParams` implementation, declared with one `const_monty_params!` call, with Montgomery arithmetic. `Mersenne61`, `Secp256k1PrimeField` and `Secp256k1ScalarField` are now aliases for it — 352 lines of hand-written modular arithmetic deleted, multiplication ~4.5× faster on the secp256k1 fields. Also fixed a latent `Mersenne61` `Div` operand swap (untested until now; division is proptested on every field) and a `Debug` impl that printed the Montgomery form as the value. Breaking: elements serialize their Montgomery representation at fixed width, incompatible with 0.13.0 — so a minor bump per §2. See `CHANGELOG.md` `[0.14.0]`. |
+| **0.14.1**      | _Containers over shares_ ✅ **RELEASED 2026-08-24** | Non-breaking feature-and-fix patch per §2: `Vector` and `Matrix` operators are bounded on the element operation itself (`T: for<'a> Add<&'a T, Output = T>` and friends) instead of on `Ring`, so a container may hold ring elements *or* secret shares — over `S: LinearShare` the `+`, `-`, `+=`, `-=` and unary `-` on a whole container are the local, communication-free operations of a linear scheme, and the new `Vector::mul_constant` / `Matrix::mul_constant` scale a container of shares by a public constant. Share × share multiplication is deliberately still absent (it needs an interactive protocol), so the element-wise and matrix products stay ring-only — the local groundwork for the §11.3 shared linear algebra, not that item itself. Also adds `Neg` for `Matrix` and `Vector<T> * &T`, and fixes `Matrix<T> * &T` on non-square matrices, which panicked or left trailing columns unscaled. Non-breaking (`Ring` implies every new bound). See `CHANGELOG.md` `[0.14.1]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |

@@ -9,6 +9,18 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-08-24
+
+Widens `Vector` and `Matrix` past ring elements. Their operators were bounded on `Ring`; they are
+now bounded on the element operation itself, so a container may hold ring elements *or* secret
+shares, and `+`, `-`, `+=`, `-=` and unary `-` over a container of shares are the local,
+communication-free operations of a linear scheme — a party computes on a whole vector or matrix of
+shares without a round of communication. Scaling a container of shares by a public constant is the
+new `mul_constant` on both types. Share × share multiplication stays out of reach, since it needs
+an interactive protocol, so the element-wise and matrix products remain ring-only. Also fixes
+scalar multiplication of a non-square `Matrix`. Nothing here is breaking: `Ring` implies every new
+bound, so `0.14.0` code compiles unchanged.
+
 ### Added
 
 - **Scalar multiplication for `Vector`.** `Vector<T> * &T` and `&Vector<T> * &T` scale every entry,
@@ -936,7 +948,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.0...v0.12.1
