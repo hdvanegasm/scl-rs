@@ -9,6 +9,58 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- **Scalar multiplication for `Vector`.** `Vector<T> * &T` and `&Vector<T> * &T` scale every entry,
+  mirroring the `Matrix<T> * &T` operator that already existed.
+
+- **Negation for `Matrix`.** `-Matrix<T>` and `-&Matrix<T>`, bounded on
+  `T: Neg<Output = T> + Clone`, closing a long-standing asymmetry with `Vector`, which has had
+  `Neg` throughout. Works over ring elements and over shares.
+
+- **`Vector::mul_constant` and `Matrix::mul_constant`** scale a container of *shares* by a public
+  constant — the `(i, j)` output share is `[c · x_ij]`, computed locally with no communication (see
+  `LinearShare`).
+
+  These are inherent methods rather than `Mul` operators because the scalar lives in `S::Value`
+  while the entries are shares, and the coherence checker rejects the resulting impl: nothing
+  prevents `S::Value` from being `Vector<S>`, so `impl<S: LinearShare> Mul<&S::Value> for Vector<S>`
+  overlaps the element-wise `Mul<&Vector<S>>`. This follows the convention already set by
+  `Vector::add_shares` and `Matrix::mul_shares`.
+
+### Changed
+
+- **`Vector` and `Matrix` operators are no longer restricted to ring elements.** `Add`, `Sub`,
+  `AddAssign`, `SubAssign` and `Mul` were bounded on `T: Ring`, which reduced to `Copy` plus the
+  operator used in the body. They are now bounded on the element operation itself —
+  `T: for<'a> Add<&'a T, Output = T>` and so on — and read their operands by move or by `Clone`
+  rather than through `Copy`, so both containers can hold values that are `Clone` but not `Copy`.
+
+  The point is that `Vector<S>` and `Matrix<S>` now work for any `S: LinearShare`: adding,
+  subtracting and negating containers of shares are the local, communication-free operations of a
+  linear scheme, so a party can compute on a whole vector or matrix of shares without a round of
+  communication.
+
+  Multiplication deliberately stays out of reach for shares. Element-wise `Vector` `Mul`,
+  matrix–matrix and matrix–vector products all require `T: Mul<&T>` — share × share — which is not
+  a local operation and is absent from `LinearShare` by design; it needs an interactive protocol
+  such as Beaver multiplication. Scaling a container of shares by a *public* constant is local, and
+  is what `mul_constant` provides.
+
+- **`Matrix`'s `Mul` impls are bounded on the operations rather than on `Ring`**, using
+  higher-ranked bounds (`T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T>`). The
+  accumulator in matrix–matrix and matrix–vector products is now seeded with the first term of each
+  sum rather than a zero element, so no additive-identity bound is needed; `Matrix::allocate`
+  rejects zero dimensions, so that term always exists.
+
+### Fixed
+
+- **Scalar multiplication of a non-square matrix was wrong.** `Matrix<T> * &T` iterated its inner
+  loop over `0..self.rows` where it should have used `0..self.columns`. A matrix with more rows than
+  columns panicked through the `expect` on `get_mut`; one with more columns than rows silently left
+  the trailing columns unscaled. Square matrices — all the operator had test coverage for — were
+  unaffected.
+
 ## [0.14.0] - 2026-08-23
 
 Rebuilds the finite fields on `Fp`, a prime field generic over a modulus fixed at compile time,

@@ -16,7 +16,8 @@ It offers:
   takes one macro call.
 - **Elliptic curves** — secp256k1 in affine coordinates.
 - **Polynomials** over arbitrary rings, with Lagrange interpolation over finite fields.
-- **Linear algebra** — matrices and vectors over arbitrary rings.
+- **Linear algebra** — matrices and vectors over arbitrary rings, and over secret shares, whose
+  linear operations stay local (no communication).
 - **Secret sharing** — additive, Shamir, and Feldman verifiable secret sharing, unified by a
   `LinearShare` trait that exposes their local, communication-free linear operations (adding two
   shares, and adding or multiplying by public constants) — the arithmetic layer MPC protocols build

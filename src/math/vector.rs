@@ -17,7 +17,50 @@ pub enum Error {
 /// Specialized result type for [`enum@Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Vector whose elements belong to a ring.
+/// Vector over any element type that supports the arithmetic performed on it.
+///
+/// The operators are bounded on the element operations themselves rather than on [`Ring`], so the
+/// entries may be ring elements *or* secret shares. Over shares (`T: LinearShare`), `+`, `-` and
+/// unary `-` are the local, communication-free operations of a linear scheme, and
+/// [`mul_constant`](Vector::mul_constant) scales every entry by a public constant.
+///
+/// Element-wise multiplication requires `T: Mul<&T>` — share × share — which is not a local
+/// operation and is deliberately absent from [`LinearShare`], so it remains available only over
+/// rings. To add a vector of *public* constants to a vector of shares, use
+/// [`add_shares`](Vector::add_shares).
+///
+/// # Examples
+///
+/// Each party scales the share vector it holds by a public constant, locally, and the result
+/// reconstructs to the scaled secret:
+///
+/// ```
+/// use scl_rs::{
+///     math::{field::mersenne61::Mersenne61, vector::Vector},
+///     net::PartyId,
+///     ss::{additive::AdditiveSS, LinearShare},
+/// };
+///
+/// let parties: Vec<PartyId> = (0..3usize).map(PartyId::from).collect();
+/// let shares = <AdditiveSS<Mersenne61> as LinearShare>::shares_from_secret(
+///     Mersenne61::from(7u64),
+///     &parties,
+///     (),
+///     &mut rand::rng(),
+/// )
+/// .unwrap();
+///
+/// // Party `i` holds a one-entry vector; each scales it without any communication.
+/// let scaled: Vec<Vector<AdditiveSS<Mersenne61>>> = shares
+///     .iter()
+///     .map(|share| Vector::from(vec![share.clone()]).mul_constant(&Mersenne61::from(2u64)))
+///     .collect();
+///
+/// let entries: Vec<AdditiveSS<Mersenne61>> = scaled.iter().map(|v| v[0].clone()).collect();
+/// let opened =
+///     <AdditiveSS<Mersenne61> as LinearShare>::secret_from_shares(&entries, &parties).unwrap();
+/// assert_eq!(opened, Mersenne61::from(14u64));
+/// ```
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct Vector<T>(Vec<T>);
 
@@ -109,6 +152,23 @@ where
     }
 }
 
+impl<S> Vector<S>
+where
+    S: LinearShare,
+{
+    /// Multiplies every share in this vector by the public constant `constant`: the `i`-th output
+    /// share is `[c · x_i]` — a local, communication-free operation (see [`LinearShare`]).
+    ///
+    /// This is scalar multiplication for a vector of shares. It is an inherent method rather than a
+    /// `Mul` operator because the scalar lives in [`S::Value`](LinearShare::Value) while the entries
+    /// are shares: an `impl Mul<&S::Value> for Vector<S>` overlaps the element-wise
+    /// [`Mul<&Vector<S>>`] impl, since nothing stops `S::Value` from being `Vector<S>`, and the
+    /// coherence checker rejects it.
+    pub fn mul_constant(self, constant: &S::Value) -> Self {
+        Self(self.0.into_iter().map(|share| share * constant).collect())
+    }
+}
+
 impl<T> Abbreviate for Vector<T> {
     const ABBREVIATION: &'static str = "vec";
 }
@@ -161,7 +221,7 @@ where
 
 impl<T> Add<&Vector<T>> for Vector<T>
 where
-    T: Ring,
+    T: for<'a> Add<&'a T, Output = T>,
 {
     type Output = Result<Self>;
 
@@ -170,8 +230,8 @@ where
             return Err(Error::IncompatibleDimension(self.len(), other.len()));
         }
         let mut output = Vec::with_capacity(other.0.len());
-        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem + other_elem);
+        for (self_elem, other_elem) in self.0.into_iter().zip(other.0.iter()) {
+            output.push(self_elem + other_elem);
         }
         Ok(Self(output))
     }
@@ -179,7 +239,7 @@ where
 
 impl<T> Add<&Vector<T>> for &Vector<T>
 where
-    T: Ring,
+    T: for<'a> Add<&'a T, Output = T> + Clone,
 {
     type Output = Result<Vector<T>>;
 
@@ -189,7 +249,7 @@ where
         }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem + other_elem);
+            output.push(self_elem.clone() + other_elem);
         }
         Ok(Vector(output))
     }
@@ -197,7 +257,7 @@ where
 
 impl<T> Sub<&Vector<T>> for Vector<T>
 where
-    T: Ring,
+    T: for<'a> Sub<&'a T, Output = T>,
 {
     type Output = Result<Self>;
 
@@ -206,8 +266,8 @@ where
             return Err(Error::IncompatibleDimension(self.len(), other.len()));
         }
         let mut output = Vec::with_capacity(other.0.len());
-        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem - other_elem);
+        for (self_elem, other_elem) in self.0.into_iter().zip(other.0.iter()) {
+            output.push(self_elem - other_elem);
         }
         Ok(Self(output))
     }
@@ -215,7 +275,7 @@ where
 
 impl<T> Sub<&Vector<T>> for &Vector<T>
 where
-    T: Ring,
+    T: for<'a> Sub<&'a T, Output = T> + Clone,
 {
     type Output = Result<Vector<T>>;
 
@@ -225,7 +285,7 @@ where
         }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem - other_elem);
+            output.push(self_elem.clone() - other_elem);
         }
         Ok(Vector(output))
     }
@@ -233,7 +293,7 @@ where
 
 impl<T> Mul<&Vector<T>> for Vector<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T>,
 {
     type Output = Result<Self>;
 
@@ -242,8 +302,8 @@ where
             return Err(Error::IncompatibleDimension(self.len(), other.len()));
         }
         let mut output = Vec::with_capacity(other.0.len());
-        for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem * other_elem);
+        for (self_elem, other_elem) in self.0.into_iter().zip(other.0.iter()) {
+            output.push(self_elem * other_elem);
         }
         Ok(Self(output))
     }
@@ -251,7 +311,7 @@ where
 
 impl<T> Mul<&Vector<T>> for &Vector<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + Clone,
 {
     type Output = Result<Vector<T>>;
 
@@ -261,8 +321,31 @@ where
         }
         let mut output = Vec::with_capacity(other.0.len());
         for (self_elem, other_elem) in self.0.iter().zip(other.0.iter()) {
-            output.push(*self_elem * other_elem);
+            output.push(self_elem.clone() * other_elem);
         }
         Ok(Vector(output))
+    }
+}
+impl<T> Mul<&T> for Vector<T>
+where
+    T: for<'a> Mul<&'a T, Output = T>,
+{
+    type Output = Self;
+
+    /// Scales every entry by `rhs`.
+    fn mul(self, rhs: &T) -> Self::Output {
+        Self(self.0.into_iter().map(|elem| elem * rhs).collect())
+    }
+}
+
+impl<T> Mul<&T> for &Vector<T>
+where
+    T: for<'a> Mul<&'a T, Output = T> + Clone,
+{
+    type Output = Vector<T>;
+
+    /// Scales every entry by `rhs`.
+    fn mul(self, rhs: &T) -> Self::Output {
+        Vector(self.0.iter().map(|elem| elem.clone() * rhs).collect())
     }
 }

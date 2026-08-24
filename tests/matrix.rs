@@ -145,3 +145,164 @@ fn mul_nonsquare_matrix_by_vector() {
     );
     assert_eq!((&a * &v).unwrap(), expected);
 }
+
+// --- Matrices of shares ------------------------------------------------------------------------
+//
+// The linear operators are bounded on the element operations rather than on `Ring`, so a `Matrix`
+// can hold shares: adding, subtracting and negating them are the local, communication-free
+// operations of a linear scheme (see `LinearShare`). The `Mul` family stays out of reach for
+// shares by design — multiplying two shared values is not a local operation.
+
+mod common;
+
+use common::deal_by_party;
+use scl_rs::{
+    math::ring::Ring,
+    net::PartyId,
+    ss::{additive::AdditiveSS, shamir::ShamirSS, LinearShare},
+};
+
+/// Reshapes each party's share vector into a `ROWS x COLUMNS` matrix.
+fn as_matrices<S: LinearShare>(
+    per_party: Vec<Vector<S>>,
+    rows: usize,
+    columns: usize,
+) -> Vec<Matrix<S>> {
+    per_party
+        .into_iter()
+        .map(|v| Matrix::from_vec(rows, columns, v.into_iter().collect()).unwrap())
+        .collect()
+}
+
+/// Reconstructs the `(i, j)` entry from a per-party set of share matrices.
+fn open_cell<S: LinearShare>(
+    per_party: &[Matrix<S>],
+    i: usize,
+    j: usize,
+    parties: &[PartyId],
+) -> S::Value {
+    let shares: Vec<S> = per_party
+        .iter()
+        .map(|m| m.get(i, j).unwrap().clone())
+        .collect();
+    S::secret_from_shares(&shares, parties).unwrap()
+}
+
+#[test]
+fn additive_share_matrix_add() {
+    const N_PARTIES: usize = 5;
+    const ROWS: usize = 2;
+    const COLUMNS: usize = 3;
+
+    let mut rng = rand::rng();
+    let parties: Vec<PartyId> = (0..N_PARTIES).map(PartyId::from).collect();
+    let a: Vec<Mersenne61> = (0..ROWS * COLUMNS)
+        .map(|_| Mersenne61::random(&mut rng))
+        .collect();
+    let b: Vec<Mersenne61> = (0..ROWS * COLUMNS)
+        .map(|_| Mersenne61::random(&mut rng))
+        .collect();
+
+    let ma = as_matrices(
+        deal_by_party::<AdditiveSS<Mersenne61>>(&a, &parties, ()),
+        ROWS,
+        COLUMNS,
+    );
+    let mb = as_matrices(
+        deal_by_party::<AdditiveSS<Mersenne61>>(&b, &parties, ()),
+        ROWS,
+        COLUMNS,
+    );
+
+    // Every party adds its two share matrices locally, with no communication.
+    let sums: Vec<Matrix<AdditiveSS<Mersenne61>>> = ma
+        .into_iter()
+        .zip(mb.iter())
+        .map(|(x, y)| (x + y).unwrap())
+        .collect();
+
+    for (k, secret) in a.iter().enumerate() {
+        let (i, j) = (k / COLUMNS, k % COLUMNS);
+        assert_eq!(open_cell(&sums, i, j, &parties), *secret + &b[k]);
+    }
+}
+
+#[test]
+fn shamir_share_matrix_sub_and_neg() {
+    const N_PARTIES: usize = 7;
+    const DEGREE: usize = 3;
+    const ROWS: usize = 2;
+    const COLUMNS: usize = 3;
+
+    let mut rng = rand::rng();
+    let parties: Vec<PartyId> = (1..=N_PARTIES).map(PartyId::from).collect();
+    let a: Vec<Mersenne61> = (0..ROWS * COLUMNS)
+        .map(|_| Mersenne61::random(&mut rng))
+        .collect();
+    let b: Vec<Mersenne61> = (0..ROWS * COLUMNS)
+        .map(|_| Mersenne61::random(&mut rng))
+        .collect();
+
+    let ma = as_matrices(
+        deal_by_party::<ShamirSS<1, Mersenne61>>(&a, &parties, DEGREE),
+        ROWS,
+        COLUMNS,
+    );
+    let mb = as_matrices(
+        deal_by_party::<ShamirSS<1, Mersenne61>>(&b, &parties, DEGREE),
+        ROWS,
+        COLUMNS,
+    );
+
+    // `-=` in place, then the owned `-` operator, then unary negation.
+    let diffs: Vec<Matrix<ShamirSS<1, Mersenne61>>> = ma
+        .iter()
+        .zip(mb.iter())
+        .map(|(x, y)| {
+            let mut acc = x.clone();
+            acc -= y;
+            acc
+        })
+        .collect();
+    let owned_diffs: Vec<Matrix<ShamirSS<1, Mersenne61>>> = ma
+        .iter()
+        .zip(mb.iter())
+        .map(|(x, y)| (x.clone() - y).unwrap())
+        .collect();
+    let negs: Vec<Matrix<ShamirSS<1, Mersenne61>>> = ma.into_iter().map(|x| -x).collect();
+
+    for (k, secret) in a.iter().enumerate() {
+        let (i, j) = (k / COLUMNS, k % COLUMNS);
+        assert_eq!(open_cell(&diffs, i, j, &parties), *secret - &b[k]);
+        assert_eq!(open_cell(&owned_diffs, i, j, &parties), *secret - &b[k]);
+        assert_eq!(open_cell(&negs, i, j, &parties), -*secret);
+    }
+}
+
+#[test]
+fn scalar_mul_shares() {
+    const N_PARTIES: usize = 5;
+    const ROWS: usize = 2;
+    const COLUMNS: usize = 3;
+
+    let mut rng = rand::rng();
+    let parties: Vec<PartyId> = (0..N_PARTIES).map(PartyId::from).collect();
+    let secrets: Vec<Mersenne61> = (0..ROWS * COLUMNS)
+        .map(|_| Mersenne61::random(&mut rng))
+        .collect();
+    let scalar = Mersenne61::random(&mut rng);
+
+    let scaled: Vec<Matrix<AdditiveSS<Mersenne61>>> = as_matrices(
+        deal_by_party::<AdditiveSS<Mersenne61>>(&secrets, &parties, ()),
+        ROWS,
+        COLUMNS,
+    )
+    .into_iter()
+    .map(|m| m.mul_constant(&scalar))
+    .collect();
+
+    for (k, secret) in secrets.iter().enumerate() {
+        let (i, j) = (k / COLUMNS, k % COLUMNS);
+        assert_eq!(open_cell(&scaled, i, j, &parties), *secret * &scalar);
+    }
+}

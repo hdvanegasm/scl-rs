@@ -3,7 +3,7 @@ use crate::ss::LinearShare;
 use super::{ring::Ring, vector::Vector};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 use thiserror::Error;
 
 /// Errors that may occurs when creating and operating with matrices.
@@ -31,7 +31,17 @@ pub enum Error {
 /// Specialized result for the [`enum@Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Matrix with elements in a ring.
+/// Matrix over any element type that supports the arithmetic performed on it.
+///
+/// The operators are bounded on the element operations themselves rather than on [`Ring`], so the
+/// entries may be ring elements *or* secret shares. Over shares (`T: LinearShare`), `+`, `-`, `+=`,
+/// `-=` and unary `-` are the local, communication-free operations of a linear scheme, and
+/// [`mul_constant`](Matrix::mul_constant) scales every entry by a public constant.
+///
+/// Multiplication by another matrix or by a [`Vector`] requires `T: Mul<&T>` — share × share —
+/// which is not a local operation and is deliberately absent from [`LinearShare`], so those
+/// products remain available only over rings. To apply a matrix of *public* constants to a vector
+/// of shares, use [`mul_shares`](Matrix::mul_shares).
 #[derive(Serialize, Deserialize, Debug, Eq, Clone, PartialEq)]
 pub struct Matrix<T> {
     /// Elements of the matrix.
@@ -293,9 +303,63 @@ where
     }
 }
 
+impl<S> Matrix<S>
+where
+    S: LinearShare,
+{
+    /// Multiplies every share in this matrix by the public constant `constant`: the `(i, j)` output
+    /// share is `[c · x_ij]` — a local, communication-free operation (see [`LinearShare`]).
+    ///
+    /// This is scalar multiplication for a matrix of shares. It is an inherent method rather than a
+    /// `Mul` operator because the scalar lives in [`S::Value`](LinearShare::Value) while the entries
+    /// are shares: an `impl Mul<&S::Value> for Matrix<S>` overlaps the [`Mul<&Matrix<S>>`] impl,
+    /// since nothing stops `S::Value` from being `Matrix<S>`, and the coherence checker rejects it.
+    pub fn mul_constant(self, constant: &S::Value) -> Self {
+        Self {
+            elements: self
+                .elements
+                .into_iter()
+                .map(|share| share * constant)
+                .collect(),
+            columns: self.columns,
+            rows: self.rows,
+        }
+    }
+}
+
+impl<T> Neg for &Matrix<T>
+where
+    T: Neg<Output = T> + Clone,
+{
+    type Output = Matrix<T>;
+
+    fn neg(self) -> Self::Output {
+        Matrix {
+            elements: self
+                .elements
+                .iter()
+                .map(|elem| elem.clone().neg())
+                .collect(),
+            columns: self.columns,
+            rows: self.rows,
+        }
+    }
+}
+
+impl<T> Neg for Matrix<T>
+where
+    T: Neg<Output = T> + Clone,
+{
+    type Output = Matrix<T>;
+
+    fn neg(self) -> Self::Output {
+        (&self).neg()
+    }
+}
+
 impl<T> Add<&Self> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Add<&'a T, Output = T> + Clone,
 {
     type Output = Result<Self>;
     fn add(mut self, rhs: &Self) -> Self::Output {
@@ -309,18 +373,18 @@ where
 
 impl<T> AddAssign<&Self> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Add<&'a T, Output = T> + Clone,
 {
     fn add_assign(&mut self, rhs: &Self) {
         for (self_elem, other_elem) in self.elements.iter_mut().zip(&rhs.elements) {
-            *self_elem = self_elem.add(other_elem);
+            *self_elem = self_elem.clone().add(other_elem);
         }
     }
 }
 
 impl<T> Sub<&Self> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Sub<&'a T, Output = T> + Clone,
 {
     type Output = Result<Self>;
 
@@ -335,18 +399,18 @@ where
 
 impl<T> SubAssign<&Self> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Sub<&'a T, Output = T> + Clone,
 {
     fn sub_assign(&mut self, rhs: &Self) {
         for (self_elem, other_elem) in self.elements.iter_mut().zip(&rhs.elements) {
-            *self_elem = self_elem.sub(other_elem);
+            *self_elem = self_elem.clone().sub(other_elem);
         }
     }
 }
 
 impl<T> Mul<&Self> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T> + Copy,
 {
     type Output = Result<Self>;
 
@@ -362,8 +426,9 @@ where
         let mut matrix = Self::allocate(rows, columns)?;
         for i in 0..rows {
             for j in 0..columns {
-                let mut sum = T::ZERO;
-                for k in 0..interm {
+                // Seed with the first term: `T` is not required to have a zero to start from.
+                let mut sum = self.elements[self.columns * i].mul(&rhs.elements[j]);
+                for k in 1..interm {
                     sum = sum.add(
                         &self.elements[self.columns * i + k]
                             .mul(&rhs.elements[rhs.columns * k + j]),
@@ -378,7 +443,7 @@ where
 
 impl<T> Mul<&Vector<T>> for &Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T> + Copy,
 {
     type Output = Result<Vector<T>>;
 
@@ -388,8 +453,9 @@ where
         }
         let mut elements = Vec::with_capacity(self.rows);
         for i in 0..self.rows {
-            let mut sum = T::ZERO;
-            for j in 0..self.columns {
+            // Seed with the first term: `T` is not required to have a zero to start from.
+            let mut sum = self.elements[self.columns * i].mul(&rhs[0]);
+            for j in 1..self.columns {
                 sum = sum.add(&self.elements[self.columns * i + j].mul(&rhs[j]))
             }
             elements.push(sum);
@@ -400,46 +466,46 @@ where
 
 impl<T> Mul<&Vector<T>> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T> + Copy,
 {
     type Output = Result<Vector<T>>;
 
     fn mul(self, rhs: &Vector<T>) -> Self::Output {
-        (&self).mul(rhs)
+        <&Self as Mul<&Vector<T>>>::mul(&self, rhs)
     }
 }
 
 impl<T> Mul<Vector<T>> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T> + Copy,
 {
     type Output = Result<Vector<T>>;
 
     fn mul(self, rhs: Vector<T>) -> Self::Output {
-        self.mul(&rhs)
+        <&Self as Mul<&Vector<T>>>::mul(&self, &rhs)
     }
 }
 
 impl<T> Mul<Vector<T>> for &Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + for<'a> Add<&'a T, Output = T> + Copy,
 {
     type Output = Result<Vector<T>>;
 
     fn mul(self, rhs: Vector<T>) -> Self::Output {
-        self.mul(&rhs)
+        <Self as Mul<&Vector<T>>>::mul(self, &rhs)
     }
 }
 
 impl<T> Mul<&T> for Matrix<T>
 where
-    T: Ring,
+    T: for<'a> Mul<&'a T, Output = T> + Copy,
 {
     type Output = Matrix<T>;
 
     fn mul(mut self, rhs: &T) -> Self::Output {
         for i in 0..self.rows {
-            for j in 0..self.rows {
+            for j in 0..self.columns {
                 *self
                     .get_mut(i, j)
                     .expect("the indexes move on valid values") =

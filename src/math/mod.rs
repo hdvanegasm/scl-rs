@@ -4,7 +4,7 @@
 /// This module contains the main traits and implementations of finite fields.
 pub mod field;
 
-/// This module contains the implementation of matrices over finite rings and
+/// This module contains the implementation of matrices over finite rings and secret shares, and
 /// their operations.
 pub mod matrix;
 
@@ -15,7 +15,7 @@ pub mod poly;
 /// This module defines the main traits and implementations of finite rings.
 pub mod ring;
 
-/// This module contains the implementation of vectors over finite rings and
+/// This module contains the implementation of vectors over finite rings and secret shares, and
 /// their operations.
 pub mod vector;
 
