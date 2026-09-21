@@ -81,8 +81,8 @@ hold their floors there too.
 - **`rustls` and `chacha20` are declared directly, to hold their floors.** Neither is used by name
   in the source: `rustls` is reached through `tokio-rustls` and `chacha20` through `rand` 0.10's
   default RNG. Declaring them pins those transitive versions at `0.23.45` and `0.10.2`
-  respectively. `chacha20` sits in `[dev-dependencies]`, so its floor binds this repository's own
-  lockfile and CI, not a downstream consumer's resolution.
+  respectively. Both sit in `[dependencies]`, so the floors bind a downstream consumer's
+  resolution too, not just this repository's lockfile and CI.
 
 - **Internal: `src/math/ring.rs` moved to `src/math/ring/mod.rs`.** A file move with no content
   change; the `math::ring` module path is unaffected.
