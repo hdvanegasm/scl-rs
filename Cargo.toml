@@ -1,6 +1,6 @@
 [package]
 name = "scl-rs"
-version = "0.14.1"
+version = "0.14.2"
 edition = "2021"
 authors = ["Hernan Vanegas <hdvanegasm@gmail.com>"]
 rust-version = "1.85.1"
@@ -50,10 +50,10 @@ tokio-util = { version = "0.7.19", features = ["codec"] }
 tokio-stream = "0.1.19"
 futures-util = "0.3.34"
 rustls-webpki = "0.103.15"
+chacha20 = "0.10.2"
 
 [dev-dependencies]
 rand_chacha = "0.10.0"
-chacha20 = "0.10.2"
 rcgen = "0.14.8"
 tempfile = "3.27.0"
 itertools = "0.15.0"

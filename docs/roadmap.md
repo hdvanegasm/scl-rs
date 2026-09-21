@@ -1,11 +1,15 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-08-24
+**Date:** 2026-09-21
 
-**Current version:** 0.14.1 (released 2026-08-24) — `Vector` and `Matrix` widened past ring
-elements: their operators are bounded on the element operation itself rather than on `Ring`, so both
-containers hold secret shares as well as ring elements, and the linear operations over shares stay
-local, with `mul_constant` for scaling by a public constant. On top of 0.14.0 (2026-08-23), the
+**Current version:** 0.14.2 (released 2026-09-21) — `SimulationOutcome::metrics()`, the flat
+whole-run summary of a simulation: payload bytes sent and virtual time elapsed, per party and for
+the run as a whole, folded out of the recorded traces and printed as a small table. Plus dependency
+hygiene — every requirement now names the full patch version it is tested against. On top of 0.14.1
+(2026-08-24), `Vector` and `Matrix` widened past ring elements: their operators are bounded on the
+element operation itself rather than on `Ring`, so both containers hold secret shares as well as
+ring elements, and the linear operations over shares stay local, with `mul_constant` for scaling by
+a public constant. Before that, 0.14.0 (2026-08-23), the
 finite fields rebuilt on `Fp`, a prime field generic over a compile-time modulus, closing the
 long-standing §10/§11 "arbitrary prime-`p` field" item. Before that: 0.13.0 (2026-07-22) dropped the
 `async-trait` dependency for native `async fn` in traits; 0.12.1 (2026-07-21) an internal patch on
@@ -29,9 +33,11 @@ profiling**: `SimulationOutcome::bandwidth_tree_for` reconstructs a per-protocol
 rebuilt recursively from each party's trace with no protocol instrumentation), and
 `ProtocolBandwidthTree::write_folded` exports it in the folded-stacks flamegraph format (the §14
 idea, shipped; rendering stays external — `examples/bandwidth_flamegraph.rs` and the multi-level
-`examples/secure_stats_flamegraph.rs` show the `inferno` pipeline). See `CHANGELOG.md` `[0.10.0]`. **Still in development on top of the tree:** merging
-repeated calls of the same protocol under the same parent, and a `SimulationMetrics` summary
-(`SimulationOutcome::metrics()`) with a percentage-annotated tree `Display`.
+`examples/secure_stats_flamegraph.rs` show the `inferno` pipeline). See `CHANGELOG.md` `[0.10.0]`. The `SimulationMetrics` summary
+(`SimulationOutcome::metrics()`) landed in 0.14.2, as a flat per-party table of bytes sent and
+virtual time elapsed rather than as an annotation on the tree. **Still in development on top of the
+tree:** merging repeated calls of the same protocol under the same parent, and a
+percentage-annotated tree `Display`.
 
 **0.7.1 contents:** test- and documentation-only, no library API change. Completes the testing
 plan: Tier 4 (all `tests/simulator.rs` protocols migrated to generic `impl<E: Environment>
@@ -743,6 +749,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.13.0**      | _Native `async fn` in traits_ ✅ **RELEASED 2026-07-22** | Drops the `async-trait` dependency; `Protocol` and `Network` declare their async methods natively (stable since Rust 1.75, well within the 1.85.1 MSRV, which is unchanged). Implementors delete the `#[async_trait]` attribute. Breaking, so a minor bump per §2. See `CHANGELOG.md` `[0.13.0]`. |
 | **0.14.0**      | _Generic prime field_ ✅ **RELEASED 2026-08-23**    | The §10/§11 **arbitrary prime-`p` field**: `math::field::fp::Fp<M, LIMBS>` carries the modulus in the type as a `crypto-bigint` `ConstMontyParams` implementation, declared with one `const_monty_params!` call, with Montgomery arithmetic. `Mersenne61`, `Secp256k1PrimeField` and `Secp256k1ScalarField` are now aliases for it — 352 lines of hand-written modular arithmetic deleted, multiplication ~4.5× faster on the secp256k1 fields. Also fixed a latent `Mersenne61` `Div` operand swap (untested until now; division is proptested on every field) and a `Debug` impl that printed the Montgomery form as the value. Breaking: elements serialize their Montgomery representation at fixed width, incompatible with 0.13.0 — so a minor bump per §2. See `CHANGELOG.md` `[0.14.0]`. |
 | **0.14.1**      | _Containers over shares_ ✅ **RELEASED 2026-08-24** | Non-breaking feature-and-fix patch per §2: `Vector` and `Matrix` operators are bounded on the element operation itself (`T: for<'a> Add<&'a T, Output = T>` and friends) instead of on `Ring`, so a container may hold ring elements *or* secret shares — over `S: LinearShare` the `+`, `-`, `+=`, `-=` and unary `-` on a whole container are the local, communication-free operations of a linear scheme, and the new `Vector::mul_constant` / `Matrix::mul_constant` scale a container of shares by a public constant. Share × share multiplication is deliberately still absent (it needs an interactive protocol), so the element-wise and matrix products stay ring-only — the local groundwork for the §11.3 shared linear algebra, not that item itself. Also adds `Neg` for `Matrix` and `Vector<T> * &T`, and fixes `Matrix<T> * &T` on non-square matrices, which panicked or left trailing columns unscaled. Non-breaking (`Ring` implies every new bound). See `CHANGELOG.md` `[0.14.1]`. |
+| **0.14.2**      | _Run metrics & dependency floors_ ✅ **RELEASED 2026-09-21** | Non-breaking feature patch per §2: `SimulationOutcome::metrics()` returns a `SimulationMetrics` — payload bytes sent and virtual time elapsed, per party and for the run as a whole, folded out of the recorded traces with no protocol instrumentation and no change to how a run executes. It is the flat counterpart to the per-protocol `bandwidth_tree_for`: same byte accounting (payload sizes, self-sends excluded), plus the virtual-clock span from a party's first event to its last, which measures the modelled network alone. Printed as a table in IEC units by its `Display`, or read per party with `sent_bytes_for` / `elapsed_time_for`; all seven simulator examples now print it. Also dependency hygiene: every `Cargo.toml` requirement names the full patch version it is tested against instead of a bare major, and `rustls` / `chacha20` (transitive via `tokio-rustls` and `rand`) are declared directly to hold those floors. New `bytesize` dependency for the IEC rendering. See `CHANGELOG.md` `[0.14.2]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |

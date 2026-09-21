@@ -9,6 +9,84 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-09-21
+
+Adds the flat, whole-run summary of what a simulation cost. `SimulationOutcome::metrics` folds
+every party's trace into two numbers — payload bytes sent, and virtual time elapsed — and prints
+them as a small table: the summary counterpart to the per-protocol breakdown `bandwidth_tree_for`
+already gave. Both figures are read back out of the recorded events, so nothing needs instrumenting
+and no run behaves differently. The rest is dependency hygiene: every requirement in `Cargo.toml`
+now names the full patch version it is tested against rather than a bare major, and `rustls` and
+`chacha20` — already pulled in transitively by `tokio-rustls` and `rand` — are declared directly to
+hold their floors there too.
+
+### Added
+
+- **`SimulationOutcome::metrics`** returns a `SimulationMetrics`: the payload bytes each party put
+  on the wire over the whole run, and the virtual time each party spent in it. Read one party's
+  figures with `SimulationMetrics::sent_bytes_for` and `SimulationMetrics::elapsed_time_for` — both
+  return `None` for exactly the parties that took no part in the run — or print the whole set with
+  its `Display`:
+
+  ```text
+  simulation metrics:
+                      sent  elapsed
+      party 0      1.5 MiB   1.250s
+      party 1      1.5 MiB   1.250s
+      party 2    768.0 KiB   0.750s
+      whole run    3.8 MiB   1.250s
+  ```
+
+  One row per party in `PartyId` order — id order rather than hash order, so the output is
+  reproducible across runs like the rest of the simulator — then a row for the run as a whole. Byte
+  counts are IEC binary units (`KiB`, `MiB`, …) at one decimal place, via the new `bytesize`
+  dependency; times are seconds to three decimals, matching an `Event` timestamp. The summary
+  carries no trailing newline, so it drops into a larger report.
+
+  The two columns aggregate differently on the `whole run` row, because they are different kinds of
+  quantity: bytes add up over the parties, while their elapsed times overlap, so the run lasts as
+  long as its slowest party rather than as long as all of them put together.
+
+  Bytes are counted exactly as `bandwidth_tree_for` and `MetricHook` count them — *payload* sizes
+  rather than wire bytes, so the framing and TLS overhead a real `TcpNetwork` deployment adds is
+  not included, and a party's sends to itself are excluded because `TcpNetwork` loops those back
+  in-process rather than over a socket. A party's total therefore agrees with the sum over its
+  bandwidth tree.
+
+  Elapsed time is *virtual* time on the simulator's discrete-event clock, spanning a party's first
+  recorded event to its last. It measures the modelled network — link latency and bandwidth, as
+  configured by the `NetworkConfig` the run was given — and nothing else, since local computation
+  is free in this model; it is a communication cost, not a running time comparable against a real
+  deployment. One consequence is worth knowing before reading the column: a party's clock advances
+  only when a message is delivered *to* it, so a party that only ever sends reports
+  `Duration::ZERO` however much traffic it pushed, and any party's figure really reports when its
+  last message arrived.
+
+  `SimulationMetrics::empty` builds the set that records no parties at all; it is what `metrics`
+  folds the traces into, and on its own it renders as `simulation metrics: <none>`.
+
+- **Every simulator example now prints its run's metrics**, next to the traces it already printed:
+  `simple_send_recv`, `send_different_types`, `additive_shr_secure_sum`, `schnorr_pok`,
+  `bandwidth_flamegraph`, `secure_stats_flamegraph` and `secure_covariance`. In the three
+  flamegraph examples it is the flat view of the same traffic the graph breaks down per protocol.
+
+### Changed
+
+- **Dependency requirements name the full patch version they are tested against.** `tokio = "1"`
+  becomes `tokio = "1.53.1"`, `thiserror = "2.0"` becomes `"2.0.20"`, and so on across the
+  manifest. The requirements are still caret requirements, so the versions a consumer resolves are
+  unchanged; what changes is the floor, which now states the minimum each dependency is actually
+  built and tested against rather than a major-version-wide claim that was never checked.
+
+- **`rustls` and `chacha20` are declared directly, to hold their floors.** Neither is used by name
+  in the source: `rustls` is reached through `tokio-rustls` and `chacha20` through `rand` 0.10's
+  default RNG. Declaring them pins those transitive versions at `0.23.45` and `0.10.2`
+  respectively. `chacha20` sits in `[dev-dependencies]`, so its floor binds this repository's own
+  lockfile and CI, not a downstream consumer's resolution.
+
+- **Internal: `src/math/ring.rs` moved to `src/math/ring/mod.rs`.** A file move with no content
+  change; the `math::ring` module path is unaffected.
+
 ## [0.14.1] - 2026-08-24
 
 Widens `Vector` and `Matrix` past ring elements. Their operators were bounded on `Ring`; they are
@@ -948,7 +1026,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.12.1...v0.13.0
