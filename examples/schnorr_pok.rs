@@ -261,5 +261,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Prover's output: {:?}", out.outputs[&prover]);
     println!("Verifier's output: {:?}", out.outputs[&verifier]);
 
+    // What the proof cost on the wire. The totals are asymmetric here: the prover sends the
+    // commitment and the response, the verifier only the challenge.
+    println!("\n{}", out.metrics());
+
     Ok(())
 }

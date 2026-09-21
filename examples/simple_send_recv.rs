@@ -88,4 +88,9 @@ fn main() {
     println!("=== P1 trace: ===\n{}", outcome.traces[&p1]);
     println!("P0 output: {}", outcome.outputs[&p0]);
     println!("P1 output: {}", outcome.outputs[&p1]);
+
+    // `metrics()` folds the traces into one payload-byte total per party. It is the flat
+    // counterpart to the per-protocol breakdown of `bandwidth_tree_for`, and prints as a short
+    // summary in IEC units. Sends a party makes to itself are excluded: they never touch the wire.
+    println!("\n{}", outcome.metrics());
 }

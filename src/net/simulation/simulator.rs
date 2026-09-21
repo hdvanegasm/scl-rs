@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+use bytesize::ByteSize;
 use serde::Serialize;
 
 use crate::{
@@ -34,6 +35,199 @@ use crate::{
     prelude::ProtocolId,
     protocol::{Environment, Protocol},
 };
+
+/// Flat, per-party cost totals for one simulation run: bytes sent, and time elapsed.
+///
+/// Built with [`SimulationOutcome::metrics`], which folds every party's [`SimulationTrace`] into
+/// one byte count and one duration per party. Where [`ProtocolBandwidthTree`] breaks one party's
+/// traffic down by the protocol that sent it, this is the summary view: two numbers per party, for
+/// the whole run. Every party with a trace gets an entry in both, so
+/// [`sent_bytes_for`](SimulationMetrics::sent_bytes_for) and
+/// [`elapsed_time_for`](SimulationMetrics::elapsed_time_for) return `Some` for exactly the same
+/// parties.
+///
+/// # Bytes
+///
+/// Bytes are counted as *payload* sizes rather than wire bytes — the same accounting as
+/// [`MetricHook`](crate::net::simulation::hook::MetricHook) — so the framing and TLS overhead that
+/// a real [`TcpNetwork`](crate::net::tcp::TcpNetwork) deployment adds is not included. Sends from a
+/// party to itself are excluded, exactly as in [`SimulationOutcome::bandwidth_tree_for`]: they
+/// never touch the wire, because [`TcpNetwork`](crate::net::tcp::TcpNetwork) delivers them over an
+/// in-process loop-back channel rather than a socket. A party's total therefore agrees with the sum
+/// over its bandwidth tree.
+///
+/// # Time
+///
+/// Elapsed time is *virtual* time on the simulator's discrete-event clock, spanning a party's first
+/// recorded event to its last. It measures the modelled network — link latency and bandwidth, as
+/// configured by the [`NetworkConfig`] the run was given — and nothing else: local computation is
+/// free in this model, so the figure is a communication cost, not a running time you could compare
+/// against a real deployment.
+///
+/// One consequence is worth knowing before reading these numbers. A party's clock advances only
+/// when a message is *delivered to it*, so the elapsed time of a party that only ever sends stays
+/// at zero however much traffic it pushed, and any party's figure really reports when its last
+/// message arrived. Parties therefore finish at different virtual times, and the run as a whole
+/// lasts as long as its slowest party.
+///
+/// Print a summary of the whole set with its [`Display`](std::fmt::Display) implementation, or read
+/// one party's figures with [`sent_bytes_for`](SimulationMetrics::sent_bytes_for) and
+/// [`elapsed_time_for`](SimulationMetrics::elapsed_time_for).
+pub struct SimulationMetrics {
+    /// Total payload bytes each party sent over the run. Every party that has a trace in the
+    /// originating [`SimulationOutcome`] gets an entry, including parties that sent nothing.
+    sent_bytes_party: HashMap<PartyId, ByteSize>,
+    /// Virtual time each party spent in the run, from its first recorded event to its last. Keyed
+    /// by the same parties as `sent_bytes_party`.
+    elapsed_time_party: HashMap<PartyId, Duration>,
+}
+
+impl SimulationMetrics {
+    /// Creates a metrics set that records no parties at all.
+    ///
+    /// This is the starting point [`SimulationOutcome::metrics`] folds the traces into; on its own
+    /// it renders as `simulation metrics: <none>`.
+    pub fn empty() -> Self {
+        Self {
+            sent_bytes_party: HashMap::new(),
+            elapsed_time_party: HashMap::new(),
+        }
+    }
+
+    /// Returns the total payload bytes `party` sent over the whole run.
+    ///
+    /// Returns `None` only when this set holds no entry for `party` — that is, when `party` took no
+    /// part in the simulation these metrics came from. A party that took part but never sent
+    /// anything returns `Some(ByteSize(0))`.
+    pub fn sent_bytes_for(&self, party: PartyId) -> Option<ByteSize> {
+        self.sent_bytes_party.get(&party).copied()
+    }
+
+    /// Returns the virtual time `party` spent in the run, from its first recorded event to its
+    /// last.
+    ///
+    /// Returns `None` under exactly the same condition as
+    /// [`sent_bytes_for`](Self::sent_bytes_for): when `party` took no part in the simulation these
+    /// metrics came from. See the [type documentation](SimulationMetrics#time) for what this clock
+    /// does and does not measure — in particular, a party that only sends reports
+    /// `Some(Duration::ZERO)`.
+    pub fn elapsed_time_for(&self, party: PartyId) -> Option<Duration> {
+        self.elapsed_time_party.get(&party).copied()
+    }
+}
+
+/// Renders the per-party figures as an indented table: one row per party in [`PartyId`] order,
+/// then a row for the run as a whole.
+///
+/// ```text
+/// simulation metrics:
+///                     sent  elapsed
+///     party 0      1.5 MiB   1.250s
+///     party 1      1.5 MiB   1.250s
+///     party 2    768.0 KiB   0.750s
+///     whole run    3.8 MiB   1.250s
+/// ```
+///
+/// The two columns aggregate differently on the `whole run` row, because they describe different
+/// kinds of quantity: bytes add up over the parties, while their elapsed times overlap, so the run
+/// lasts as long as its slowest party rather than as long as all of them put together.
+///
+/// Byte counts use [`ByteSize`]'s default rendering, which is IEC binary units — `KiB`, `MiB`, …,
+/// and a plain `B` count below 1024 — at one decimal place. Times are seconds to three decimals,
+/// matching the timestamps in an [`Event`] line. Parties are listed in id order rather than in hash
+/// order, so that the output is reproducible across runs like the rest of the simulator. A set with
+/// no parties in it renders as a single `simulation metrics: <none>` line.
+///
+/// The summary carries no trailing newline, so it can be dropped into a larger report; print it
+/// with `println!("{metrics}")`.
+impl std::fmt::Display for SimulationMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const INDENT: &str = "    ";
+        const RUN_LABEL: &str = "whole run";
+        const SENT_HEADER: &str = "sent";
+        const TIME_HEADER: &str = "elapsed";
+
+        f.write_str("simulation metrics:")?;
+        if self.sent_bytes_party.is_empty() {
+            return f.write_str(" <none>");
+        }
+
+        // `HashMap` iteration order varies from run to run, so the parties are put back in id order
+        // to keep the rendering deterministic.
+        let mut parties: Vec<_> = self.sent_bytes_party.iter().collect();
+        parties.sort_unstable_by_key(|(party, _)| **party);
+
+        // Seconds to three decimals, as an `Event` renders its timestamp.
+        let render_time = |elapsed: Duration| format!("{:.3}s", elapsed.as_secs_f64());
+
+        // The rows are rendered before they are written so every column can be padded to its widest
+        // entry: `ByteSize` picks a unit per value, so the widths are only known once formatted.
+        let mut rows: Vec<(String, String, String)> = parties
+            .iter()
+            .map(|(party, sent)| {
+                // Both maps are filled together by `SimulationOutcome::metrics`, so every party
+                // listed here has an elapsed time too.
+                let elapsed = self
+                    .elapsed_time_party
+                    .get(*party)
+                    .copied()
+                    .unwrap_or_default();
+                (
+                    format!("party {}", party.as_usize()),
+                    sent.to_string(),
+                    render_time(elapsed),
+                )
+            })
+            .collect();
+
+        // Bytes sum over the parties; elapsed times overlap, so the run lasts as long as its
+        // slowest party.
+        let total_sent = ByteSize(parties.iter().map(|(_, sent)| sent.as_u64()).sum());
+        let makespan = self
+            .elapsed_time_party
+            .values()
+            .copied()
+            .max()
+            .unwrap_or_default();
+        rows.push((
+            RUN_LABEL.to_owned(),
+            total_sent.to_string(),
+            render_time(makespan),
+        ));
+
+        let label_width = rows
+            .iter()
+            .map(|(label, _, _)| label.len())
+            .max()
+            .unwrap_or(0);
+        let sent_width = rows
+            .iter()
+            .map(|(_, sent, _)| sent.len())
+            .chain([SENT_HEADER.len()])
+            .max()
+            .unwrap_or(0);
+        let time_width = rows
+            .iter()
+            .map(|(_, _, elapsed)| elapsed.len())
+            .chain([TIME_HEADER.len()])
+            .max()
+            .unwrap_or(0);
+
+        // The header labels the two value columns; its own label cell is blank.
+        write!(
+            f,
+            "\n{INDENT}{:label_width$}  {SENT_HEADER:>sent_width$}  {TIME_HEADER:>time_width$}",
+            ""
+        )?;
+        for (label, sent, elapsed) in &rows {
+            write!(
+                f,
+                "\n{INDENT}{label:<label_width$}  {sent:>sent_width$}  {elapsed:>time_width$}"
+            )?;
+        }
+        Ok(())
+    }
+}
 
 /// The result of a [`simulate`] run: every party's output and its event trace.
 pub struct SimulationOutcome<O> {
@@ -75,6 +269,38 @@ impl<O> SimulationOutcome<O> {
                 .ok_or(SimulationError::PartyNotFound(party))?
                 .events(),
         ))
+    }
+
+    /// Folds every party's recorded trace into flat per-party totals: bytes sent, and time spent.
+    ///
+    /// This is the whole-run summary that complements the per-protocol breakdown of
+    /// [`bandwidth_tree_for`](Self::bandwidth_tree_for); see [`SimulationMetrics`] for exactly what
+    /// the two figures do and do not count.
+    pub fn metrics(&self) -> SimulationMetrics {
+        let mut sim_metrics = SimulationMetrics::empty();
+
+        for (party, trace) in &self.traces {
+            // The party's own span: its first recorded event to its last. `simulate` brackets every
+            // party with `Start` and `Stop`, so a recorded trace always has both ends.
+            let elapsed = match (trace.events().first(), trace.events().last()) {
+                (Some(first), Some(last)) => last.timestamp().saturating_sub(first.timestamp()),
+                _ => Duration::ZERO,
+            };
+            sim_metrics.elapsed_time_party.insert(*party, elapsed);
+
+            let entry_bytes = sim_metrics.sent_bytes_party.entry(*party).or_default();
+            for event in trace.events() {
+                if let Event::SendData { link, size, .. } = event {
+                    // Self-sends never touch the wire (TcpNetwork loops them back in-process), so
+                    // they don't count as bandwidth — the same rule ProtocolBandwidthTree applies.
+                    if link.sender() != link.recipient() {
+                        entry_bytes.0 += *size as u64;
+                    }
+                }
+            }
+        }
+
+        sim_metrics
     }
 }
 

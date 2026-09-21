@@ -77,4 +77,7 @@ fn main() {
     // Once the protocol finishes, you can access the protocol traces and the outputs for each party.
     println!("=== P0 trace: ===\n{}", outcome.traces[&p0]);
     println!("=== P1 trace: ===\n{}", outcome.traces[&p1]);
+
+    // The payload bytes each party put on the wire over the whole run, in IEC units.
+    println!("\n{}", outcome.metrics());
 }

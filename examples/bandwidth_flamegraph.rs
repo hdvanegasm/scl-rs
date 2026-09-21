@@ -129,6 +129,10 @@ fn main() {
         outcome.outputs[&parties[0]]
     );
 
+    // The flat view of the same traffic the flamegraph below breaks down per protocol: one
+    // payload-byte total per party, plus the network-wide sum.
+    println!("{}\n", outcome.metrics());
+
     // Serialize every party's bandwidth call tree into one folded-stacks buffer. `write_folded`
     // takes any `io::Write` sink — a `Vec<u8>` here, but a `File` or `Stdout` work the same — and
     // concatenating parties is fine: renderers sum duplicate paths, yielding network-wide totals.

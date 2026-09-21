@@ -224,4 +224,8 @@ fn main() {
     println!("P0 output: {:?}", outcome.outputs[&p0]);
     println!("P1 output: {:?}", outcome.outputs[&p1]);
     println!("P2 output: {:?}", outcome.outputs[&p2]);
+
+    // What the run cost on the wire: one payload-byte total per party. In this protocol every
+    // party sends a share to every other one, so all three totals come out equal.
+    println!("\n{}", outcome.metrics());
 }

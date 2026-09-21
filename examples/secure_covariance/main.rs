@@ -267,6 +267,11 @@ fn main() {
     println!("party {OWNER_X} trace");
     println!("{}\n", outcome.traces[&parties[0]]);
 
+    // The flat view of the same traffic the flamegraph below breaks down per protocol: one
+    // payload-byte total per party, plus the network-wide sum. The king does most of the sending,
+    // so its total stands out from the rest.
+    println!("{}\n", outcome.metrics());
+
     // Export every party's bandwidth call tree into one folded-stacks file; renderers sum duplicate
     // paths, so the graph shows network-wide totals per call path.
     let mut folded = Vec::new();

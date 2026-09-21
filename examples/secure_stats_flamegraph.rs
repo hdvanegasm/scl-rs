@@ -193,6 +193,10 @@ fn main() {
     let variance = sum_sq as f64 / n - mean * mean;
     println!("every party learned: mean = {mean:.2}, variance = {variance:.2}\n");
 
+    // The flat view of the same traffic the flamegraph below breaks down per protocol: one
+    // payload-byte total per party, plus the network-wide sum.
+    println!("{}\n", outcome.metrics());
+
     // Export every party's bandwidth call tree into one folded-stacks file; renderers sum
     // duplicate paths, so the graph shows network-wide totals per call path.
     let mut folded = Vec::new();
