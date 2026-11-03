@@ -106,8 +106,14 @@ cost modelling, that is a fidelity bug as much as a missing feature.
   separate compute-cost roadmap item).
 - Sharing a single uplink across _different_ links (NIC contention). This is already unmodelled
   for `send_many` and stays so; §5.7 models contention within one link only.
-- Malicious or Byzantine considerations for session IDs. Under the honest-but-curious threat model
-  a session ID is routing metadata, not an authenticated value.
+- Malicious or Byzantine use of session IDs:
+  - binding them into transcripts, commitments and proofs;
+  - validating received headers against the sessions a party actually runs;
+  - bounding early-arrival buffering.
+
+  `SessionId` already provides `digest()` for the binding (§5.1), but no protocol in this plan
+  uses it. Under the honest-but-curious threat model a session ID is routing metadata, not an
+  authenticated value.
 - Assigning a session to every `execute` call. This is deferred; see decision C-2.
 
 ---
@@ -152,18 +158,60 @@ clock do not change.
 ### 5.1 Sessions
 
 ```rust
-// net/session.rs (new)
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct SessionId(Arc<[u32]>);   // path from the root; empty = root
+// net/session.rs — implemented
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SessionId {
+    root_tag: [u8; 32], // identifies the execution: equal at every party, distinct across executions
+    path: Vec<u32>,     // fork indices from the execution's root session; empty = root session
+}
 
 impl SessionId {
-    pub fn root() -> Self;
+    pub fn root(root_tag: [u8; 32]) -> Self;
+    pub(crate) fn from_path(root_tag: [u8; 32], path: Vec<u32>) -> Self; // frame decoding
     pub fn child(&self, index: u32) -> Self;
     pub fn parent(&self) -> Option<Self>;
     pub fn depth(&self) -> usize;
+    pub fn root_tag(&self) -> &[u8; 32];
+    pub fn path(&self) -> &[u32];        // what a message header carries
+    pub fn digest(&self) -> [u8; 32];    // SHA-256 commitment to root tag + path
 }
-// Display: "root", "0", "0.3.1"; serde: postcard varint sequence (root = 1 byte).
+// Display (to do): "root", "0", "0.3.1" — the path only.
 ```
+
+**The two parts and what each is for.** This follows the UC convention for session identifiers
+(Canetti, *Universally Composable Security*, ePrint 2000/067): every protocol instance has its own
+`sid`, all parties of an instance share it, distinct instances have distinct ones, and a
+subroutine's identifier extends its caller's.
+
+- **Root tag: unique across executions.** Without it, every execution restarts at the empty path,
+  so two key generations or two epochs on the same parties would reuse the same identifiers. The
+  tag is supplied from outside, for example a hash of the protocol name and version, the party set,
+  the parameters, and an epoch counter or agreed randomness. How parties agree on it is decision C-8.
+  The general problem is treated by Barak, Lindell and Rabin, *Protocol Initialization for the
+  Framework of Universal Composability* (ePrint 2004/006).
+- **Path: unique within an execution.** It is assigned positionally by `fork` (below), with no
+  communication. It is all that routing needs.
+- **`digest()`** is SHA-256 over a domain-separation prefix, the root tag, the path length (as a
+  `u64`) and the indices. The length prefix makes the encoding injective. It is the value to hash
+  into transcripts, commitments and signed messages so they stay bound to their session. Nothing in
+  this plan uses it yet (§2 non-goals).
+
+**Representation choices:**
+- **No serde derive.** The root tag is fixed per network instance, so a frame header carries only
+  `path()`, and the receiver rebuilds the session with `from_path`.
+  - In the root session that header is 1 byte; the session `[1, 0]` is 3.
+  - This keeps the 32-byte tag off the wire.
+- **The path is a `Vec<u32>`.** Cloning an empty `Vec` allocates nothing, so code that never forks
+  pays only a 32-byte copy of the tag per clone. A forked session pays one small allocation per
+  clone, which is small next to what every message already allocates: the `Packet` clone in
+  `send_to`, `Packet::composition`, and the event clone in `record_event`. Simulated timings are
+  unaffected, since virtual time does not depend on allocation cost.
+- **Comparison.** Equality, hashing and ordering compare the root tag, then the path. A session
+  rebuilt from a frame therefore equals the one created locally by `fork`. Within one tag the
+  ordering is depth-first.
+- **The fields are private**, so the path can become an `Arc<[u32]>` later with no public API
+  change, if the Phase 2 benchmark (§10) shows a reason.
+- **The dependency on `sha2` 0.11.1 raises the MSRV to 1.88** (§9).
 
 **Assignment rule.** Every network handle carries `session: SessionId` and `next_child: u32`.
 `fork()` returns a handle for `session.child(next_child)` and increments `next_child`. Child IDs
@@ -204,7 +252,8 @@ caller's session, exactly as today. Only the combinators fork.
 ### 5.2 Transport: simulator
 
 `SimNetwork` gains `session: SessionId` and `next_child: u32`. `SimNetwork::new` (its only caller
-is `simulate`) keeps its signature and creates the root handle.
+is `simulate`) creates the root handle, `SessionId::root(tag)`. Where `tag` comes from is open
+decision C-8; whether `SimNetwork::new` and `simulate` keep their signatures depends on it.
 
 `Switchboard` changes (all of it is `pub(crate)` except `clock_of`, so the change is internal):
 
@@ -231,8 +280,12 @@ packets on session 0.4, which it never opened".
 ### 5.3 Transport: `TcpNetwork`
 
 **Wire frame.** The length-delimited codec is unchanged. The frame body becomes
-`postcard((SessionId, Vec<Element>))` instead of `postcard(Vec<Element>)`. This breaks wire
-compatibility with 0.14.x, like the 0.14.0 serialization change before it.
+`postcard((path: &[u32], Vec<Element>))` instead of `postcard(Vec<Element>)`.
+- **The session's root tag is not sent.** It is fixed for the `TcpCore` (decision C-8), and the
+  reader task rebuilds each session with `SessionId::from_path(core_root_tag, path)`.
+- **Header size:** 1 byte in the root session, 3 bytes for `[1, 0]`.
+- **Compatibility:** this breaks wire compatibility with 0.14.x, like the 0.14.0 serialization
+  change before it.
 
 **Structure.** `TcpNetwork` becomes a cheap handle over a shared core:
 
@@ -397,7 +450,7 @@ pub fn boxed<E, P, O>(p: P, map: impl FnOnce(P::Output) -> O + Send + Sync + 'st
 - `DynProtocol` exists because `Protocol::run` returns `impl Future` and so cannot be used as a
   trait object. The adapter boxes the future (`BoxFuture<'a, Result<O, Error>>`) and needs
   `E: 'static`. Callers usually map outputs into an enum.
-- A closure-based form (`join_fn(env, |e| async { … })`) is **not** proposed. On the 1.85 MSRV
+- A closure-based form (`join_fn(env, |e| async { … })`) is **not** proposed. On the 1.88 MSRV
   there is no stable way to require `Send` on an `async` closure's future, and `Protocol` requires
   `Send`. The only workable form needs `for<'a> FnOnce(&'a mut E) -> BoxFuture<'a, _>`, which
   `Boxed` already covers.
@@ -521,6 +574,7 @@ If either fails, occupancy ships opt-in (C-6) and the result is recorded in the 
 | C-5 | Session header in cost accounting | payload-only / include header in the delay model                                                       | Payload-only everywhere in 0.15.0, so sequential timings stay bit-identical. The header is 1–4 bytes against 40-byte TCP/IP headers that are already modelled. Revisit with Phase 5.                                                                             |
 | C-6 | Link occupancy                    | on by default / opt-in                                                                                 | On by default, but only after the `benches/comparison` validation shows it closes, rather than widens, the gap between simulated and real timings.                                                                                                               |
 | C-7 | Names                             | `Join`/`JoinAll` / `Par`/`ParAll` / `Concurrent`                                                       | `Join`/`JoinAll`, mirroring `futures`.                                                                                                                                                                                                                           |
+| C-8 | Source of the root tag (§5.1) — **open, decide before Phase 1's `SimNetwork` change** | (a) simulator: a fixed tag inside `simulate`, signature unchanged; (b) simulator: a tag parameter on `simulate`; (c) TCP: a new `root_tag` parameter on `TcpNetwork::create`; (d) TCP: an optional `root_tag` field in the JSON `NetworkConfig`; (e) TCP: agreed at connection time by a nonce exchange (ePrint 2004/006) | Not yet decided. The constraint: every party of an execution must hold the same tag, and executions must not share one. A fixed tag is safe in the simulator, where one `simulate` call is one execution. On TCP the tag cannot silently default without risking reuse across executions. |
 
 ---
 
@@ -691,7 +745,7 @@ written once per phase, against that phase's API:
 
 | Version    | Contents                                                                                                               | Breaking?                                                                                                                                                                                 |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.15.0** | Phases 1–4 (+ 6 docs/examples): sessions on both backends, fork traits, `Join`/`JoinAll`/`Boxed`, session-aware traces | Yes: new `Event` fields; TCP wire format; TCP `recv_any` order and `send_to` completion point (G6); the default `Display` of a trace changes for concurrent runs only. Minor bump per §2. |
+| **0.15.0** | Phases 1–4 (+ 6 docs/examples): sessions on both backends, fork traits, `Join`/`JoinAll`/`Boxed`, session-aware traces | Yes: new `Event` fields; TCP wire format; TCP `recv_any` order and `send_to` completion point (G6); the default `Display` of a trace changes for concurrent runs only; MSRV 1.85.1 → 1.88 (`sha2` 0.11.1). Minor bump per §2. |
 | **0.15.1** | Phase 5 link occupancy                                                                                                 | No API break (default trait method); timings for same-link back-to-back sends change. Patch, following the 0.11.2 precedent.                                                              |
 
 Phases 1–4 ship **together**. Releasing combinators that work on the simulator but not on
@@ -702,8 +756,9 @@ Phases 1–4 ship **together**. Releasing combinators that work on the simulator
 - `Event::{SendData, ReceiveData, ProtocolBegin, ProtocolEnd}`:
   - patterns without `..` need `session` or `..`;
   - struct literals, e.g. a hand-built trace passed to `SimulationTrace::new`, need a `session`
-    field (`SessionId::root()` for sequential traces).
+    field (`SessionId::root(tag)` for sequential traces).
 - Mixed 0.14.x / 0.15.0 deployments cannot talk to each other (frame format).
+- The MSRV is now 1.88, required by the new `sha2` dependency of `SessionId::digest`.
 - `TcpNetwork::recv_any` now returns the lowest ready sender id. `send_to` returns once the frame
   is queued, and a write error is reported by the next operation on that peer.
 - Run every `Join`/`JoinAll` on every party (I1, §5.1). A protocol that let bystanders skip a
@@ -722,7 +777,8 @@ Phases 1–4 ship **together**. Releasing combinators that work on the simulator
 | `retired` session set grows over long runs                                                                                                                                                                   | Prune with a per-parent high-water mark (child indices are monotone) if it ever matters.                                                                           |
 | Phase 5 shifts published numbers (README fidelity claims)                                                                                                                                                    | Rerun `benches/comparison`; update the README figures in the same release.                                                                                         |
 | Trace `Display` rewrite regresses sequential output                                                                                                                                                          | Byte-identical golden test from Phase 0.                                                                                                                           |
-| `Arc<[u32]>` hashing per packet                                                                                                                                                                              | Negligible next to field arithmetic and serialization. Benchmark once in Phase 2.                                                                                  |
+| `SessionId` cloning and hashing per packet: a 32-byte tag copy plus, in forked sessions, one small allocation for the path | Negligible next to the per-message `Packet` clone, `composition()` and serialization; affects wall-clock simulator speed only, never virtual time. Benchmark once in Phase 2; if it matters, make the private path an `Arc<[u32]>` (no API change). |
+| Root tag reused across executions (C-8) | Same paths in two executions then name the same sessions, and any `digest()` binding is void across them. Decide C-8 so that a TCP tag is never silently defaulted. |
 
 ---
 

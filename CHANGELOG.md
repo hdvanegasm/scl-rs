@@ -33,6 +33,24 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   The `schnorr_pok` example keeps its own self-contained copy of the protocol, restricted to a
   two-party network, and does not use this type.
 
+- **`net::session::SessionId`**, the identifier of a session, for the concurrent composition
+  work (`docs/concurrent-composition-plan.md`). Nothing uses it yet. A session is two things: a
+  32-byte **root tag**, which identifies one execution and must be equal at every party of it
+  and distinct across executions; and a **path** of fork indices from that execution's root
+  session.
+  - `SessionId::root(tag)` builds the root session.
+  - `child(index)` and `parent()` move down and up the tree; `depth()`, `root_tag()` and `path()`
+    read it.
+  - `digest()` returns a domain-separated SHA-256 commitment to the root tag and the path, to bind
+    a session into transcripts and commitments.
+
+  A message header will carry only the path, since the root tag is fixed per network instance.
+
+### Changed
+
+- **MSRV raised from 1.85.1 to 1.88**, because the new `sha2` 0.11.1 dependency (used by
+  `SessionId::digest`) requires it. The CI MSRV job builds on 1.88.
+
 ## [0.14.2] - 2026-09-21
 
 Adds the flat, whole-run summary of what a simulation cost. `SimulationOutcome::metrics` folds

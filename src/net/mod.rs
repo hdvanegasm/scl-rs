@@ -12,6 +12,10 @@ pub mod simulation;
 /// Real-network backend: [`TcpNetwork`], connecting parties over mutually authenticated TLS.
 pub mod tcp;
 
+/// Hierarchical session identifiers that let concurrent sub-protocols share a network without
+/// mixing their messages: [`session::SessionId`].
+pub mod session;
+
 pub use tcp::TcpNetwork;
 
 use crate::abbreviate::Abbreviate;

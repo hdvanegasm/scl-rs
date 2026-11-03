@@ -110,8 +110,9 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
 **Published and iterating** (see §4): releases `0.2.0`–`0.10.0` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
-is pinned at 1.85.1; and the security disclaimer + `SECURITY.md` are in place. The `Environment`
-redesign that was staged for the next `0.x` shipped in `0.5.0` (see §12).
+is pinned at 1.88 (raised from 1.85.1 for `sha2` 0.11); and the security disclaimer + `SECURITY.md`
+are in place. The `Environment` redesign that was staged for the next `0.x` shipped in `0.5.0` (see
+§12).
 
 The testing plan (Tiers 1–6) is **complete as of 0.7.1** — every tier is shipped or a recorded
 deferral/decline (see §10) — so testing is no longer an open workstream.
@@ -213,7 +214,8 @@ the dry-run passes, the package is clean, MSRV is pinned, and docs.rs renders.
 - [x] `cargo publish --dry-run` clean; `exclude = ["certs/", "gen_self_signed_certs.sh"]` keeps the
       private keys and generator script out of the tarball (`cargo package --list` confirms no
       `.pem`/`.key`/`.crt` ship).
-- [x] Declare an **MSRV**: `rust-version = "1.85.1"`, with a dedicated MSRV job in CI.
+- [x] Declare an **MSRV**: `rust-version = "1.88"` (1.85.1 until `sha2` 0.11 was added), with a
+      dedicated MSRV job in CI.
 - [x] Verify the docs.rs build (it builds on a fixed toolchain) after the first publish.
 
 ## 5. Workstream — API stabilization (toward a stable `0.x` API)
@@ -388,7 +390,7 @@ CI now runs separate fmt / clippy / test / doc / MSRV jobs (the `module_inceptio
 - [x] `cargo fmt --all --check`.
 - [x] `cargo clippy --all-targets -- -D warnings` (green; pre-existing style lints cleared).
 - [x] `cargo doc --no-deps -D warnings` in CI (keep intra-doc links honest).
-- [x] `cargo test` on stable; a dedicated **MSRV** job builds on the pinned `rust-version = 1.85.1`
+- [x] `cargo test` on stable; a dedicated **MSRV** job builds on the pinned `rust-version = 1.88`
       (added in 0.3.0). _(The MSRV job runs `cargo build`, not the full test suite.)_
 - [x] `cargo publish --dry-run` on tags — added in 0.4.0 (`.github/workflows/publish-dry-run.yml`,
       triggered on `v*` tags and manual dispatch). It also fails the job if any private-key/certificate
@@ -775,7 +777,7 @@ The bar for considering the `0.x` API "settled" — the steady state of §12, no
       (0.4.0), nested-call trace visibility, the straggler/virtual-time regression test, and the D10
       link unification are all done.)_
 - [x] CI green on fmt, `clippy -D warnings`, `doc -D warnings`, tests on stable (build on MSRV
-      1.85.1), `publish --dry-run`, and `cargo-audit`. _(All jobs present in `.github/workflows/`.)_
+      1.88), `publish --dry-run`, and `cargo-audit`. _(All jobs present in `.github/workflows/`.)_
 - [x] `examples/` cover simulator + real deployment + secret sharing; `CHANGELOG.md` current.
       _(Done — `simple_send_recv.rs` (simulator), `additive_shr_secure_sum.rs` (secret sharing), and
       `real_tls_send_recv.rs` (real mTLS deployment) are all present, and `CHANGELOG.md` is current.)_
