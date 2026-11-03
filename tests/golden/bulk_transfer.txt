@@ -1,0 +1,46 @@
+## metrics
+simulation metrics:
+                    sent  elapsed
+    party 0    195.3 KiB  33.127s
+    party 1    195.3 KiB  33.127s
+    whole run  390.6 KiB  33.127s
+
+## party 0
+### trace
+[     0.000s] START
+BulkTransferProtocol {
+    [     0.000s] SEND           0 -> 1 (200003 bytes: 1 unknown elem.)
+    [    33.127s] RECV           0 <- 1 (200003 bytes: 1 unknown elem.)
+}
+[    33.127s] OUTPUT         [192, 154, 12, 0, …, 0, 0, 0, 0] (200003 bytes)
+[    33.127s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ReceiveData    33127280000
+   4 ProtocolEnd    33127280000
+   5 Output         33127280000
+   6 Stop           33127280000
+### folded bandwidth tree
+<simulation>;BulkTransferProtocol 200003
+
+## party 1
+### trace
+[     0.000s] START
+BulkTransferProtocol {
+    [     0.000s] SEND           1 -> 0 (200003 bytes: 1 unknown elem.)
+    [    33.127s] RECV           1 <- 0 (200003 bytes: 1 unknown elem.)
+}
+[    33.127s] OUTPUT         [192, 154, 12, 0, …, 0, 0, 0, 0] (200003 bytes)
+[    33.127s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ReceiveData    33127280000
+   4 ProtocolEnd    33127280000
+   5 Output         33127280000
+   6 Stop           33127280000
+### folded bandwidth tree
+<simulation>;BulkTransferProtocol 200003

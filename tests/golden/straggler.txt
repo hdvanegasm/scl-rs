@@ -1,0 +1,122 @@
+## metrics
+simulation metrics:
+               sent  elapsed
+    party 0     0 B   0.050s
+    party 1     1 B   0.000s
+    party 2     1 B   0.000s
+    party 3     1 B   0.000s
+    party 4     2 B   0.000s
+    party 5     0 B  10.013s
+    whole run   5 B  10.013s
+
+## party 0
+### trace
+[     0.000s] START
+StragglerScenario {
+    [     0.050s] RECV           0 <- 1 (1 bytes: 1 unknown elem.)
+    [     0.050s] RECV           0 <- 2 (1 bytes: 1 unknown elem.)
+    [     0.050s] RECV           0 <- 3 (1 bytes: 1 unknown elem.)
+}
+[     0.050s] OUTPUT         [3, 1, 2, 3]
+[     0.050s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ReceiveData    50328000
+   3 ReceiveData    50328000
+   4 ReceiveData    50328000
+   5 ProtocolEnd    50328000
+   6 Output         50328000
+   7 Stop           50328000
+### folded bandwidth tree
+
+## party 1
+### trace
+[     0.000s] START
+StragglerScenario {
+    [     0.000s] SEND           1 -> 0 (1 bytes: 1 unknown elem.)
+}
+[     0.000s] OUTPUT         [0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ProtocolEnd    0
+   4 Output         0
+   5 Stop           0
+### folded bandwidth tree
+<simulation>;StragglerScenario 1
+
+## party 2
+### trace
+[     0.000s] START
+StragglerScenario {
+    [     0.000s] SEND           2 -> 0 (1 bytes: 1 unknown elem.)
+}
+[     0.000s] OUTPUT         [0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ProtocolEnd    0
+   4 Output         0
+   5 Stop           0
+### folded bandwidth tree
+<simulation>;StragglerScenario 1
+
+## party 3
+### trace
+[     0.000s] START
+StragglerScenario {
+    [     0.000s] SEND           3 -> 0 (1 bytes: 1 unknown elem.)
+}
+[     0.000s] OUTPUT         [0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ProtocolEnd    0
+   4 Output         0
+   5 Stop           0
+### folded bandwidth tree
+<simulation>;StragglerScenario 1
+
+## party 4
+### trace
+[     0.000s] START
+StragglerScenario {
+    [     0.000s] SEND           4 -> 0 (1 bytes: 1 unknown elem.)
+    [     0.000s] SEND           4 -> 5 (1 bytes: 1 unknown elem.)
+}
+[     0.000s] OUTPUT         [0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 SendData       0
+   4 ProtocolEnd    0
+   5 Output         0
+   6 Stop           0
+### folded bandwidth tree
+<simulation>;StragglerScenario 2
+
+## party 5
+### trace
+[     0.000s] START
+StragglerScenario {
+    [    10.013s] RECV           5 <- 4 (1 bytes: 1 unknown elem.)
+}
+[    10.013s] OUTPUT         [1, 4]
+[    10.013s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ReceiveData    10012512207
+   3 ProtocolEnd    10012512207
+   4 Output         10012512207
+   5 Stop           10012512207
+### folded bandwidth tree

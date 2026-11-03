@@ -1,0 +1,46 @@
+## metrics
+simulation metrics:
+               sent  elapsed
+    party 0     1 B   0.050s
+    party 1     1 B   0.050s
+    whole run   2 B   0.050s
+
+## party 0
+### trace
+[     0.000s] START
+SendRecvProtocol {
+    [     0.000s] SEND           0 -> 1 (1 bytes: 1 unknown elem.)
+    [     0.050s] RECV           0 <- 1 (1 bytes: 1 unknown elem.)
+}
+[     0.050s] OUTPUT         [1]
+[     0.050s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ReceiveData    50328000
+   4 ProtocolEnd    50328000
+   5 Output         50328000
+   6 Stop           50328000
+### folded bandwidth tree
+<simulation>;SendRecvProtocol 1
+
+## party 1
+### trace
+[     0.000s] START
+SendRecvProtocol {
+    [     0.000s] SEND           1 -> 0 (1 bytes: 1 unknown elem.)
+    [     0.050s] RECV           1 <- 0 (1 bytes: 1 unknown elem.)
+}
+[     0.050s] OUTPUT         [0]
+[     0.050s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ReceiveData    50328000
+   4 ProtocolEnd    50328000
+   5 Output         50328000
+   6 Stop           50328000
+### folded bandwidth tree
+<simulation>;SendRecvProtocol 1

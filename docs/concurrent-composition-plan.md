@@ -542,9 +542,38 @@ running; it still has to compile, so a test cannot exist before the types it nam
 
 ### Phase 0 — Golden snapshot (no library change)
 
-- **Golden snapshot** of all seven simulator examples (their `metrics()` tables and trace `Display`
-  output) and of `tests/simulator.rs` timings. It needs no new API, and it must exist before any
-  library change, because it is what proves G6 phase by phase.
+- **Golden snapshot** (`tests/golden.rs`, baselines in `tests/golden/<scenario>.txt`). It needs no
+  new API, and it must exist before any library change, because it is what proves G6 phase by
+  phase.
+- **Scenarios:**
+  - the seven simulator examples, with their protocols copied into the test, since tests cannot
+    import code from examples;
+  - the timing-sensitive shapes from `tests/simulator.rs` and `tests/recv_timeout.rs`:
+    bandwidth-bound transfer, quorum with a leftover message, straggler delivered after quorum,
+    and timed receives (a fired timer, a stale timer, a late packet left queued).
+- **Captured per scenario:** the `metrics()` table and, per party in `PartyId` order:
+
+  | Capture | Phase it protects |
+  | --- | --- |
+  | the trace `Display` | 1, 4 |
+  | the **exact** timestamp of every event, in nanoseconds | 1, 5 |
+  | the folded bandwidth tree (`bandwidth_tree_for` + `write_folded`) | 4, which rewrites `ProtocolBandwidthTree::parse` |
+
+  Exact timestamps are required because the trace and the metrics table both round to the
+  millisecond (`event.rs:258,260`, `simulator.rs:161`), so a sub-millisecond change, which is the
+  scale Phase 5 introduces, would be invisible in them.
+- **Determinism:** every RNG is seeded (`ChaCha20Rng::seed_from_u64`, a distinct seed per party and
+  scenario), and the examples' random inputs are replaced by fixed ones. The examples seed from OS
+  entropy, so their printed output cannot serve as a baseline. Example protocols that sampled from
+  a fresh OS-seeded RNG inside `run` draw from the environment's RNG instead. Protocol ids, message
+  sizes and message patterns stay as in the examples.
+- **Regenerate** only for an intended change: `SCL_UPDATE_GOLDEN=1 cargo test --test golden`, then
+  review the diff of `tests/golden/`.
+- **Exit:**
+  - the baseline is generated on a clean commit;
+  - it passes in two further independent runs;
+  - it is shown to fail on a deliberate small change and to pass again once reverted;
+  - it is committed.
 - Size: S.
 
 ### Phase 1 — Sessions in the simulator (internal, behaviour-preserving)

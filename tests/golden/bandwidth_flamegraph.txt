@@ -1,0 +1,178 @@
+## metrics
+simulation metrics:
+                sent  elapsed
+    party 0     40 B   0.202s
+    party 1     40 B   0.202s
+    party 2     40 B   0.202s
+    whole run  120 B   0.202s
+
+## party 0
+### trace
+[     0.000s] START
+SecSumShamirShr {
+    InputPhase {
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.151s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.151s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.151s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.151s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.202s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.202s] OUTPUT         [8, 192, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.202s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 SendData       0
+   5 SendData       0
+   6 SendData       0
+   7 ReceiveData    0
+   8 ProtocolEnd    0
+   9 ProtocolBegin  0
+  10 ReceiveData    100800000
+  11 ProtocolEnd    100800000
+  12 ProtocolBegin  100800000
+  13 ReceiveData    151200000
+  14 ProtocolEnd    151200000
+  15 ProtocolEnd    151200000
+  16 ProtocolBegin  151200000
+  17 SendData       151200000
+  18 SendData       151200000
+  19 ReceiveData    151200000
+  20 ReceiveData    201600000
+  21 ProtocolEnd    201600000
+  22 ProtocolEnd    201600000
+  23 Output         201600000
+  24 Stop           201600000
+### folded bandwidth tree
+<simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20
+<simulation>;SecSumShamirShr;PassiveOpenLinearShr 20
+
+## party 1
+### trace
+[     0.000s] START
+SecSumShamirShr {
+    InputPhase {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.151s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.151s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.151s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.151s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.202s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.202s] OUTPUT         [8, 192, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.202s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 SendData       50400000
+   8 SendData       50400000
+   9 SendData       50400000
+  10 ReceiveData    50400000
+  11 ProtocolEnd    50400000
+  12 ProtocolBegin  50400000
+  13 ReceiveData    151200000
+  14 ProtocolEnd    151200000
+  15 ProtocolEnd    151200000
+  16 ProtocolBegin  151200000
+  17 SendData       151200000
+  18 SendData       151200000
+  19 ReceiveData    151200000
+  20 ReceiveData    201600000
+  21 ProtocolEnd    201600000
+  22 ProtocolEnd    201600000
+  23 Output         201600000
+  24 Stop           201600000
+### folded bandwidth tree
+<simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20
+<simulation>;SecSumShamirShr;PassiveOpenLinearShr 20
+
+## party 2
+### trace
+[     0.000s] START
+SecSumShamirShr {
+    InputPhase {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.101s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.101s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.101s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.101s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.101s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.202s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        [     0.202s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.202s] OUTPUT         [8, 192, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.202s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 ReceiveData    100800000
+   8 ProtocolEnd    100800000
+   9 ProtocolBegin  100800000
+  10 SendData       100800000
+  11 SendData       100800000
+  12 SendData       100800000
+  13 ReceiveData    100800000
+  14 ProtocolEnd    100800000
+  15 ProtocolEnd    100800000
+  16 ProtocolBegin  100800000
+  17 SendData       100800000
+  18 SendData       100800000
+  19 ReceiveData    201600000
+  20 ReceiveData    201600000
+  21 ProtocolEnd    201600000
+  22 ProtocolEnd    201600000
+  23 Output         201600000
+  24 Stop           201600000
+### folded bandwidth tree
+<simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20
+<simulation>;SecSumShamirShr;PassiveOpenLinearShr 20

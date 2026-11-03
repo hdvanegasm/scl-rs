@@ -1,0 +1,50 @@
+## metrics
+simulation metrics:
+                sent  elapsed
+    party 0    132 B   0.100s
+    party 1     33 B   0.150s
+    whole run  165 B   0.150s
+
+## party 0
+### trace
+[     0.000s] START
+SchnorrPok {
+    [     0.000s] SEND           0 -> 1 (99 bytes: 1 EC elem.)
+    [     0.100s] RECV           0 <- 1 (33 bytes: 1 field elem.)
+    [     0.100s] SEND           0 -> 1 (33 bytes: 1 field elem.)
+}
+[     0.100s] OUTPUT         [0]
+[     0.100s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ReceiveData    100016960
+   4 SendData       100016960
+   5 ProtocolEnd    100016960
+   6 Output         100016960
+   7 Stop           100016960
+### folded bandwidth tree
+<simulation>;SchnorrPok 132
+
+## party 1
+### trace
+[     0.000s] START
+SchnorrPok {
+    [     0.050s] RECV           1 <- 0 (99 bytes: 1 EC elem.)
+    [     0.050s] SEND           1 -> 0 (33 bytes: 1 field elem.)
+    [     0.150s] RECV           1 <- 0 (33 bytes: 1 field elem.)
+}
+[     0.150s] OUTPUT         [1, 1]
+[     0.150s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ReceiveData    50011120
+   3 SendData       50011120
+   4 ReceiveData    150022800
+   5 ProtocolEnd    150022800
+   6 Output         150022800
+   7 Stop           150022800
+### folded bandwidth tree
+<simulation>;SchnorrPok 33

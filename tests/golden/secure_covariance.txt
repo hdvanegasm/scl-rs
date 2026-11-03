@@ -1,0 +1,2092 @@
+## metrics
+simulation metrics:
+                  sent  elapsed
+    party 0    1.2 KiB   0.859s
+    party 1      780 B   0.859s
+    party 2      540 B   0.859s
+    party 3      540 B   0.859s
+    party 4      540 B   0.859s
+    whole run  3.6 KiB   0.859s
+
+## party 0
+### trace
+[     0.000s] START
+SecureCovariance {
+    ShareX {
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.000s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.000s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.000s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    ShareY {
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    Preprocessing {
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.101s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.101s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.101s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.151s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.151s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.202s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.202s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.202s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.252s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.252s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.252s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.302s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.353s] RECV           0 <- 1 (30 bytes: 3 Shamir shr.)
+                [     0.353s] RECV           0 <- 2 (30 bytes: 3 Shamir shr.)
+                [     0.353s] RECV           0 <- 3 (30 bytes: 3 Shamir shr.)
+                [     0.353s] RECV           0 <- 4 (30 bytes: 3 Shamir shr.)
+                [     0.353s] SEND           0 -> 1 (27 bytes: 3 field elem.)
+                [     0.353s] SEND           0 -> 2 (27 bytes: 3 field elem.)
+                [     0.353s] SEND           0 -> 3 (27 bytes: 3 field elem.)
+                [     0.353s] SEND           0 -> 4 (27 bytes: 3 field elem.)
+            }
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.353s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.353s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.353s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.353s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.353s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.353s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.454s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.454s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.454s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.504s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.504s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.504s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.555s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.555s] SEND           0 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.555s] RECV           0 <- 0 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.605s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.656s] RECV           0 <- 1 (30 bytes: 3 Shamir shr.)
+                [     0.656s] RECV           0 <- 2 (30 bytes: 3 Shamir shr.)
+                [     0.656s] RECV           0 <- 3 (30 bytes: 3 Shamir shr.)
+                [     0.656s] RECV           0 <- 4 (30 bytes: 3 Shamir shr.)
+                [     0.656s] SEND           0 -> 1 (27 bytes: 3 field elem.)
+                [     0.656s] SEND           0 -> 2 (27 bytes: 3 field elem.)
+                [     0.656s] SEND           0 -> 3 (27 bytes: 3 field elem.)
+                [     0.656s] SEND           0 -> 4 (27 bytes: 3 field elem.)
+            }
+        }
+    }
+    PassiveShamirMul {
+        BatchedPassiveOpenToKing {
+            [     0.757s] RECV           0 <- 1 (120 bytes: 12 Shamir shr.)
+            [     0.757s] RECV           0 <- 2 (120 bytes: 12 Shamir shr.)
+            [     0.757s] RECV           0 <- 3 (120 bytes: 12 Shamir shr.)
+            [     0.757s] RECV           0 <- 4 (120 bytes: 12 Shamir shr.)
+            [     0.757s] SEND           0 -> 1 (108 bytes: 12 field elem.)
+            [     0.757s] SEND           0 -> 2 (108 bytes: 12 field elem.)
+            [     0.757s] SEND           0 -> 3 (108 bytes: 12 field elem.)
+            [     0.757s] SEND           0 -> 4 (108 bytes: 12 field elem.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.757s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.757s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.757s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
+        [     0.757s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.859s] OUTPUT         [8, 72, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.859s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 SendData       0
+   5 SendData       0
+   6 SendData       0
+   7 SendData       0
+   8 SendData       0
+   9 ReceiveData    0
+  10 ProtocolEnd    0
+  11 ProtocolBegin  0
+  12 SendData       0
+  13 SendData       0
+  14 SendData       0
+  15 SendData       0
+  16 SendData       0
+  17 ReceiveData    0
+  18 ProtocolEnd    0
+  19 ProtocolBegin  0
+  20 SendData       0
+  21 SendData       0
+  22 SendData       0
+  23 SendData       0
+  24 SendData       0
+  25 ReceiveData    0
+  26 ProtocolEnd    0
+  27 ProtocolBegin  0
+  28 SendData       0
+  29 SendData       0
+  30 SendData       0
+  31 SendData       0
+  32 SendData       0
+  33 ReceiveData    0
+  34 ProtocolEnd    0
+  35 ProtocolBegin  0
+  36 SendData       0
+  37 SendData       0
+  38 SendData       0
+  39 SendData       0
+  40 SendData       0
+  41 ReceiveData    0
+  42 ProtocolEnd    0
+  43 ProtocolBegin  0
+  44 SendData       0
+  45 SendData       0
+  46 SendData       0
+  47 SendData       0
+  48 SendData       0
+  49 ReceiveData    0
+  50 ProtocolEnd    0
+  51 ProtocolEnd    0
+  52 ProtocolBegin  0
+  53 ProtocolBegin  0
+  54 ReceiveData    100800000
+  55 ProtocolEnd    100800000
+  56 ProtocolBegin  100800000
+  57 ReceiveData    100800000
+  58 ProtocolEnd    100800000
+  59 ProtocolBegin  100800000
+  60 ReceiveData    100800000
+  61 ProtocolEnd    100800000
+  62 ProtocolBegin  100800000
+  63 ReceiveData    100800000
+  64 ProtocolEnd    100800000
+  65 ProtocolBegin  100800000
+  66 ReceiveData    100800000
+  67 ProtocolEnd    100800000
+  68 ProtocolBegin  100800000
+  69 ReceiveData    100800000
+  70 ProtocolEnd    100800000
+  71 ProtocolEnd    100800000
+  72 ProtocolBegin  100800000
+  73 ProtocolBegin  100800000
+  74 ProtocolBegin  100800000
+  75 SendData       100800000
+  76 SendData       100800000
+  77 SendData       100800000
+  78 SendData       100800000
+  79 SendData       100800000
+  80 ReceiveData    100800000
+  81 ProtocolEnd    100800000
+  82 ReceiveData    100800000
+  83 ReceiveData    151200000
+  84 ReceiveData    151200000
+  85 ReceiveData    151200000
+  86 ProtocolEnd    151200000
+  87 ProtocolBegin  151200000
+  88 ProtocolBegin  151200000
+  89 SendData       151200000
+  90 SendData       151200000
+  91 SendData       151200000
+  92 SendData       151200000
+  93 SendData       151200000
+  94 ReceiveData    151200000
+  95 ProtocolEnd    151200000
+  96 ReceiveData    201600000
+  97 ReceiveData    201600000
+  98 ReceiveData    201600000
+  99 ReceiveData    201600000
+ 100 ProtocolEnd    201600000
+ 101 ProtocolBegin  201600000
+ 102 ProtocolBegin  201600000
+ 103 SendData       201600000
+ 104 SendData       201600000
+ 105 SendData       201600000
+ 106 SendData       201600000
+ 107 SendData       201600000
+ 108 ReceiveData    201600000
+ 109 ProtocolEnd    201600000
+ 110 ReceiveData    252000000
+ 111 ReceiveData    252000000
+ 112 ReceiveData    252000000
+ 113 ReceiveData    252000000
+ 114 ProtocolBegin  252000000
+ 115 SendData       252000000
+ 116 SendData       252000000
+ 117 SendData       252000000
+ 118 SendData       252000000
+ 119 SendData       252000000
+ 120 ReceiveData    252000000
+ 121 ProtocolEnd    252000000
+ 122 ReceiveData    302400000
+ 123 ReceiveData    302400000
+ 124 ReceiveData    302400000
+ 125 ReceiveData    302400000
+ 126 ProtocolEnd    302400000
+ 127 ProtocolBegin  302400000
+ 128 ProtocolBegin  302400000
+ 129 ReceiveData    352960000
+ 130 ReceiveData    352960000
+ 131 ReceiveData    352960000
+ 132 ReceiveData    352960000
+ 133 SendData       352960000
+ 134 SendData       352960000
+ 135 SendData       352960000
+ 136 SendData       352960000
+ 137 ProtocolEnd    352960000
+ 138 ProtocolEnd    352960000
+ 139 ProtocolBegin  352960000
+ 140 ProtocolBegin  352960000
+ 141 SendData       352960000
+ 142 SendData       352960000
+ 143 SendData       352960000
+ 144 SendData       352960000
+ 145 SendData       352960000
+ 146 ReceiveData    352960000
+ 147 ProtocolEnd    352960000
+ 148 ReceiveData    453896000
+ 149 ReceiveData    453896000
+ 150 ReceiveData    453896000
+ 151 ReceiveData    453896000
+ 152 ProtocolEnd    453896000
+ 153 ProtocolBegin  453896000
+ 154 ProtocolBegin  453896000
+ 155 SendData       453896000
+ 156 SendData       453896000
+ 157 SendData       453896000
+ 158 SendData       453896000
+ 159 SendData       453896000
+ 160 ReceiveData    453896000
+ 161 ProtocolEnd    453896000
+ 162 ReceiveData    504296000
+ 163 ReceiveData    504296000
+ 164 ReceiveData    504296000
+ 165 ReceiveData    504296000
+ 166 ProtocolEnd    504296000
+ 167 ProtocolBegin  504296000
+ 168 ProtocolBegin  504296000
+ 169 SendData       504296000
+ 170 SendData       504296000
+ 171 SendData       504296000
+ 172 SendData       504296000
+ 173 SendData       504296000
+ 174 ReceiveData    504296000
+ 175 ProtocolEnd    504296000
+ 176 ReceiveData    554696000
+ 177 ReceiveData    554696000
+ 178 ReceiveData    554696000
+ 179 ReceiveData    554696000
+ 180 ProtocolBegin  554696000
+ 181 SendData       554696000
+ 182 SendData       554696000
+ 183 SendData       554696000
+ 184 SendData       554696000
+ 185 SendData       554696000
+ 186 ReceiveData    554696000
+ 187 ProtocolEnd    554696000
+ 188 ReceiveData    605096000
+ 189 ReceiveData    605096000
+ 190 ReceiveData    605096000
+ 191 ReceiveData    605096000
+ 192 ProtocolEnd    605096000
+ 193 ProtocolBegin  605096000
+ 194 ProtocolBegin  605096000
+ 195 ReceiveData    655656000
+ 196 ReceiveData    655656000
+ 197 ReceiveData    655656000
+ 198 ReceiveData    655656000
+ 199 SendData       655656000
+ 200 SendData       655656000
+ 201 SendData       655656000
+ 202 SendData       655656000
+ 203 ProtocolEnd    655656000
+ 204 ProtocolEnd    655656000
+ 205 ProtocolEnd    655656000
+ 206 ProtocolBegin  655656000
+ 207 ProtocolBegin  655656000
+ 208 ReceiveData    757472000
+ 209 ReceiveData    757472000
+ 210 ReceiveData    757472000
+ 211 ReceiveData    757472000
+ 212 SendData       757472000
+ 213 SendData       757472000
+ 214 SendData       757472000
+ 215 SendData       757472000
+ 216 ProtocolEnd    757472000
+ 217 ProtocolEnd    757472000
+ 218 ProtocolBegin  757472000
+ 219 SendData       757472000
+ 220 SendData       757472000
+ 221 SendData       757472000
+ 222 SendData       757472000
+ 223 ReceiveData    859056000
+ 224 ReceiveData    859056000
+ 225 ReceiveData    859056000
+ 226 ReceiveData    859056000
+ 227 ProtocolEnd    859056000
+ 228 ProtocolEnd    859056000
+ 229 Output         859056000
+ 230 Stop           859056000
+### folded bandwidth tree
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareX;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 108
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 108
+<simulation>;SecureCovariance;PassiveShamirMul;BatchedPassiveOpenToKing 432
+<simulation>;SecureCovariance;PassiveOpenLinearShr 40
+
+## party 1
+### trace
+[     0.000s] START
+SecureCovariance {
+    ShareX {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    ShareY {
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+            [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+            [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    Preprocessing {
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.050s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.050s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.050s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.050s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.050s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.050s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.151s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.151s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.151s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.202s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.202s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.202s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.252s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.252s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.252s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.302s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.302s] SEND           1 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.403s] RECV           1 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.403s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.403s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.403s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.454s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.454s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.504s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.504s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.504s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.555s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.555s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           1 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.555s] RECV           1 <- 1 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.605s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.605s] SEND           1 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.706s] RECV           1 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+    }
+    PassiveShamirMul {
+        BatchedPassiveOpenToKing {
+            [     0.706s] SEND           1 -> 0 (120 bytes: 12 Shamir shr.)
+            [     0.809s] RECV           1 <- 0 (108 bytes: 12 field elem.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.809s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
+        [     0.809s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.859s] OUTPUT         [8, 72, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.859s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 ReceiveData    50400000
+   8 ProtocolEnd    50400000
+   9 ProtocolBegin  50400000
+  10 ReceiveData    50400000
+  11 ProtocolEnd    50400000
+  12 ProtocolBegin  50400000
+  13 ReceiveData    50400000
+  14 ProtocolEnd    50400000
+  15 ProtocolBegin  50400000
+  16 ReceiveData    50400000
+  17 ProtocolEnd    50400000
+  18 ProtocolBegin  50400000
+  19 ReceiveData    50400000
+  20 ProtocolEnd    50400000
+  21 ProtocolEnd    50400000
+  22 ProtocolBegin  50400000
+  23 ProtocolBegin  50400000
+  24 SendData       50400000
+  25 SendData       50400000
+  26 SendData       50400000
+  27 SendData       50400000
+  28 SendData       50400000
+  29 ReceiveData    50400000
+  30 ProtocolEnd    50400000
+  31 ProtocolBegin  50400000
+  32 SendData       50400000
+  33 SendData       50400000
+  34 SendData       50400000
+  35 SendData       50400000
+  36 SendData       50400000
+  37 ReceiveData    50400000
+  38 ProtocolEnd    50400000
+  39 ProtocolBegin  50400000
+  40 SendData       50400000
+  41 SendData       50400000
+  42 SendData       50400000
+  43 SendData       50400000
+  44 SendData       50400000
+  45 ReceiveData    50400000
+  46 ProtocolEnd    50400000
+  47 ProtocolBegin  50400000
+  48 SendData       50400000
+  49 SendData       50400000
+  50 SendData       50400000
+  51 SendData       50400000
+  52 SendData       50400000
+  53 ReceiveData    50400000
+  54 ProtocolEnd    50400000
+  55 ProtocolBegin  50400000
+  56 SendData       50400000
+  57 SendData       50400000
+  58 SendData       50400000
+  59 SendData       50400000
+  60 SendData       50400000
+  61 ReceiveData    50400000
+  62 ProtocolEnd    50400000
+  63 ProtocolBegin  50400000
+  64 SendData       50400000
+  65 SendData       50400000
+  66 SendData       50400000
+  67 SendData       50400000
+  68 SendData       50400000
+  69 ReceiveData    50400000
+  70 ProtocolEnd    50400000
+  71 ProtocolEnd    50400000
+  72 ProtocolBegin  50400000
+  73 ProtocolBegin  50400000
+  74 ProtocolBegin  50400000
+  75 SendData       50400000
+  76 SendData       50400000
+  77 SendData       50400000
+  78 SendData       50400000
+  79 SendData       50400000
+  80 ReceiveData    50400000
+  81 ProtocolEnd    50400000
+  82 ReceiveData    151200000
+  83 ReceiveData    151200000
+  84 ReceiveData    151200000
+  85 ReceiveData    151200000
+  86 ProtocolEnd    151200000
+  87 ProtocolBegin  151200000
+  88 ProtocolBegin  151200000
+  89 SendData       151200000
+  90 SendData       151200000
+  91 SendData       151200000
+  92 SendData       151200000
+  93 SendData       151200000
+  94 ReceiveData    151200000
+  95 ProtocolEnd    151200000
+  96 ReceiveData    201600000
+  97 ReceiveData    201600000
+  98 ReceiveData    201600000
+  99 ReceiveData    201600000
+ 100 ProtocolEnd    201600000
+ 101 ProtocolBegin  201600000
+ 102 ProtocolBegin  201600000
+ 103 SendData       201600000
+ 104 SendData       201600000
+ 105 SendData       201600000
+ 106 SendData       201600000
+ 107 SendData       201600000
+ 108 ReceiveData    201600000
+ 109 ProtocolEnd    201600000
+ 110 ReceiveData    252000000
+ 111 ReceiveData    252000000
+ 112 ReceiveData    252000000
+ 113 ReceiveData    252000000
+ 114 ProtocolBegin  252000000
+ 115 SendData       252000000
+ 116 SendData       252000000
+ 117 SendData       252000000
+ 118 SendData       252000000
+ 119 SendData       252000000
+ 120 ReceiveData    252000000
+ 121 ProtocolEnd    252000000
+ 122 ReceiveData    302400000
+ 123 ReceiveData    302400000
+ 124 ReceiveData    302400000
+ 125 ReceiveData    302400000
+ 126 ProtocolEnd    302400000
+ 127 ProtocolBegin  302400000
+ 128 ProtocolBegin  302400000
+ 129 SendData       302400000
+ 130 ReceiveData    403496000
+ 131 ProtocolEnd    403496000
+ 132 ProtocolEnd    403496000
+ 133 ProtocolBegin  403496000
+ 134 ProtocolBegin  403496000
+ 135 SendData       403496000
+ 136 SendData       403496000
+ 137 SendData       403496000
+ 138 SendData       403496000
+ 139 SendData       403496000
+ 140 ReceiveData    403496000
+ 141 ProtocolEnd    403496000
+ 142 ReceiveData    403496000
+ 143 ReceiveData    453896000
+ 144 ReceiveData    453896000
+ 145 ReceiveData    453896000
+ 146 ProtocolEnd    453896000
+ 147 ProtocolBegin  453896000
+ 148 ProtocolBegin  453896000
+ 149 SendData       453896000
+ 150 SendData       453896000
+ 151 SendData       453896000
+ 152 SendData       453896000
+ 153 SendData       453896000
+ 154 ReceiveData    453896000
+ 155 ProtocolEnd    453896000
+ 156 ReceiveData    504296000
+ 157 ReceiveData    504296000
+ 158 ReceiveData    504296000
+ 159 ReceiveData    504296000
+ 160 ProtocolEnd    504296000
+ 161 ProtocolBegin  504296000
+ 162 ProtocolBegin  504296000
+ 163 SendData       504296000
+ 164 SendData       504296000
+ 165 SendData       504296000
+ 166 SendData       504296000
+ 167 SendData       504296000
+ 168 ReceiveData    504296000
+ 169 ProtocolEnd    504296000
+ 170 ReceiveData    554696000
+ 171 ReceiveData    554696000
+ 172 ReceiveData    554696000
+ 173 ReceiveData    554696000
+ 174 ProtocolBegin  554696000
+ 175 SendData       554696000
+ 176 SendData       554696000
+ 177 SendData       554696000
+ 178 SendData       554696000
+ 179 SendData       554696000
+ 180 ReceiveData    554696000
+ 181 ProtocolEnd    554696000
+ 182 ReceiveData    605096000
+ 183 ReceiveData    605096000
+ 184 ReceiveData    605096000
+ 185 ReceiveData    605096000
+ 186 ProtocolEnd    605096000
+ 187 ProtocolBegin  605096000
+ 188 ProtocolBegin  605096000
+ 189 SendData       605096000
+ 190 ReceiveData    706192000
+ 191 ProtocolEnd    706192000
+ 192 ProtocolEnd    706192000
+ 193 ProtocolEnd    706192000
+ 194 ProtocolBegin  706192000
+ 195 ProtocolBegin  706192000
+ 196 SendData       706192000
+ 197 ReceiveData    808656000
+ 198 ProtocolEnd    808656000
+ 199 ProtocolEnd    808656000
+ 200 ProtocolBegin  808656000
+ 201 SendData       808656000
+ 202 SendData       808656000
+ 203 SendData       808656000
+ 204 SendData       808656000
+ 205 ReceiveData    808656000
+ 206 ReceiveData    859056000
+ 207 ReceiveData    859056000
+ 208 ReceiveData    859056000
+ 209 ProtocolEnd    859056000
+ 210 ProtocolEnd    859056000
+ 211 Output         859056000
+ 212 Stop           859056000
+### folded bandwidth tree
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;ShareY;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;PassiveShamirMul;BatchedPassiveOpenToKing 120
+<simulation>;SecureCovariance;PassiveOpenLinearShr 40
+
+## party 2
+### trace
+[     0.000s] START
+SecureCovariance {
+    ShareX {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    ShareY {
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    Preprocessing {
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.101s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.101s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.151s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.151s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.151s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.202s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.202s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.202s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.252s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.252s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.252s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.302s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.302s] SEND           2 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.403s] RECV           2 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.403s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.403s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.403s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.454s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.454s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.504s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.504s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.504s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.555s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.555s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           2 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.555s] RECV           2 <- 2 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.605s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.605s] SEND           2 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.706s] RECV           2 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+    }
+    PassiveShamirMul {
+        BatchedPassiveOpenToKing {
+            [     0.706s] SEND           2 -> 0 (120 bytes: 12 Shamir shr.)
+            [     0.809s] RECV           2 <- 0 (108 bytes: 12 field elem.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.809s] SEND           2 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
+        [     0.809s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.859s] OUTPUT         [8, 72, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.859s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 ReceiveData    50400000
+   8 ProtocolEnd    50400000
+   9 ProtocolBegin  50400000
+  10 ReceiveData    50400000
+  11 ProtocolEnd    50400000
+  12 ProtocolBegin  50400000
+  13 ReceiveData    50400000
+  14 ProtocolEnd    50400000
+  15 ProtocolBegin  50400000
+  16 ReceiveData    50400000
+  17 ProtocolEnd    50400000
+  18 ProtocolBegin  50400000
+  19 ReceiveData    50400000
+  20 ProtocolEnd    50400000
+  21 ProtocolEnd    50400000
+  22 ProtocolBegin  50400000
+  23 ProtocolBegin  50400000
+  24 ReceiveData    100800000
+  25 ProtocolEnd    100800000
+  26 ProtocolBegin  100800000
+  27 ReceiveData    100800000
+  28 ProtocolEnd    100800000
+  29 ProtocolBegin  100800000
+  30 ReceiveData    100800000
+  31 ProtocolEnd    100800000
+  32 ProtocolBegin  100800000
+  33 ReceiveData    100800000
+  34 ProtocolEnd    100800000
+  35 ProtocolBegin  100800000
+  36 ReceiveData    100800000
+  37 ProtocolEnd    100800000
+  38 ProtocolBegin  100800000
+  39 ReceiveData    100800000
+  40 ProtocolEnd    100800000
+  41 ProtocolEnd    100800000
+  42 ProtocolBegin  100800000
+  43 ProtocolBegin  100800000
+  44 ProtocolBegin  100800000
+  45 SendData       100800000
+  46 SendData       100800000
+  47 SendData       100800000
+  48 SendData       100800000
+  49 SendData       100800000
+  50 ReceiveData    100800000
+  51 ProtocolEnd    100800000
+  52 ReceiveData    151200000
+  53 ReceiveData    151200000
+  54 ReceiveData    151200000
+  55 ReceiveData    151200000
+  56 ProtocolEnd    151200000
+  57 ProtocolBegin  151200000
+  58 ProtocolBegin  151200000
+  59 SendData       151200000
+  60 SendData       151200000
+  61 SendData       151200000
+  62 SendData       151200000
+  63 SendData       151200000
+  64 ReceiveData    151200000
+  65 ProtocolEnd    151200000
+  66 ReceiveData    201600000
+  67 ReceiveData    201600000
+  68 ReceiveData    201600000
+  69 ReceiveData    201600000
+  70 ProtocolEnd    201600000
+  71 ProtocolBegin  201600000
+  72 ProtocolBegin  201600000
+  73 SendData       201600000
+  74 SendData       201600000
+  75 SendData       201600000
+  76 SendData       201600000
+  77 SendData       201600000
+  78 ReceiveData    201600000
+  79 ProtocolEnd    201600000
+  80 ReceiveData    252000000
+  81 ReceiveData    252000000
+  82 ReceiveData    252000000
+  83 ReceiveData    252000000
+  84 ProtocolBegin  252000000
+  85 SendData       252000000
+  86 SendData       252000000
+  87 SendData       252000000
+  88 SendData       252000000
+  89 SendData       252000000
+  90 ReceiveData    252000000
+  91 ProtocolEnd    252000000
+  92 ReceiveData    302400000
+  93 ReceiveData    302400000
+  94 ReceiveData    302400000
+  95 ReceiveData    302400000
+  96 ProtocolEnd    302400000
+  97 ProtocolBegin  302400000
+  98 ProtocolBegin  302400000
+  99 SendData       302400000
+ 100 ReceiveData    403496000
+ 101 ProtocolEnd    403496000
+ 102 ProtocolEnd    403496000
+ 103 ProtocolBegin  403496000
+ 104 ProtocolBegin  403496000
+ 105 SendData       403496000
+ 106 SendData       403496000
+ 107 SendData       403496000
+ 108 SendData       403496000
+ 109 SendData       403496000
+ 110 ReceiveData    403496000
+ 111 ProtocolEnd    403496000
+ 112 ReceiveData    403496000
+ 113 ReceiveData    453896000
+ 114 ReceiveData    453896000
+ 115 ReceiveData    453896000
+ 116 ProtocolEnd    453896000
+ 117 ProtocolBegin  453896000
+ 118 ProtocolBegin  453896000
+ 119 SendData       453896000
+ 120 SendData       453896000
+ 121 SendData       453896000
+ 122 SendData       453896000
+ 123 SendData       453896000
+ 124 ReceiveData    453896000
+ 125 ProtocolEnd    453896000
+ 126 ReceiveData    504296000
+ 127 ReceiveData    504296000
+ 128 ReceiveData    504296000
+ 129 ReceiveData    504296000
+ 130 ProtocolEnd    504296000
+ 131 ProtocolBegin  504296000
+ 132 ProtocolBegin  504296000
+ 133 SendData       504296000
+ 134 SendData       504296000
+ 135 SendData       504296000
+ 136 SendData       504296000
+ 137 SendData       504296000
+ 138 ReceiveData    504296000
+ 139 ProtocolEnd    504296000
+ 140 ReceiveData    554696000
+ 141 ReceiveData    554696000
+ 142 ReceiveData    554696000
+ 143 ReceiveData    554696000
+ 144 ProtocolBegin  554696000
+ 145 SendData       554696000
+ 146 SendData       554696000
+ 147 SendData       554696000
+ 148 SendData       554696000
+ 149 SendData       554696000
+ 150 ReceiveData    554696000
+ 151 ProtocolEnd    554696000
+ 152 ReceiveData    605096000
+ 153 ReceiveData    605096000
+ 154 ReceiveData    605096000
+ 155 ReceiveData    605096000
+ 156 ProtocolEnd    605096000
+ 157 ProtocolBegin  605096000
+ 158 ProtocolBegin  605096000
+ 159 SendData       605096000
+ 160 ReceiveData    706192000
+ 161 ProtocolEnd    706192000
+ 162 ProtocolEnd    706192000
+ 163 ProtocolEnd    706192000
+ 164 ProtocolBegin  706192000
+ 165 ProtocolBegin  706192000
+ 166 SendData       706192000
+ 167 ReceiveData    808656000
+ 168 ProtocolEnd    808656000
+ 169 ProtocolEnd    808656000
+ 170 ProtocolBegin  808656000
+ 171 SendData       808656000
+ 172 SendData       808656000
+ 173 SendData       808656000
+ 174 SendData       808656000
+ 175 ReceiveData    808656000
+ 176 ReceiveData    859056000
+ 177 ReceiveData    859056000
+ 178 ReceiveData    859056000
+ 179 ProtocolEnd    859056000
+ 180 ProtocolEnd    859056000
+ 181 Output         859056000
+ 182 Stop           859056000
+### folded bandwidth tree
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;PassiveShamirMul;BatchedPassiveOpenToKing 120
+<simulation>;SecureCovariance;PassiveOpenLinearShr 40
+
+## party 3
+### trace
+[     0.000s] START
+SecureCovariance {
+    ShareX {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    ShareY {
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    Preprocessing {
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.101s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.101s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.151s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.151s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.151s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.202s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.202s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.202s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.252s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.252s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.252s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.302s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.302s] SEND           3 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.403s] RECV           3 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.403s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.403s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.403s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.454s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.454s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.504s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.504s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.504s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.555s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.555s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           3 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.555s] RECV           3 <- 3 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.605s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.605s] SEND           3 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.706s] RECV           3 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+    }
+    PassiveShamirMul {
+        BatchedPassiveOpenToKing {
+            [     0.706s] SEND           3 -> 0 (120 bytes: 12 Shamir shr.)
+            [     0.809s] RECV           3 <- 0 (108 bytes: 12 field elem.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.809s] SEND           3 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
+        [     0.809s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.859s] OUTPUT         [8, 72, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.859s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 ReceiveData    50400000
+   8 ProtocolEnd    50400000
+   9 ProtocolBegin  50400000
+  10 ReceiveData    50400000
+  11 ProtocolEnd    50400000
+  12 ProtocolBegin  50400000
+  13 ReceiveData    50400000
+  14 ProtocolEnd    50400000
+  15 ProtocolBegin  50400000
+  16 ReceiveData    50400000
+  17 ProtocolEnd    50400000
+  18 ProtocolBegin  50400000
+  19 ReceiveData    50400000
+  20 ProtocolEnd    50400000
+  21 ProtocolEnd    50400000
+  22 ProtocolBegin  50400000
+  23 ProtocolBegin  50400000
+  24 ReceiveData    100800000
+  25 ProtocolEnd    100800000
+  26 ProtocolBegin  100800000
+  27 ReceiveData    100800000
+  28 ProtocolEnd    100800000
+  29 ProtocolBegin  100800000
+  30 ReceiveData    100800000
+  31 ProtocolEnd    100800000
+  32 ProtocolBegin  100800000
+  33 ReceiveData    100800000
+  34 ProtocolEnd    100800000
+  35 ProtocolBegin  100800000
+  36 ReceiveData    100800000
+  37 ProtocolEnd    100800000
+  38 ProtocolBegin  100800000
+  39 ReceiveData    100800000
+  40 ProtocolEnd    100800000
+  41 ProtocolEnd    100800000
+  42 ProtocolBegin  100800000
+  43 ProtocolBegin  100800000
+  44 ProtocolBegin  100800000
+  45 SendData       100800000
+  46 SendData       100800000
+  47 SendData       100800000
+  48 SendData       100800000
+  49 SendData       100800000
+  50 ReceiveData    100800000
+  51 ProtocolEnd    100800000
+  52 ReceiveData    151200000
+  53 ReceiveData    151200000
+  54 ReceiveData    151200000
+  55 ReceiveData    151200000
+  56 ProtocolEnd    151200000
+  57 ProtocolBegin  151200000
+  58 ProtocolBegin  151200000
+  59 SendData       151200000
+  60 SendData       151200000
+  61 SendData       151200000
+  62 SendData       151200000
+  63 SendData       151200000
+  64 ReceiveData    151200000
+  65 ProtocolEnd    151200000
+  66 ReceiveData    201600000
+  67 ReceiveData    201600000
+  68 ReceiveData    201600000
+  69 ReceiveData    201600000
+  70 ProtocolEnd    201600000
+  71 ProtocolBegin  201600000
+  72 ProtocolBegin  201600000
+  73 SendData       201600000
+  74 SendData       201600000
+  75 SendData       201600000
+  76 SendData       201600000
+  77 SendData       201600000
+  78 ReceiveData    201600000
+  79 ProtocolEnd    201600000
+  80 ReceiveData    252000000
+  81 ReceiveData    252000000
+  82 ReceiveData    252000000
+  83 ReceiveData    252000000
+  84 ProtocolBegin  252000000
+  85 SendData       252000000
+  86 SendData       252000000
+  87 SendData       252000000
+  88 SendData       252000000
+  89 SendData       252000000
+  90 ReceiveData    252000000
+  91 ProtocolEnd    252000000
+  92 ReceiveData    302400000
+  93 ReceiveData    302400000
+  94 ReceiveData    302400000
+  95 ReceiveData    302400000
+  96 ProtocolEnd    302400000
+  97 ProtocolBegin  302400000
+  98 ProtocolBegin  302400000
+  99 SendData       302400000
+ 100 ReceiveData    403496000
+ 101 ProtocolEnd    403496000
+ 102 ProtocolEnd    403496000
+ 103 ProtocolBegin  403496000
+ 104 ProtocolBegin  403496000
+ 105 SendData       403496000
+ 106 SendData       403496000
+ 107 SendData       403496000
+ 108 SendData       403496000
+ 109 SendData       403496000
+ 110 ReceiveData    403496000
+ 111 ProtocolEnd    403496000
+ 112 ReceiveData    403496000
+ 113 ReceiveData    453896000
+ 114 ReceiveData    453896000
+ 115 ReceiveData    453896000
+ 116 ProtocolEnd    453896000
+ 117 ProtocolBegin  453896000
+ 118 ProtocolBegin  453896000
+ 119 SendData       453896000
+ 120 SendData       453896000
+ 121 SendData       453896000
+ 122 SendData       453896000
+ 123 SendData       453896000
+ 124 ReceiveData    453896000
+ 125 ProtocolEnd    453896000
+ 126 ReceiveData    504296000
+ 127 ReceiveData    504296000
+ 128 ReceiveData    504296000
+ 129 ReceiveData    504296000
+ 130 ProtocolEnd    504296000
+ 131 ProtocolBegin  504296000
+ 132 ProtocolBegin  504296000
+ 133 SendData       504296000
+ 134 SendData       504296000
+ 135 SendData       504296000
+ 136 SendData       504296000
+ 137 SendData       504296000
+ 138 ReceiveData    504296000
+ 139 ProtocolEnd    504296000
+ 140 ReceiveData    554696000
+ 141 ReceiveData    554696000
+ 142 ReceiveData    554696000
+ 143 ReceiveData    554696000
+ 144 ProtocolBegin  554696000
+ 145 SendData       554696000
+ 146 SendData       554696000
+ 147 SendData       554696000
+ 148 SendData       554696000
+ 149 SendData       554696000
+ 150 ReceiveData    554696000
+ 151 ProtocolEnd    554696000
+ 152 ReceiveData    605096000
+ 153 ReceiveData    605096000
+ 154 ReceiveData    605096000
+ 155 ReceiveData    605096000
+ 156 ProtocolEnd    605096000
+ 157 ProtocolBegin  605096000
+ 158 ProtocolBegin  605096000
+ 159 SendData       605096000
+ 160 ReceiveData    706192000
+ 161 ProtocolEnd    706192000
+ 162 ProtocolEnd    706192000
+ 163 ProtocolEnd    706192000
+ 164 ProtocolBegin  706192000
+ 165 ProtocolBegin  706192000
+ 166 SendData       706192000
+ 167 ReceiveData    808656000
+ 168 ProtocolEnd    808656000
+ 169 ProtocolEnd    808656000
+ 170 ProtocolBegin  808656000
+ 171 SendData       808656000
+ 172 SendData       808656000
+ 173 SendData       808656000
+ 174 SendData       808656000
+ 175 ReceiveData    808656000
+ 176 ReceiveData    859056000
+ 177 ReceiveData    859056000
+ 178 ReceiveData    859056000
+ 179 ProtocolEnd    859056000
+ 180 ProtocolEnd    859056000
+ 181 Output         859056000
+ 182 Stop           859056000
+### folded bandwidth tree
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;PassiveShamirMul;BatchedPassiveOpenToKing 120
+<simulation>;SecureCovariance;PassiveOpenLinearShr 40
+
+## party 4
+### trace
+[     0.000s] START
+SecureCovariance {
+    ShareX {
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.050s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    ShareY {
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveDealLinearShr {
+            [     0.101s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        }
+    }
+    Preprocessing {
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.101s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.101s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.101s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.151s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.151s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.151s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.151s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.151s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.202s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.202s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.202s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.202s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.202s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.252s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.252s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.252s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.252s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.252s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.302s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.302s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.302s] SEND           4 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.403s] RECV           4 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.403s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.403s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.403s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.403s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.454s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandShr {
+            PassiveDealLinearShr {
+                [     0.454s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.454s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.454s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.504s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.504s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveRandDoubleShr {
+            PassiveDealLinearShr {
+                [     0.504s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.504s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.504s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.555s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+            PassiveDealLinearShr {
+                [     0.555s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+                [     0.555s] SEND           4 -> 4 (10 bytes: 1 Shamir shr.)
+                [     0.555s] RECV           4 <- 4 (10 bytes: 1 Shamir shr.)
+            }
+            [     0.605s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+            [     0.605s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+        }
+        PassiveShamirTriple {
+            BatchedPassiveOpenToKing {
+                [     0.605s] SEND           4 -> 0 (30 bytes: 3 Shamir shr.)
+                [     0.706s] RECV           4 <- 0 (27 bytes: 3 field elem.)
+            }
+        }
+    }
+    PassiveShamirMul {
+        BatchedPassiveOpenToKing {
+            [     0.706s] SEND           4 -> 0 (120 bytes: 12 Shamir shr.)
+            [     0.809s] RECV           4 <- 0 (108 bytes: 12 field elem.)
+        }
+    }
+    PassiveOpenLinearShr {
+        [     0.809s] SEND           4 -> 0 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           4 -> 1 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           4 -> 2 (10 bytes: 1 Shamir shr.)
+        [     0.809s] SEND           4 -> 3 (10 bytes: 1 Shamir shr.)
+        [     0.809s] RECV           4 <- 0 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           4 <- 1 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           4 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.859s] RECV           4 <- 3 (10 bytes: 1 Shamir shr.)
+    }
+}
+[     0.859s] OUTPUT         [8, 72, 0, 0, …, 0, 0, 0, 0] (9 bytes)
+[     0.859s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 ProtocolBegin  0
+   4 ReceiveData    50400000
+   5 ProtocolEnd    50400000
+   6 ProtocolBegin  50400000
+   7 ReceiveData    50400000
+   8 ProtocolEnd    50400000
+   9 ProtocolBegin  50400000
+  10 ReceiveData    50400000
+  11 ProtocolEnd    50400000
+  12 ProtocolBegin  50400000
+  13 ReceiveData    50400000
+  14 ProtocolEnd    50400000
+  15 ProtocolBegin  50400000
+  16 ReceiveData    50400000
+  17 ProtocolEnd    50400000
+  18 ProtocolBegin  50400000
+  19 ReceiveData    50400000
+  20 ProtocolEnd    50400000
+  21 ProtocolEnd    50400000
+  22 ProtocolBegin  50400000
+  23 ProtocolBegin  50400000
+  24 ReceiveData    100800000
+  25 ProtocolEnd    100800000
+  26 ProtocolBegin  100800000
+  27 ReceiveData    100800000
+  28 ProtocolEnd    100800000
+  29 ProtocolBegin  100800000
+  30 ReceiveData    100800000
+  31 ProtocolEnd    100800000
+  32 ProtocolBegin  100800000
+  33 ReceiveData    100800000
+  34 ProtocolEnd    100800000
+  35 ProtocolBegin  100800000
+  36 ReceiveData    100800000
+  37 ProtocolEnd    100800000
+  38 ProtocolBegin  100800000
+  39 ReceiveData    100800000
+  40 ProtocolEnd    100800000
+  41 ProtocolEnd    100800000
+  42 ProtocolBegin  100800000
+  43 ProtocolBegin  100800000
+  44 ProtocolBegin  100800000
+  45 SendData       100800000
+  46 SendData       100800000
+  47 SendData       100800000
+  48 SendData       100800000
+  49 SendData       100800000
+  50 ReceiveData    100800000
+  51 ProtocolEnd    100800000
+  52 ReceiveData    151200000
+  53 ReceiveData    151200000
+  54 ReceiveData    151200000
+  55 ReceiveData    151200000
+  56 ProtocolEnd    151200000
+  57 ProtocolBegin  151200000
+  58 ProtocolBegin  151200000
+  59 SendData       151200000
+  60 SendData       151200000
+  61 SendData       151200000
+  62 SendData       151200000
+  63 SendData       151200000
+  64 ReceiveData    151200000
+  65 ProtocolEnd    151200000
+  66 ReceiveData    201600000
+  67 ReceiveData    201600000
+  68 ReceiveData    201600000
+  69 ReceiveData    201600000
+  70 ProtocolEnd    201600000
+  71 ProtocolBegin  201600000
+  72 ProtocolBegin  201600000
+  73 SendData       201600000
+  74 SendData       201600000
+  75 SendData       201600000
+  76 SendData       201600000
+  77 SendData       201600000
+  78 ReceiveData    201600000
+  79 ProtocolEnd    201600000
+  80 ReceiveData    252000000
+  81 ReceiveData    252000000
+  82 ReceiveData    252000000
+  83 ReceiveData    252000000
+  84 ProtocolBegin  252000000
+  85 SendData       252000000
+  86 SendData       252000000
+  87 SendData       252000000
+  88 SendData       252000000
+  89 SendData       252000000
+  90 ReceiveData    252000000
+  91 ProtocolEnd    252000000
+  92 ReceiveData    302400000
+  93 ReceiveData    302400000
+  94 ReceiveData    302400000
+  95 ReceiveData    302400000
+  96 ProtocolEnd    302400000
+  97 ProtocolBegin  302400000
+  98 ProtocolBegin  302400000
+  99 SendData       302400000
+ 100 ReceiveData    403496000
+ 101 ProtocolEnd    403496000
+ 102 ProtocolEnd    403496000
+ 103 ProtocolBegin  403496000
+ 104 ProtocolBegin  403496000
+ 105 SendData       403496000
+ 106 SendData       403496000
+ 107 SendData       403496000
+ 108 SendData       403496000
+ 109 SendData       403496000
+ 110 ReceiveData    403496000
+ 111 ProtocolEnd    403496000
+ 112 ReceiveData    403496000
+ 113 ReceiveData    453896000
+ 114 ReceiveData    453896000
+ 115 ReceiveData    453896000
+ 116 ProtocolEnd    453896000
+ 117 ProtocolBegin  453896000
+ 118 ProtocolBegin  453896000
+ 119 SendData       453896000
+ 120 SendData       453896000
+ 121 SendData       453896000
+ 122 SendData       453896000
+ 123 SendData       453896000
+ 124 ReceiveData    453896000
+ 125 ProtocolEnd    453896000
+ 126 ReceiveData    504296000
+ 127 ReceiveData    504296000
+ 128 ReceiveData    504296000
+ 129 ReceiveData    504296000
+ 130 ProtocolEnd    504296000
+ 131 ProtocolBegin  504296000
+ 132 ProtocolBegin  504296000
+ 133 SendData       504296000
+ 134 SendData       504296000
+ 135 SendData       504296000
+ 136 SendData       504296000
+ 137 SendData       504296000
+ 138 ReceiveData    504296000
+ 139 ProtocolEnd    504296000
+ 140 ReceiveData    554696000
+ 141 ReceiveData    554696000
+ 142 ReceiveData    554696000
+ 143 ReceiveData    554696000
+ 144 ProtocolBegin  554696000
+ 145 SendData       554696000
+ 146 SendData       554696000
+ 147 SendData       554696000
+ 148 SendData       554696000
+ 149 SendData       554696000
+ 150 ReceiveData    554696000
+ 151 ProtocolEnd    554696000
+ 152 ReceiveData    605096000
+ 153 ReceiveData    605096000
+ 154 ReceiveData    605096000
+ 155 ReceiveData    605096000
+ 156 ProtocolEnd    605096000
+ 157 ProtocolBegin  605096000
+ 158 ProtocolBegin  605096000
+ 159 SendData       605096000
+ 160 ReceiveData    706192000
+ 161 ProtocolEnd    706192000
+ 162 ProtocolEnd    706192000
+ 163 ProtocolEnd    706192000
+ 164 ProtocolBegin  706192000
+ 165 ProtocolBegin  706192000
+ 166 SendData       706192000
+ 167 ReceiveData    808656000
+ 168 ProtocolEnd    808656000
+ 169 ProtocolEnd    808656000
+ 170 ProtocolBegin  808656000
+ 171 SendData       808656000
+ 172 SendData       808656000
+ 173 SendData       808656000
+ 174 SendData       808656000
+ 175 ReceiveData    808656000
+ 176 ReceiveData    859056000
+ 177 ReceiveData    859056000
+ 178 ReceiveData    859056000
+ 179 ProtocolEnd    859056000
+ 180 ProtocolEnd    859056000
+ 181 Output         859056000
+ 182 Stop           859056000
+### folded bandwidth tree
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveRandDoubleShr;PassiveDealLinearShr 40
+<simulation>;SecureCovariance;Preprocessing;PassiveShamirTriple;BatchedPassiveOpenToKing 30
+<simulation>;SecureCovariance;PassiveShamirMul;BatchedPassiveOpenToKing 120
+<simulation>;SecureCovariance;PassiveOpenLinearShr 40

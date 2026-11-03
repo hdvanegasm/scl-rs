@@ -1,0 +1,154 @@
+## metrics
+simulation metrics:
+                sent  elapsed
+    party 0    140 B   0.101s
+    party 1    140 B   0.101s
+    party 2    140 B   0.101s
+    whole run  420 B   0.101s
+
+## party 0
+### trace
+[     0.000s] START
+SecSumAdditiveShr {
+    DistAdditiveShr {
+        [     0.000s] SEND           0 -> 0 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           0 -> 1 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           0 -> 2 (35 bytes: 1 add. shr.)
+        [     0.000s] RECV           0 <- 0 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           0 <- 1 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           0 <- 2 (35 bytes: 1 add. shr.)
+    }
+    ReconstrAdditiveShr {
+        [     0.051s] SEND           0 -> 0 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           0 -> 1 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           0 -> 2 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           0 <- 0 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           0 <- 1 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           0 <- 2 (35 bytes: 1 add. shr.)
+    }
+}
+[     0.101s] OUTPUT         [32, 17, 196, 200, …, 0, 0, 0, 0] (33 bytes)
+[     0.101s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 SendData       0
+   4 SendData       0
+   5 SendData       0
+   6 ReceiveData    0
+   7 ReceiveData    50600000
+   8 ReceiveData    50600000
+   9 ProtocolEnd    50600000
+  10 ProtocolBegin  50600000
+  11 SendData       50600000
+  12 SendData       50600000
+  13 SendData       50600000
+  14 ReceiveData    50600000
+  15 ReceiveData    101200000
+  16 ReceiveData    101200000
+  17 ProtocolEnd    101200000
+  18 ProtocolEnd    101200000
+  19 Output         101200000
+  20 Stop           101200000
+### folded bandwidth tree
+<simulation>;SecSumAdditiveShr;DistAdditiveShr 70
+<simulation>;SecSumAdditiveShr;ReconstrAdditiveShr 70
+
+## party 1
+### trace
+[     0.000s] START
+SecSumAdditiveShr {
+    DistAdditiveShr {
+        [     0.000s] SEND           1 -> 0 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           1 -> 1 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           1 -> 2 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           1 <- 0 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           1 <- 1 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           1 <- 2 (35 bytes: 1 add. shr.)
+    }
+    ReconstrAdditiveShr {
+        [     0.051s] SEND           1 -> 0 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           1 -> 1 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           1 -> 2 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           1 <- 0 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           1 <- 1 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           1 <- 2 (35 bytes: 1 add. shr.)
+    }
+}
+[     0.101s] OUTPUT         [32, 17, 196, 200, …, 0, 0, 0, 0] (33 bytes)
+[     0.101s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 SendData       0
+   4 SendData       0
+   5 SendData       0
+   6 ReceiveData    50600000
+   7 ReceiveData    50600000
+   8 ReceiveData    50600000
+   9 ProtocolEnd    50600000
+  10 ProtocolBegin  50600000
+  11 SendData       50600000
+  12 SendData       50600000
+  13 SendData       50600000
+  14 ReceiveData    101200000
+  15 ReceiveData    101200000
+  16 ReceiveData    101200000
+  17 ProtocolEnd    101200000
+  18 ProtocolEnd    101200000
+  19 Output         101200000
+  20 Stop           101200000
+### folded bandwidth tree
+<simulation>;SecSumAdditiveShr;DistAdditiveShr 70
+<simulation>;SecSumAdditiveShr;ReconstrAdditiveShr 70
+
+## party 2
+### trace
+[     0.000s] START
+SecSumAdditiveShr {
+    DistAdditiveShr {
+        [     0.000s] SEND           2 -> 0 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           2 -> 1 (35 bytes: 1 add. shr.)
+        [     0.000s] SEND           2 -> 2 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           2 <- 0 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           2 <- 1 (35 bytes: 1 add. shr.)
+        [     0.051s] RECV           2 <- 2 (35 bytes: 1 add. shr.)
+    }
+    ReconstrAdditiveShr {
+        [     0.051s] SEND           2 -> 0 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           2 -> 1 (35 bytes: 1 add. shr.)
+        [     0.051s] SEND           2 -> 2 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           2 <- 0 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           2 <- 1 (35 bytes: 1 add. shr.)
+        [     0.101s] RECV           2 <- 2 (35 bytes: 1 add. shr.)
+    }
+}
+[     0.101s] OUTPUT         [32, 17, 196, 200, …, 0, 0, 0, 0] (33 bytes)
+[     0.101s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolBegin  0
+   3 SendData       0
+   4 SendData       0
+   5 SendData       0
+   6 ReceiveData    50600000
+   7 ReceiveData    50600000
+   8 ReceiveData    50600000
+   9 ProtocolEnd    50600000
+  10 ProtocolBegin  50600000
+  11 SendData       50600000
+  12 SendData       50600000
+  13 SendData       50600000
+  14 ReceiveData    101200000
+  15 ReceiveData    101200000
+  16 ReceiveData    101200000
+  17 ProtocolEnd    101200000
+  18 ProtocolEnd    101200000
+  19 Output         101200000
+  20 Stop           101200000
+### folded bandwidth tree
+<simulation>;SecSumAdditiveShr;DistAdditiveShr 70
+<simulation>;SecSumAdditiveShr;ReconstrAdditiveShr 70

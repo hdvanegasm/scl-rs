@@ -1,0 +1,57 @@
+## metrics
+simulation metrics:
+               sent  elapsed
+    party 0     0 B   0.150s
+    party 1     1 B   0.000s
+    party 2     0 B   0.000s
+    whole run   1 B   0.150s
+
+## party 0
+### trace
+[     0.000s] START
+TimedReceives {
+    [     0.050s] RECV           0 <- 1 (1 bytes: 1 unknown elem.)
+}
+[     0.150s] OUTPUT         [1, 42, 1]
+[     0.150s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ReceiveData    50328000
+   3 ProtocolEnd    150328000
+   4 Output         150328000
+   5 Stop           150328000
+### folded bandwidth tree
+
+## party 1
+### trace
+[     0.000s] START
+TimedReceives {
+    [     0.000s] SEND           1 -> 0 (1 bytes: 1 unknown elem.)
+}
+[     0.000s] OUTPUT         [0, 0, 0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 SendData       0
+   3 ProtocolEnd    0
+   4 Output         0
+   5 Stop           0
+### folded bandwidth tree
+<simulation>;TimedReceives 1
+
+## party 2
+### trace
+[     0.000s] START
+TimedReceives {
+}
+[     0.000s] OUTPUT         [0, 0, 0]
+[     0.000s] STOP
+### exact timestamps (ns)
+   0 Start          0
+   1 ProtocolBegin  0
+   2 ProtocolEnd    0
+   3 Output         0
+   4 Stop           0
+### folded bandwidth tree
