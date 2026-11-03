@@ -9,6 +9,30 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+### Added
+
+- **`protocol::zk`**, a new module for zero-knowledge proofs run as two-party `Protocol`s between
+  a prover and a verifier. The verifier's output is its verdict; the prover has no output.
+
+- **`protocol::zk::schnorr::SchnorrPok`**, Schnorr's interactive proof of knowledge of a discrete
+  logarithm over any `EllipticCurve`: the prover shows it knows `x` with `h = g^x` in three moves
+  (commitment `u = g^r`, challenge `c`, response `z = r + c·x`), and the verifier accepts if and
+  only if `g^z = u · h^c`. It is zero-knowledge against an honest verifier only, and interactive —
+  no Fiat–Shamir transform is applied.
+
+  The prover and the verifier are named by `PartyId`, so the proof runs between any two distinct
+  parties of a larger network, for example as a sub-protocol of an MPC protocol; the other parties
+  do not run it and exchange no messages with it. Build the two nodes with
+  `SchnorrPok::prover(prover, verifier, x, h)` and `SchnorrPok::verifier(prover, verifier, h)`;
+  both return `Error::Input` when `prover == verifier`. `Output` is `Option<bool>`: `Some(true)` or
+  `Some(false)` on the verifier, `None` on the prover — a rejected proof is an ordinary output, not
+  an error. Running a node whose local party does not match its role fails with `Error::Input`
+  before any message is sent: the local party is neither the prover nor the verifier, the prover
+  lacks the witness, or the verifier was given one.
+
+  The `schnorr_pok` example keeps its own self-contained copy of the protocol, restricted to a
+  two-party network, and does not use this type.
+
 ## [0.14.2] - 2026-09-21
 
 Adds the flat, whole-run summary of what a simulation cost. `SimulationOutcome::metrics` folds

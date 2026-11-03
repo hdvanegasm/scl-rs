@@ -1,6 +1,9 @@
 /// Generic secret-sharing protocols (dealing and opening) over any [`LinearShare`](crate::ss::LinearShare) scheme.
 pub mod share;
 
+/// Zero-knowledge proofs, run as two-party [`Protocol`]s between a prover and a verifier.
+pub mod zk;
+
 pub mod passive_shamir;
 
 use crate::{
