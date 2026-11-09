@@ -55,6 +55,7 @@ use serde::Serialize;
 
 use scl_rs::{
     net::{
+        session::derive_root_tag,
         simulation::{event::EventType, network::SimNetwork, simulator::simulate},
         Network, NetworkConfig as TlsNetworkConfig, PartyId, TcpNetwork,
     },
@@ -409,7 +410,8 @@ async fn real_elapsed(
     config_path: &str,
 ) -> Result<Duration, Box<dyn std::error::Error>> {
     let config = TlsNetworkConfig::new(Path::new(config_path))?;
-    let network = TcpNetwork::create(party, config).await?;
+    let root_tag = derive_root_tag(b"scl-rs/benches/comparison");
+    let network = TcpNetwork::create(party, config, root_tag).await?;
     let mut env = environment(network);
 
     barrier(&mut env).await?;

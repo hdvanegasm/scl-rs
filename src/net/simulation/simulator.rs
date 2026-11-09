@@ -396,6 +396,15 @@ impl ProtocolBandwidthTree {
     }
 }
 
+/// The root tag of every simulated execution: the tag of the root session that
+/// [`simulate`] starts every party in (see [`SessionId::root`](crate::net::session::SessionId::root)).
+///
+/// A fixed tag is safe here. Every party of a run shares it, and one `simulate` call is one
+/// execution: a run cannot exchange messages with another run, so two runs sharing a tag can never
+/// confuse each other's sessions. A real deployment must not reuse a tag across executions; see
+/// [`TcpNetwork::create`](crate::net::TcpNetwork::create).
+pub const SIMULATION_ROOT_TAG: [u8; 32] = *b"scl-rs/simulation/root-tag/v1\0\0\0";
+
 /// Helper that records an event for a party at its current virtual time.
 fn record_event(
     switchboard: &Arc<Mutex<Switchboard>>,
@@ -414,6 +423,32 @@ fn record_event(
 /// protocol `make_protocol(pid)`; `hooks` fire as events are recorded. All parties
 /// run the same protocol type `P` — role differences are expressed inside the protocol (for example
 /// by branching on [`local_party`](crate::net::Network::local_party)).
+///
+/// # Panics
+///
+/// Panics if the parties deadlock: every party that has not finished waits for a packet, and no
+/// packet is left to deliver. A receive with a timeout cannot deadlock; it returns
+/// [`NetworkError::Timeout`](crate::net::NetworkError::Timeout) instead. The panic message lists
+/// each waiting receive, then each packet that reached its recipient but was never received,
+/// together with what that recipient is doing. For example, when party 2 waits for party 1 but the
+/// packet came from party 0:
+///
+/// ```text
+/// scheduler: 2 task(s) parked, nothing to deliver (deadlock)
+/// waiting:
+///     party 0 in session root waits for party 2
+///     party 2 in session root waits for party 1
+/// undelivered:
+///     party 2 in session root: 1 packet(s) from party 0; party 2 is waiting in this session, but for a different sender
+/// ```
+///
+/// What the recipient is doing usually points at the cause:
+///
+/// - *waiting in this session, but for a different sender*: the protocol receives from the wrong
+///   party;
+/// - *waiting in other sessions*: the parties forked their sessions out of step;
+/// - *not waiting*: the recipient has finished, so the packets are leftovers;
+/// - *waiting for these packets but never woken*: a bug in the simulator, not in the protocol.
 pub fn simulate<P, E>(
     config: impl NetworkConfig + 'static,
     parties: Vec<PartyId>,

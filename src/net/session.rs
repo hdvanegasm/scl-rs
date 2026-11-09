@@ -1,8 +1,43 @@
+use std::fmt::Display;
+
 use sha2::{Digest, Sha256};
 
 /// Domain-separation prefix hashed into every [`SessionId::digest`], so that a session digest can
 /// never collide with a hash computed for another purpose over the same bytes.
 const DIGEST_DOMAIN: &[u8] = b"scl-rs/session-id/v1";
+
+/// Domain-separation prefix hashed into every [`derive_root_tag`] output.
+const ROOT_TAG_DOMAIN: &[u8] = b"scl-rs/root-tag/v1";
+
+/// Derives a 32-byte root tag (see [`SessionId::root`]) from public context that every party of an
+/// execution knows: SHA-256 over a domain-separation prefix and `context`.
+///
+/// No communication is involved, so the parties agree on the tag exactly when they pass the same
+/// `context`. The tag is unique per execution only if `context` is. Put in it whatever
+/// distinguishes this execution from every other one on the same parties, typically:
+///
+/// - the protocol name and version;
+/// - the party set;
+/// - the parameters;
+/// - an epoch or run counter that the application never reuses.
+///
+/// ```
+/// use scl_rs::net::session::derive_root_tag;
+///
+/// let epoch: u64 = 17;
+/// let mut context = b"my-protocol/v1 parties=0,1,2 t=1 epoch=".to_vec();
+/// context.extend_from_slice(&epoch.to_le_bytes());
+///
+/// let tag = derive_root_tag(&context);
+/// assert_eq!(tag, derive_root_tag(&context)); // every party computes the same tag
+/// assert_ne!(tag, derive_root_tag(b"my-protocol/v1 parties=0,1,2 t=1 epoch=18"));
+/// ```
+pub fn derive_root_tag(context: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(ROOT_TAG_DOMAIN);
+    hasher.update(context);
+    hasher.finalize().into()
+}
 
 /// Identifies a session: the scope in which a group of messages is exchanged, so that protocols
 /// running concurrently over the same links never consume each other's messages.
@@ -16,9 +51,9 @@ const DIGEST_DOMAIN: &[u8] = b"scl-rs/session-id/v1";
 ///   epoch counter or fresh randomness agreed by all parties. This is what makes sessions distinct
 ///   *across* executions, in the sense the UC framework requires of session identifiers.
 /// - **A path of fork indices** from the execution's root session. The root session is the empty
-///   path. Forking a network handle creates a child session by appending the handle's next free
-///   child index. Within an execution, sessions therefore form a tree, and a session's ancestors
-///   are its path prefixes:
+///   path. Forking a network handle creates a child session by appending the handle's next fork
+///   index (see [`with_child`](SessionId::with_child)). Within an execution, sessions therefore
+///   form a tree, and a session's ancestors are its path prefixes:
 ///
 /// | Path        | Meaning                                             |
 /// | ----------- | --------------------------------------------------- |
@@ -26,7 +61,7 @@ const DIGEST_DOMAIN: &[u8] = b"scl-rs/session-id/v1";
 /// | `[1]`       | the second session forked from the root             |
 /// | `[1, 0]`    | the first session forked from `[1]`                 |
 ///
-/// Child indices are positional: they follow the program order of forks, with no communication
+/// Fork indices follow the order in which each party's program forks, with no communication
 /// between parties. Two parties agree on a session's path only if they perform the same sequence
 /// of forks within each session they share.
 ///
@@ -52,8 +87,8 @@ const DIGEST_DOMAIN: &[u8] = b"scl-rs/session-id/v1";
 /// use scl_rs::net::session::SessionId;
 ///
 /// let root = SessionId::root([7; 32]);
-/// let first = root.child(0);
-/// let nested = first.child(3);
+/// let first = root.with_child(0);
+/// let nested = first.with_child(3);
 ///
 /// assert_eq!(nested.path(), &[0, 3]);
 /// assert_eq!(nested.depth(), 2);
@@ -61,7 +96,7 @@ const DIGEST_DOMAIN: &[u8] = b"scl-rs/session-id/v1";
 /// assert_eq!(root.parent(), None);
 ///
 /// // Same path under a different execution: a different session, with a different digest.
-/// let other = SessionId::root([8; 32]).child(0).child(3);
+/// let other = SessionId::root([8; 32]).with_child(0).with_child(3);
 /// assert_ne!(other, nested);
 /// assert_ne!(other.digest(), nested.digest());
 /// ```
@@ -88,18 +123,43 @@ impl SessionId {
     /// Rebuilds a session from its execution's root tag and a path received in a message header.
     ///
     /// Crate-internal: outside the network backends, sessions are created only through
-    /// [`root`](SessionId::root) and [`child`](SessionId::child).
+    /// [`root`](SessionId::root) and [`with_child`](SessionId::with_child).
     #[allow(dead_code)] // first used by the `TcpNetwork` frame decoder (concurrent-composition plan, Phase 3).
-    pub(crate) fn from_path(root_tag: [u8; 32], path: Vec<u32>) -> Self {
+    pub(crate) fn new(root_tag: [u8; 32], path: Vec<u32>) -> Self {
         Self { root_tag, path }
     }
 
-    /// Returns the child session at position `index` below this one: same root tag, this path
-    /// with `index` appended.
+    /// Returns the session forked from this one with fork index `index`: the same root tag, and
+    /// this session's path with `index` appended.
     ///
-    /// `self` is left unchanged. This method does not choose the index; the network handle that
-    /// forks passes its own next free child index, so that every child of a session is distinct.
-    pub fn child(&self, index: u32) -> Self {
+    /// The fork index counts the forks made from this session, starting at 0: the first session
+    /// forked from it has index 0, the second has index 1, and so on. Forking a network handle
+    /// assigns these indices in that order (see [`ForkNetwork`](crate::net::ForkNetwork)).
+    /// `with_child` only computes the resulting identifier: it does not fork anything, and does not
+    /// check that such a fork happened.
+    ///
+    /// # Example
+    ///
+    /// Take the session `1.0`, with path `[1, 0]`: the first session forked from session `1`,
+    /// which is itself the second session forked from the root. Each of its children extends that
+    /// path by one index:
+    ///
+    /// ```
+    /// use scl_rs::net::session::SessionId;
+    ///
+    /// let session = SessionId::root([7; 32]).with_child(1).with_child(0);
+    /// assert_eq!(session.path(), &[1, 0]);
+    ///
+    /// // The first and the third sessions forked from `1.0`.
+    /// assert_eq!(session.with_child(0).path(), &[1, 0, 0]);
+    /// assert_eq!(session.with_child(2).path(), &[1, 0, 2]);
+    /// assert_eq!(session.with_child(2).to_string(), "1.0.2");
+    ///
+    /// // A child keeps the root tag, and `session` itself is unchanged.
+    /// assert_eq!(session.with_child(2).root_tag(), session.root_tag());
+    /// assert_eq!(session.path(), &[1, 0]);
+    /// ```
+    pub fn with_child(&self, index: u32) -> Self {
         let mut curr_path = self.path.clone();
         curr_path.push(index);
         Self {
@@ -111,7 +171,7 @@ impl SessionId {
     /// Returns the session this one was forked from: same root tag, this path without its last
     /// index. Returns `None` for the root session.
     ///
-    /// For every session `s` and index `k`, `s.child(k).parent() == Some(s)`.
+    /// For every session `s` and index `k`, `s.with_child(k).parent() == Some(s)`.
     pub fn parent(&self) -> Option<Self> {
         if self.path.is_empty() {
             None
@@ -161,6 +221,21 @@ impl SessionId {
     }
 }
 
+/// Shows the path only: `root` for the root session, otherwise the fork indices joined by dots, e.g.
+/// `0`, `1.0`, `0.3.1`.
+///
+/// The root tag is not shown, so the same path in two executions displays the same. Width, fill and
+/// alignment apply as for a string: `format!("{:>6}", SessionId::root(tag))` is `"  root"`.
+impl Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.path.is_empty() {
+            return f.pad("root");
+        }
+        let path_str: Vec<_> = self.path.iter().map(|&e| e.to_string()).collect();
+        f.pad(&path_str.join("."))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,7 +244,7 @@ mod tests {
 
     /// Builds a session of execution `TAG` from a path literal.
     fn session(path: &[u32]) -> SessionId {
-        SessionId::from_path(TAG, path.to_vec())
+        SessionId::new(TAG, path.to_vec())
     }
 
     #[test]
@@ -184,7 +259,7 @@ mod tests {
     #[test]
     fn child_appends_the_index_and_leaves_the_parent_unchanged() {
         let parent = session(&[1]);
-        let child = parent.child(0);
+        let child = parent.with_child(0);
 
         assert_eq!(child, session(&[1, 0]));
         assert_eq!(child.root_tag(), &TAG);
@@ -194,7 +269,7 @@ mod tests {
     #[test]
     fn distinct_indices_give_distinct_children() {
         let parent = session(&[2]);
-        assert_ne!(parent.child(0), parent.child(1));
+        assert_ne!(parent.with_child(0), parent.with_child(1));
     }
 
     #[test]
@@ -202,7 +277,7 @@ mod tests {
         for path in [&[][..], &[0], &[1, 0], &[3, 1, 4, 1, 5]] {
             let s = session(path);
             for index in [0, 1, u32::MAX] {
-                assert_eq!(s.child(index).parent(), Some(s.clone()));
+                assert_eq!(s.with_child(index).parent(), Some(s.clone()));
             }
         }
     }
@@ -214,7 +289,10 @@ mod tests {
 
     #[test]
     fn depth_counts_forks_from_the_root() {
-        let s = SessionId::root(TAG).child(1).child(1).child(0);
+        let s = SessionId::root(TAG)
+            .with_child(1)
+            .with_child(1)
+            .with_child(0);
         assert_eq!(s, session(&[1, 1, 0]));
         assert_eq!(s.depth(), 3);
         assert_eq!(s.parent().unwrap().depth(), 2);
@@ -222,8 +300,8 @@ mod tests {
 
     #[test]
     fn same_path_in_different_executions_is_a_different_session() {
-        let here = SessionId::root([1; 32]).child(0);
-        let there = SessionId::root([2; 32]).child(0);
+        let here = SessionId::root([1; 32]).with_child(0);
+        let there = SessionId::root([2; 32]).with_child(0);
         assert_eq!(here.path(), there.path());
         assert_ne!(here, there);
     }
@@ -256,8 +334,8 @@ mod tests {
     fn equal_sessions_hash_equally() {
         use std::collections::HashSet;
 
-        let built = SessionId::root(TAG).child(1).child(0);
-        let received = SessionId::from_path(TAG, vec![1, 0]);
+        let built = SessionId::root(TAG).with_child(1).with_child(0);
+        let received = SessionId::new(TAG, vec![1, 0]);
         let set: HashSet<SessionId> = [built].into_iter().collect();
         assert!(set.contains(&received));
     }
@@ -276,7 +354,7 @@ mod tests {
             session(&[1]).digest(),
             session(&[1, 0]).digest(),
             session(&[256]).digest(),
-            SessionId::from_path([8; 32], vec![1, 0]).digest(),
+            SessionId::new([8; 32], vec![1, 0]).digest(),
         ];
         for (i, a) in digests.iter().enumerate() {
             for b in &digests[i + 1..] {
@@ -299,6 +377,19 @@ mod tests {
     }
 
     #[test]
+    fn derived_root_tags_are_deterministic_and_separate_contexts() {
+        assert_eq!(derive_root_tag(b"run-1"), derive_root_tag(b"run-1"));
+        assert_ne!(derive_root_tag(b"run-1"), derive_root_tag(b"run-2"));
+        assert_ne!(derive_root_tag(b""), derive_root_tag(b"\0"));
+    }
+
+    #[test]
+    fn derived_root_tag_matches_its_documented_encoding() {
+        let expected: [u8; 32] = Sha256::digest(b"scl-rs/root-tag/v1run-1").into();
+        assert_eq!(derive_root_tag(b"run-1"), expected);
+    }
+
+    #[test]
     fn header_path_encoding_is_compact() {
         // What a frame header carries: a varint length, then one varint per index (each index
         // below 128 takes one byte). The root tag is not sent.
@@ -318,7 +409,49 @@ mod tests {
             let sent = session(path);
             let bytes = postcard::to_allocvec(sent.path()).unwrap();
             let decoded: Vec<u32> = postcard::from_bytes(&bytes).unwrap();
-            assert_eq!(SessionId::from_path(TAG, decoded), sent);
+            assert_eq!(SessionId::new(TAG, decoded), sent);
         }
+    }
+
+    #[test]
+    fn display_shows_root_for_the_root_session() {
+        assert_eq!(SessionId::root(TAG).to_string(), "root");
+    }
+
+    #[test]
+    fn display_joins_the_path_with_dots() {
+        assert_eq!(session(&[0]).to_string(), "0");
+        assert_eq!(session(&[1, 0]).to_string(), "1.0");
+        assert_eq!(session(&[3, 1, 4]).to_string(), "3.1.4");
+        assert_eq!(session(&[2, u32::MAX]).to_string(), "2.4294967295");
+    }
+
+    #[test]
+    fn display_matches_the_way_child_builds_the_path() {
+        let s = SessionId::root(TAG).with_child(1).with_child(0);
+        assert_eq!(s.to_string(), "1.0");
+        assert_eq!(s.parent().unwrap().to_string(), "1");
+        assert_eq!(s.parent().unwrap().parent().unwrap().to_string(), "root");
+    }
+
+    #[test]
+    fn display_shows_only_the_path_not_the_root_tag() {
+        let here = SessionId::root([1; 32]).with_child(1).with_child(0);
+        let there = SessionId::root([2; 32]).with_child(1).with_child(0);
+        assert_ne!(here, there);
+        assert_eq!(here.to_string(), there.to_string());
+    }
+
+    #[test]
+    fn display_respects_width_fill_and_alignment() {
+        let root = SessionId::root(TAG);
+        let nested = session(&[1, 0]);
+
+        assert_eq!(format!("{root:>6}"), "  root");
+        assert_eq!(format!("{root:<6}|"), "root  |");
+        assert_eq!(format!("{nested:^7}"), "  1.0  ");
+        assert_eq!(format!("{nested:*>5}"), "**1.0");
+        // A width smaller than the text never truncates.
+        assert_eq!(format!("{nested:>1}"), "1.0");
     }
 }

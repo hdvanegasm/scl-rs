@@ -7,6 +7,7 @@
 //! [`EventType`] is the data-less discriminant, used to filter traces and to declare which event a
 //! [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) reacts to.
 
+use crate::net::session::SessionId;
 use crate::net::simulation::channel::Link;
 use crate::protocol::ProtocolId;
 use std::fmt;
@@ -64,6 +65,8 @@ pub enum Event {
         link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
+        /// Session the packet was sent in: the session of the sending network handle.
+        session: SessionId,
         /// Per-type breakdown of the packet's elements as `(label, count)` pairs, in first-appearance
         /// order (from [`Packet::composition`](crate::net::Packet::composition)). Elements written
         /// without a type label are grouped under `unknown elem.`. Rendered after the byte size in
@@ -74,6 +77,8 @@ pub enum Event {
     ReceiveData {
         /// Receiver's virtual time when the packet was delivered.
         timestamp: Duration,
+        /// Session the packet was received in: the session of the receiving network handle.
+        session: SessionId,
         /// The directed link the packet was received on (`sender` → `recipient`).
         link: Link,
         /// Size of the packet payload, in bytes.
@@ -104,6 +109,8 @@ pub enum Event {
     ProtocolBegin {
         /// Virtual time at which the protocol started.
         timestamp: Duration,
+        /// Session the protocol runs in: the session of the network handle that executes it.
+        session: SessionId,
         /// Name of the protocol, as reported by [`Protocol::id`](crate::protocol::Protocol::id).
         protocol_name: ProtocolId,
     },
@@ -111,6 +118,8 @@ pub enum Event {
     ProtocolEnd {
         /// Virtual time at which the protocol finished.
         timestamp: Duration,
+        /// Session the protocol ran in: the session of the network handle that executed it.
+        session: SessionId,
         /// Name of the protocol, as reported by [`Protocol::id`](crate::protocol::Protocol::id).
         protocol_name: ProtocolId,
     },
@@ -123,7 +132,7 @@ impl Event {
             Event::Start { timestamp, .. }
             | Event::Stop { timestamp, .. }
             | Event::Killed { timestamp, .. }
-            | Event::Cancelled { timestamp }
+            | Event::Cancelled { timestamp, .. }
             | Event::CloseChannel { timestamp, .. }
             | Event::SendData { timestamp, .. }
             | Event::ReceiveData { timestamp, .. }

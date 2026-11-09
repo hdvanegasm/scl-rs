@@ -1,5 +1,6 @@
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use scl_rs::net::session::SessionId;
 use scl_rs::net::simulation::channel::{
     Bandwidth, ChannelConfig, ChannelConfigBuilder, Link, NetworkConfig, NetworkType, Rtt,
     SimpleNetworkConfig,
@@ -354,6 +355,7 @@ fn simulation_trace_renders_events_nicely() {
 
     // A directed link carrying packets from party 0 to party 1.
     let channel = Link::new(PartyId::from(0), PartyId::from(1));
+    let session = SessionId::root([0; 32]);
     let trace = SimulationTrace::new(vec![
         Event::Start {
             timestamp: Duration::ZERO,
@@ -363,12 +365,14 @@ fn simulation_trace_renders_events_nicely() {
             link: channel,
             size: 8,
             content_count: vec![("field elem.", 2), ("EC elem.", 4)],
+            session: session.clone(),
         },
         Event::ReceiveData {
             timestamp: Duration::from_millis(200),
             link: channel,
             size: 16,
             content_count: vec![("field elem.", 3), ("EC elem.", 1)],
+            session: session.clone(),
         },
         Event::Stop {
             timestamp: Duration::from_millis(200),
@@ -1185,4 +1189,118 @@ fn capability_env_supplies_extra_state_to_protocol() {
     for party in [p0, p1] {
         assert_eq!(outcome.outputs[&party], 30);
     }
+}
+
+/// Runs `run`, which must panic, and returns its panic message.
+fn panic_message_of<T>(run: impl FnOnce() -> T + std::panic::UnwindSafe) -> String {
+    let Err(payload) = std::panic::catch_unwind(run) else {
+        panic!("the simulation should have deadlocked");
+    };
+    match payload.downcast::<String>() {
+        Ok(message) => *message,
+        Err(_) => panic!("the deadlock panic should carry a formatted message"),
+    }
+}
+
+/// Protocol where each of two parties waits for the other's message before sending its own, so
+/// neither message is ever sent: a wait cycle.
+struct RecvBeforeSend;
+
+impl<E: Environment> Protocol<E> for RecvBeforeSend {
+    type Output = ();
+
+    async fn run(self, environment: &mut E) -> Result<(), Error> {
+        let other = environment.network().other()?;
+        let network = environment.network_mut();
+        network.recv_from(other).await?;
+        network.send_to(other, &Packet::empty()).await?;
+        Ok(())
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("RecvBeforeSend")
+    }
+}
+
+/// The deadlock panic of a wait cycle names both waiting receives. No packet was sent, so none is
+/// undelivered.
+#[test]
+fn deadlock_panic_reports_a_wait_cycle() {
+    let message = panic_message_of(|| {
+        simulate(
+            SimpleNetworkConfig::default(),
+            vec![PartyId::from(0_usize), PartyId::from(1_usize)],
+            |_| RecvBeforeSend,
+            |_, net| GeneralEnv::new(net, ChaCha20Rng::seed_from_u64(0)),
+            vec![],
+        )
+    });
+    assert_eq!(
+        message,
+        "scheduler: 2 task(s) parked, nothing to deliver (deadlock)\n\
+         waiting:\n\
+         \tparty 0 in session root waits for party 1\n\
+         \tparty 1 in session root waits for party 0\n\
+         undelivered:\n\
+         \t(none)\n"
+    );
+}
+
+/// Protocol with a bug: party 0 sends a request to party 2 and waits for the reply, but party 2
+/// waits for the request from party 1, which sends nothing and finishes at once.
+struct ReceivesFromWrongParty;
+
+impl<E: Environment> Protocol<E> for ReceivesFromWrongParty {
+    type Output = ();
+
+    async fn run(self, environment: &mut E) -> Result<(), Error> {
+        let (p0, p1, p2) = (
+            PartyId::from(0_usize),
+            PartyId::from(1_usize),
+            PartyId::from(2_usize),
+        );
+        let network = environment.network_mut();
+        match network.local_party().as_usize() {
+            0 => {
+                network.send_to(p2, &Packet::empty()).await?;
+                network.recv_from(p2).await?;
+            }
+            2 => {
+                // The bug: the request comes from party 0.
+                let request = network.recv_from(p1).await?;
+                network.send_to(p0, &request).await?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ReceivesFromWrongParty")
+    }
+}
+
+/// The deadlock panic points at the request party 2 never takes, and says that party 2 is waiting
+/// in the same session for a different sender. Party 1 has finished, so it is not listed.
+#[test]
+fn deadlock_panic_reports_a_packet_from_an_unexpected_sender() {
+    let message = panic_message_of(|| {
+        simulate(
+            SimpleNetworkConfig::default(),
+            (0..3).map(PartyId::from).collect(),
+            |_| ReceivesFromWrongParty,
+            |_, net| GeneralEnv::new(net, ChaCha20Rng::seed_from_u64(0)),
+            vec![],
+        )
+    });
+    assert_eq!(
+        message,
+        "scheduler: 2 task(s) parked, nothing to deliver (deadlock)\n\
+         waiting:\n\
+         \tparty 0 in session root waits for party 2\n\
+         \tparty 2 in session root waits for party 1\n\
+         undelivered:\n\
+         \tparty 2 in session root: 1 packet(s) from party 0; \
+         party 2 is waiting in this session, but for a different sender\n"
+    );
 }

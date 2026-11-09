@@ -22,7 +22,7 @@ use std::{
     time::Duration,
 };
 
-use crate::net::{simulation::channel::Link, NetworkError, Packet, PartyId};
+use crate::net::{session::SessionId, simulation::channel::Link, NetworkError, Packet, PartyId};
 
 use super::{Switchboard, TimedRecvOut};
 
@@ -35,6 +35,7 @@ pub(crate) struct RecvAny {
     switchboard: Arc<Mutex<Switchboard>>,
     local: PartyId,
     senders: Vec<PartyId>,
+    session: SessionId,
 }
 
 impl RecvAny {
@@ -44,11 +45,13 @@ impl RecvAny {
         switchboard: Arc<Mutex<Switchboard>>,
         local: PartyId,
         senders: Vec<PartyId>,
+        session: SessionId,
     ) -> Self {
         Self {
             switchboard,
             local,
             senders,
+            session,
         }
     }
 }
@@ -58,10 +61,10 @@ impl Future for RecvAny {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut switchboard = self.switchboard.lock().expect("the lock must be free");
-        match switchboard.try_recv_any(self.local, &self.senders) {
+        match switchboard.try_recv_any(&self.session, self.local, &self.senders) {
             Some(result) => Poll::Ready(result),
             None => {
-                switchboard.park_any(self.local, &self.senders, cx.waker().clone());
+                switchboard.park_any(&self.session, self.local, &self.senders, cx.waker().clone());
                 Poll::Pending
             }
         }
@@ -75,6 +78,7 @@ impl Future for RecvAny {
 pub(crate) struct Recv {
     switchboard: Arc<Mutex<Switchboard>>,
     link: Link,
+    session: SessionId,
 }
 
 impl Recv {
@@ -84,10 +88,12 @@ impl Recv {
         switchboard: Arc<Mutex<Switchboard>>,
         sender: PartyId,
         recipient: PartyId,
+        session: SessionId,
     ) -> Self {
         Self {
             switchboard,
             link: Link::new(sender, recipient),
+            session,
         }
     }
 }
@@ -97,11 +103,11 @@ impl Future for Recv {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut switchboard = self.switchboard.lock().expect("the lock must be free");
-        match switchboard.try_recv(self.link) {
+        match switchboard.try_recv(self.session.clone(), self.link) {
             Some(packet) => Poll::Ready(packet),
             None => {
                 // There is no packet available in the queue, hence you need to wait, i.e. park.
-                switchboard.park(self.link, cx.waker().clone());
+                switchboard.park(self.session.clone(), self.link, cx.waker().clone());
                 Poll::Pending
             }
         }
@@ -128,6 +134,7 @@ pub(crate) struct RecvTimeout {
     /// virtual instant at which the receive is first polled plus the timeout, and stays `None`
     /// until that first poll sets it.
     deadline: Option<Duration>,
+    session: SessionId,
 }
 
 impl RecvTimeout {
@@ -138,12 +145,14 @@ impl RecvTimeout {
         sender: PartyId,
         recipient: PartyId,
         timeout: Duration,
+        session: SessionId,
     ) -> Self {
         Self {
             switchboard,
             link: Link::new(sender, recipient),
             timeout,
             deadline: None,
+            session,
         }
     }
 }
@@ -159,19 +168,19 @@ impl Future for RecvTimeout {
             // Here we are dealing with the first call to recv.
             None => {
                 let deadline = switchboard.clock_of(this.link.recipient()) + this.timeout;
-                switchboard.schedule_timer(this.link, deadline);
+                switchboard.schedule_timer(this.session.clone(), this.link, deadline);
                 this.deadline = Some(deadline);
                 deadline
             }
         };
-        match switchboard.try_recv_with_deadline(this.link, deadline) {
+        match switchboard.try_recv_with_deadline(this.session.clone(), this.link, deadline) {
             TimedRecvOut::Some((_, packet)) => Poll::Ready(Ok(packet)),
             TimedRecvOut::Timeout => {
                 Poll::Ready(Err(NetworkError::Timeout(Some(this.link.sender()))))
             }
             TimedRecvOut::None => {
                 // There is no packet available in the queue, hence you need to wait, i.e. park.
-                switchboard.park(this.link, cx.waker().clone());
+                switchboard.park(this.session.clone(), this.link, cx.waker().clone());
                 Poll::Pending
             }
         }
@@ -201,6 +210,7 @@ pub(crate) struct RecvAnyTimeout {
     /// virtual instant at which the receive is first polled plus the timeout, and stays `None`
     /// until that first poll sets it.
     deadline: Option<Duration>,
+    session: SessionId,
 }
 
 impl RecvAnyTimeout {
@@ -211,6 +221,7 @@ impl RecvAnyTimeout {
         local: PartyId,
         senders: Vec<PartyId>,
         timeout: Duration,
+        session: SessionId,
     ) -> Self {
         Self {
             switchboard,
@@ -218,6 +229,7 @@ impl RecvAnyTimeout {
             senders,
             timeout,
             deadline: None,
+            session,
         }
     }
 }
@@ -239,7 +251,11 @@ impl Future for RecvAnyTimeout {
                 // The timer's link must be one of `senders`, as those are the links `park_any`
                 // parks the waker on.
                 if let Some(&sender) = this.senders.first() {
-                    switchboard.schedule_timer(Link::new(sender, this.local), deadline);
+                    switchboard.schedule_timer(
+                        this.session.clone(),
+                        Link::new(sender, this.local),
+                        deadline,
+                    );
                 }
 
                 this.deadline = Some(deadline);
@@ -247,12 +263,17 @@ impl Future for RecvAnyTimeout {
             }
         };
 
-        match switchboard.try_recv_any_with_deadline(this.local, &this.senders, deadline) {
+        match switchboard.try_recv_any_with_deadline(
+            &this.session,
+            this.local,
+            &this.senders,
+            deadline,
+        ) {
             TimedRecvOut::Some(result) => Poll::Ready(Ok(result)),
             TimedRecvOut::Timeout => Poll::Ready(Err(NetworkError::Timeout(None))),
             TimedRecvOut::None => {
                 // There is no packet available in the queue, hence you need to wait, i.e. park.
-                switchboard.park_any(this.local, &this.senders, cx.waker().clone());
+                switchboard.park_any(&this.session, this.local, &this.senders, cx.waker().clone());
                 Poll::Pending
             }
         }

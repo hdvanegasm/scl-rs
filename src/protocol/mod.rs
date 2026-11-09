@@ -1,17 +1,21 @@
 /// Generic secret-sharing protocols (dealing and opening) over any [`LinearShare`](crate::ss::LinearShare) scheme.
 pub mod share;
 
+/// Concurrent composition: running independent sub-protocols at the same time within one party.
+pub mod concurrent;
+
 /// Zero-knowledge proofs, run as two-party [`Protocol`]s between a prover and a verifier.
 pub mod zk;
 
 pub mod passive_shamir;
 
 use crate::{
-    net::{Network, NetworkError},
+    net::{ForkNetwork, Network, NetworkError},
     prelude::Ring,
+    protocol::concurrent::BoxedProtocol,
     ss::ShareError,
 };
-use rand::CryptoRng;
+use rand::{CryptoRng, SeedableRng};
 use std::fmt;
 use std::future::Future;
 use thiserror::Error;
@@ -126,6 +130,38 @@ pub trait Protocol<E: Environment>: Send + Sync {
             output
         }
     }
+
+    /// Erases this protocol's type and maps its output with `map`, so that protocols of different
+    /// types can run in one [`JoinAll`](concurrent::JoinAll).
+    ///
+    /// The result is a [`BoxedProtocol<E, O>`](BoxedProtocol), whose type depends only on the
+    /// environment and on the output `O`. Map each output into one type, for example an enum:
+    ///
+    /// ```ignore
+    /// enum Pre { Shares(Vec<Share>), Doubles(Vec<DoubleShare>) }
+    ///
+    /// let outputs: Vec<Pre> = JoinAll(vec![
+    ///     rand_shr.boxed(Pre::Shares),
+    ///     rand_double_shr.boxed(Pre::Doubles),
+    /// ])
+    /// .execute(env)
+    /// .await?;
+    /// ```
+    ///
+    /// The boxed protocol behaves as this one: it runs the same code on the same environment, and
+    /// reports this protocol's [`id`](Protocol::id), so its trace scope carries this protocol's
+    /// name. `map` is applied only to a successful output; an error passes through unchanged.
+    ///
+    /// The protocol and `map` must be `'static`, because they are stored behind a
+    /// `Box<dyn …>`; the environment need not be. Boxing costs two heap allocations: one for the
+    /// protocol and one for the future that runs it.
+    fn boxed<F, O>(self, map: F) -> BoxedProtocol<E, O>
+    where
+        F: FnOnce(Self::Output) -> O + Send + Sync + 'static,
+        Self: Sized + 'static,
+    {
+        BoxedProtocol::new(self, map)
+    }
 }
 
 /// Environment that holds all the information needed across multiple composability layers.
@@ -161,6 +197,35 @@ pub trait RandEnvironment: Environment {
     fn rng_mut(&mut self) -> &mut Self::Rng;
 }
 
+/// An [`Environment`] that can be split into child environments, so that independent
+/// sub-protocols can run at the same time within one party.
+///
+/// The combinators in [`concurrent`] require it: they fork the environment once per
+/// sub-protocol, and run each sub-protocol on its own child. A child has the same type as its
+/// parent. It carries a network handle on a child session (see [`ForkNetwork`]), so the messages
+/// of different children never mix, and whatever else the environment holds, split or shared as
+/// its implementation chooses.
+///
+/// [`GeneralEnv`] implements it when its network implements [`ForkNetwork`] and its RNG
+/// implements [`SeedableRng`].
+pub trait ForkEnvironment: Environment {
+    /// Returns a child environment, and advances this environment's fork count.
+    ///
+    /// The child's network handle is on the next child session of this environment's session:
+    /// the `i`-th fork, counting from 0, is on child session `i` (see [`ForkNetwork::fork`]).
+    ///
+    /// Every party must make the same sequence of forks within a session, including a party that
+    /// takes no part in some of the sub-protocols; see [Every party forks
+    /// alike](crate::net::ForkNetwork#every-party-forks-alike). The combinators fork for you, so
+    /// this means every party must run every `Join` and `JoinAll`, with the same number of
+    /// sub-protocols.
+    ///
+    /// For [`GeneralEnv`], the child's RNG is seeded from this environment's RNG. A run with
+    /// seeded RNGs therefore stays reproducible, but forking draws from this RNG, so it changes
+    /// the values sampled from it afterwards.
+    fn fork(&mut self) -> Self;
+}
+
 /// Environment that provides the network and the session RNG that traverse through layers.
 ///
 /// This is the most basic environment: it implements both [`Environment`] and
@@ -181,7 +246,11 @@ impl<N: Network, R: CryptoRng + Send> GeneralEnv<N, R> {
     }
 }
 
-impl<R: CryptoRng + Send, N: Network> Environment for GeneralEnv<N, R> {
+impl<R, N> Environment for GeneralEnv<N, R>
+where
+    R: CryptoRng + Send,
+    N: Network,
+{
     type Net = N;
 
     fn network(&self) -> &Self::Net {
@@ -190,6 +259,16 @@ impl<R: CryptoRng + Send, N: Network> Environment for GeneralEnv<N, R> {
 
     fn network_mut(&mut self) -> &mut Self::Net {
         &mut self.network
+    }
+}
+
+impl<R, N> ForkEnvironment for GeneralEnv<N, R>
+where
+    R: CryptoRng + SeedableRng + Send,
+    N: ForkNetwork,
+{
+    fn fork(&mut self) -> Self {
+        Self::new(self.network.fork(), R::from_rng(&mut self.rng))
     }
 }
 

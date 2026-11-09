@@ -34,22 +34,117 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   two-party network, and does not use this type.
 
 - **`net::session::SessionId`**, the identifier of a session, for the concurrent composition
-  work (`docs/concurrent-composition-plan.md`). Nothing uses it yet. A session is two things: a
-  32-byte **root tag**, which identifies one execution and must be equal at every party of it
-  and distinct across executions; and a **path** of fork indices from that execution's root
-  session.
+  work (`docs/concurrent-composition-plan.md`). The simulator uses it to keep sessions apart and
+  to tag trace events (see *Changed*), and `ForkNetwork::fork` creates handles on child sessions
+  (see below). A session is two things: a 32-byte **root tag**, which identifies one execution
+  and must be equal at every party of it and distinct across executions; and a **path** of fork
+  indices from that execution's root session.
   - `SessionId::root(tag)` builds the root session.
-  - `child(index)` and `parent()` move down and up the tree; `depth()`, `root_tag()` and `path()`
-    read it.
+  - `with_child(index)` and `parent()` move down and up the tree; `depth()`, `root_tag()` and
+    `path()` read it.
   - `digest()` returns a domain-separated SHA-256 commitment to the root tag and the path, to bind
     a session into transcripts and commitments.
+  - `Display` shows the path only: `root` for the root session, otherwise the fork indices joined
+    by dots, e.g. `0`, `1.0`, `0.3.1`. The root tag is not shown.
 
   A message header will carry only the path, since the root tag is fixed per network instance.
+  `SessionId` is re-exported from the prelude.
+
+- **`Display` for `PartyId`**, which shows the bare index, e.g. `2`. Width, fill and alignment
+  apply as for an integer.
+
+- **`net::session::derive_root_tag(context)`** derives a root tag from public context that every
+  party of an execution knows: SHA-256 over a domain-separation prefix and `context`. No
+  communication is involved. The tag is unique per execution only if `context` is, e.g. the
+  protocol name and version, the party set, the parameters, and an epoch counter that is never
+  reused.
+
+- **`net::simulation::simulator::SIMULATION_ROOT_TAG`**, the fixed root tag of every simulated
+  execution. A fixed tag is safe in the simulator: one `simulate` call is one execution, and runs
+  cannot exchange messages with each other. `simulate` keeps its signature.
+
+- **`net::ForkNetwork`**, a network handle that can be split into handles on child sessions, so
+  that independent sub-protocols can run at the same time within one party without mixing their
+  messages. `fork()` returns a handle on the next child session of the handle's own session, and
+  `session()` returns that session. Child sessions are numbered by the order of the forks, with no
+  communication: the `i`-th fork of a handle, counting from 0, is on `session().with_child(i)`, and
+  a child handle starts its own count at 0. So the parties agree on a session only if they fork
+  alike: within a session, every party must make the same forks in the same order. After one
+  skipped fork, every later fork in that session gets a different index on the party that skipped
+  it. `SimNetwork` implements the trait; `TcpNetwork` does not yet.
+
+- **`protocol::ForkEnvironment`**, an `Environment` whose `fork()` returns a child environment on
+  a forked network handle. `GeneralEnv` implements it when its network implements `ForkNetwork`
+  and its RNG implements `SeedableRng`. The child's RNG is seeded from the parent's RNG, so a run
+  with seeded RNGs stays reproducible. Forking draws from the parent's RNG, though, so running
+  sub-protocols under a combinator instead of one after another changes the values they sample.
+
+- **`protocol::concurrent`**, combinators that run independent sub-protocols concurrently within
+  one party. Sub-protocols called one after another with `execute` make a party wait for the sum
+  of their latencies; under a combinator, it waits for the slowest one.
+  - `Join((p0, p1, …))` runs 2 to 6 protocols of possibly different types, and outputs the tuple
+    of their outputs.
+  - `JoinAll(vec![p0, p1, …])` runs any number of protocols of one type, and outputs a `Vec` of
+    their outputs in input order. An empty `Vec` outputs an empty `Vec`.
+
+  Both are ordinary `Protocol`s: they nest, and are called with `execute`. Their environment must
+  implement `ForkEnvironment`. A combinator forks the environment once per sub-protocol, in order
+  and before any of them starts, and runs each sub-protocol in its own child session, so messages
+  of different sub-protocols never mix, even over the same links. No task or thread is spawned:
+  the concurrency stays within the party's task, adds no CPU parallelism, and is deterministic on
+  the simulator. `Join`, `JoinAll` and `ForkEnvironment` are re-exported from the prelude.
+  - **Every party must run every `Join` and `JoinAll`, with the same number of sub-protocols**,
+    including a party that takes no part in some of them; its sub-protocol there returns at once.
+    A protocol that rejects non-participants cannot be that sub-protocol: `SchnorrPok`, for
+    example, returns `Error::Input` on them. On the simulator, a violation ends in the deadlock
+    panic; on a real network, the receives hang until they time out.
+  - Combinators fail fast: they return the first error any sub-protocol returns, and drop the
+    others unfinished. The messages those already sent are never received, and the matching
+    sub-protocols at the other parties may wait until their own timeout or error.
+
+- **`Protocol::boxed(map)`** and **`protocol::concurrent::BoxedProtocol<E, O>`**, to run protocols
+  of different types in one `JoinAll`. `boxed` erases the protocol's type and maps its output to
+  `O`, for example into an enum of the caller's:
+  `JoinAll(vec![a.boxed(Pre::Shares), b.boxed(Pre::Doubles)])`. The protocol and the map must be
+  `'static`; the environment need not be. A boxed protocol reports the inner protocol's `id`, so
+  its trace scope keeps the inner protocol's name.
 
 ### Changed
 
+- **Breaking: `TcpNetwork::create(id, config, root_tag)`** takes the execution's root tag as a
+  third, required parameter. Every party must pass the same tag, and a tag must not be reused for
+  another execution on the same parties. There is deliberately no default, because a silently
+  reused tag is the failure the parameter exists to prevent. Migration: derive one with
+  `derive_root_tag`, e.g.
+  `TcpNetwork::create(id, config, derive_root_tag(b"my-protocol/v1 run=1"))`. The tag is not used
+  on the wire yet; it becomes the root of every session once `TcpNetwork` is session-aware.
+
 - **MSRV raised from 1.85.1 to 1.88**, because the new `sha2` 0.11.1 dependency (used by
   `SessionId::digest`) requires it. The CI MSRV job builds on 1.88.
+
+- **Breaking: `Event::{SendData, ReceiveData, ProtocolBegin, ProtocolEnd}` gain a
+  `session: SessionId` field**: the session the packet was sent or received in, or the protocol
+  ran in. In code that never forks, it is always the root session,
+  `SessionId::root(SIMULATION_ROOT_TAG)`; under `Join` or `JoinAll`, each sub-protocol's events
+  carry its own child session. The other variants and the `Display` of events and traces are
+  unchanged. Migration: patterns that list every field need `session` or `..`; struct
+  literals, e.g. in a hand-built trace passed to `SimulationTrace::new`, need
+  `session: SessionId::root(SIMULATION_ROOT_TAG)`.
+
+- **The simulator keeps sessions apart.** Its mailboxes, waiting receives and scheduled
+  deliveries are keyed by link and session, so a receive takes only packets sent in its own
+  session, and a delivery wakes only receives waiting in that session. Delivery on a link stays
+  first-in, first-out across sessions, as on one TCP stream. Code that does not fork sessions
+  behaves exactly as before: the golden snapshot in `tests/golden.rs` (traces, exact event
+  timestamps, bandwidth trees and metrics) is unchanged.
+
+- **A deadlock in `simulate` now says what is stuck.** The panic message keeps its first line,
+  `scheduler: N task(s) parked, nothing to deliver (deadlock)`, and adds a report: each receive
+  still waiting, and each packet that reached its recipient but was never received, together
+  with what that recipient is doing. For example, a recipient waiting in the same session for a
+  different sender usually means the protocol receives from the wrong party. The report is
+  sorted, so it is the same in every run. Tests that match the first line with
+  `#[should_panic(expected = …)]` still pass. `simulate` documents the panic under `# Panics`.
 
 ## [0.14.2] - 2026-09-21
 

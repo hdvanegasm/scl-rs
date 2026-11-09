@@ -225,7 +225,7 @@
 //! would read them from command-line arguments):
 //!
 //! ```ignore
-//! use scl_rs::net::{NetworkConfig, TcpNetwork};
+//! use scl_rs::net::{session::derive_root_tag, NetworkConfig, TcpNetwork};
 //! use scl_rs::protocol::{GeneralEnv, Environment, Protocol};
 //! use rand::{rngs::StdRng, SeedableRng};
 //! use std::path::Path;
@@ -238,8 +238,12 @@
 //!     // Load this node's peers, ports, and certificates from a JSON file.
 //!     let config = NetworkConfig::new(Path::new("net_config_p0.json"))?;
 //!
+//!     // Every party passes the same root tag, naming this execution; include an epoch or run
+//!     // counter that is never reused.
+//!     let root_tag = derive_root_tag(b"send-recv/v1 run=1");
+//!
 //!     // `create` performs the TLS handshake with every peer, so it is async.
-//!     let network = TcpNetwork::create(my_id, config).await?;
+//!     let network = TcpNetwork::create(my_id, config, root_tag).await?;
 //!     let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
 //!
 //!     // The very same protocol that ran on the simulator now runs over real TLS.
@@ -388,7 +392,8 @@
 /// Most protocol code needs the same handful of items — the [`Protocol`] trait
 /// with its [`Environment`] (and the default [`GeneralEnv`]) and [`Error`], the
 /// [`Network`] abstraction with [`Packet`] and [`PartyId`], the [`simulate`]
-/// entry point, and the core `math` traits. Instead of importing each from its
+/// entry point, the [`Join`] and [`JoinAll`] combinators with their
+/// [`ForkEnvironment`], and the core `math` traits. Instead of importing each from its
 /// own module, bring them all into scope at once:
 ///
 /// ```
@@ -403,17 +408,21 @@
 /// [`PartyId`]: crate::net::PartyId
 /// [`simulate`]: crate::net::simulation::simulator::simulate
 /// [`GeneralEnv`]: crate::protocol::GeneralEnv
+/// [`Join`]: crate::protocol::concurrent::Join
+/// [`JoinAll`]: crate::protocol::concurrent::JoinAll
+/// [`ForkEnvironment`]: crate::protocol::ForkEnvironment
 pub mod prelude {
     pub use crate::abbreviate::Abbreviate;
     pub use crate::math::{
         ec::EllipticCurve, field::FiniteField, matrix::Matrix, ring::Ring, vector::Vector,
     };
     pub use crate::net::{
-        simulation::simulator::simulate, simulation::simulator::SimulationOutcome, Network, Packet,
-        PartyId,
+        session::SessionId, simulation::simulator::simulate,
+        simulation::simulator::SimulationOutcome, Network, Packet, PartyId,
     };
     pub use crate::protocol::{
-        Environment, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
+        concurrent::{Join, JoinAll},
+        Environment, Error, ForkEnvironment, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
     };
 }
 

@@ -20,9 +20,11 @@ pub use tcp::TcpNetwork;
 
 use crate::abbreviate::Abbreviate;
 use crate::net::channel::ChannelError;
+use crate::net::session::SessionId;
 use crate::protocol::ProtocolId;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,6 +42,13 @@ use tokio_rustls::rustls::RootCertStore;
     Debug, Clone, Copy, PartialEq, Hash, PartialOrd, Ord, Eq, Default, Serialize, Deserialize,
 )]
 pub struct PartyId(usize);
+
+/// Shows the bare index, e.g. `2`. Width, fill and alignment apply as for an integer.
+impl Display for PartyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl From<PartyId> for usize {
     fn from(id: PartyId) -> Self {
@@ -545,6 +554,62 @@ pub trait Network: Send {
     /// Records that a protocol scope has ended; the counterpart to
     /// [`record_protocol_begin`](Network::record_protocol_begin).
     fn record_protocol_end(&mut self, _protocol_name: ProtocolId) {}
+}
+
+/// A network handle that can be split into handles on child sessions, so that independent
+/// sub-protocols can run concurrently within one party.
+///
+/// Every handle is bound to one [`SessionId`], returned by [`session`](ForkNetwork::session). A
+/// handle sends, receives and records trace events in its own session only: a receive takes only
+/// packets sent in the same session, so sub-protocols running at the same time over the same links
+/// never take each other's messages. The handle a backend creates starts in the root session of
+/// its execution; [`fork`](ForkNetwork::fork) creates handles further down the session tree.
+///
+/// # Session assignment
+///
+/// Child sessions are numbered by the order of the forks, with no communication: the `i`-th call
+/// to `fork` on a handle, counting from 0, returns a handle on `self.session().with_child(i)` (see
+/// [`SessionId::with_child`]). A child handle starts its own count at 0. A packet that arrives in a
+/// session before its recipient has forked that session waits until the recipient does.
+///
+/// # Every party forks alike
+///
+/// Because indices follow the order of the forks, the parties agree on a session only if they fork
+/// in the same order. **Within a session, every party that communicates in it must make the same sequence of
+/// `fork` calls.** A protocol written as one tree that every party executes meets this
+/// automatically. Forking inside a role-dependent branch breaks it, for example:
+///
+/// - only one party (say, the king) forks;
+/// - the number of forks depends on the party;
+/// - the parties outside a sub-protocol skip it, as non-participants do with
+///   [`SchnorrPok`](crate::protocol::zk::schnorr::SchnorrPok).
+///
+/// After one skipped fork, *every* later fork in that session gets a different index on the parties
+/// that skipped it, not only the skipped one. So every party makes every fork: a party that takes
+/// no part in a child session still forks it, and may drop the handle at once.
+///
+/// A violation leaves packets in a session that their recipient never opens. On the simulator,
+/// [`simulate`](crate::net::simulation::simulator::simulate#panics) then panics with a deadlock
+/// report that lists those packets and their session. On a real network the receives hang until
+/// they time out.
+///
+/// # For implementors
+///
+/// No two handles may share a session: a handle must not implement [`Clone`], and `fork` must never
+/// return a session it has returned before. Since every receive also borrows its handle mutably, at
+/// most one receive is in flight per party and session, so an implementation needs to keep only
+/// one waiting receive per link and session.
+pub trait ForkNetwork: Network {
+    /// Returns a handle on a fresh child session of this handle's session, and advances this
+    /// handle's fork count.
+    ///
+    /// The `i`-th call on a handle, counting from 0, returns a handle on
+    /// `self.session().with_child(i)`. Every party must make the same sequence of calls within a
+    /// session; see [Every party forks alike](ForkNetwork#every-party-forks-alike).
+    fn fork(&mut self) -> Self;
+
+    /// Returns the session this handle sends, receives and records trace events in.
+    fn session(&self) -> &SessionId;
 }
 
 #[cfg(test)]

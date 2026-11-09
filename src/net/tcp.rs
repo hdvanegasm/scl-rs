@@ -91,6 +91,11 @@ pub struct TcpNetwork {
     /// Read side of every peer connection, keyed by peer ID. Polling the whole map yields the next
     /// packet from whichever peer delivers first; polling a single entry receives from that peer.
     receivers: StreamMap<PartyId, PacketStream>,
+    /// Identifies this execution: the root tag of every session on this network (see
+    /// [`create`](TcpNetwork::create)).
+    // First read by the session-aware frame decoder (concurrent-composition plan, Phase 3).
+    #[allow(dead_code)]
+    root_tag: [u8; 32],
 }
 
 impl TcpNetwork {
@@ -149,6 +154,14 @@ impl TcpNetwork {
     /// Creates a new network using the ID of the current party and the number of parties connected
     /// to the network.
     ///
+    /// `root_tag` identifies this execution: it is the tag of the root session every handle of this
+    /// network starts in (see [`SessionId::root`](crate::net::session::SessionId::root)). Every
+    /// party of the execution must pass the same tag, and the tag must never be reused for another
+    /// execution on the same parties, or session digests would no longer tell the two apart. There
+    /// is deliberately no default. Derive it from public context that names the run, with
+    /// [`derive_root_tag`](crate::net::session::derive_root_tag): for example the protocol name and
+    /// version, the party set, the parameters, and an epoch counter the application never reuses.
+    ///
     /// # Error
     ///
     /// The function returns an error in the following cases:
@@ -159,7 +172,11 @@ impl TcpNetwork {
     ///   client.
     /// - With [`NetworkError::PartyNotFound`] when, after every connection is established, some peer
     ///   ID is missing (for example because two accepts reported the same `remote_id`).
-    pub async fn create(id: usize, config: NetworkConfig<'static>) -> Result<Self> {
+    pub async fn create(
+        id: usize,
+        config: NetworkConfig<'static>,
+        root_tag: [u8; 32],
+    ) -> Result<Self> {
         log::info!("creating network");
         let n_parties = config.peer_ips.len();
         let server_port = config.base_port + id as u16;
@@ -224,6 +241,7 @@ impl TcpNetwork {
             writers,
             receivers: readers,
             local_party_id: PartyId::from(id),
+            root_tag,
         })
     }
 
@@ -371,6 +389,11 @@ mod tests {
     use super::super::NetworkConfigFile;
     use super::*;
 
+    /// Root tag shared by every party of a test execution (see [`TcpNetwork::create`]).
+    fn test_root_tag() -> [u8; 32] {
+        crate::net::session::derive_root_tag(b"scl-rs/tcp.rs unit tests")
+    }
+
     fn write_party_certs(dir: &TempDir, n_parties: usize) {
         // CA certificate
         let mut ca_params = CertificateParams::new(vec![]).unwrap();
@@ -455,8 +478,8 @@ mod tests {
             NetworkConfig::new(temp_dir.path().join("net_config_p1.json").as_path()).unwrap();
 
         let (mut net0, mut net1) = try_join!(
-            TcpNetwork::create(0, cfg_party_0),
-            TcpNetwork::create(1, cfg_party_1),
+            TcpNetwork::create(0, cfg_party_0, test_root_tag()),
+            TcpNetwork::create(1, cfg_party_1, test_root_tag()),
         )
         .unwrap();
 
@@ -604,9 +627,9 @@ mod tests {
         write_config_files(&temp_dir, N_PARTIES, free_base_port());
 
         let (mut net0, net1, net2) = try_join!(
-            TcpNetwork::create(0, load_config(&temp_dir, 0)),
-            TcpNetwork::create(1, load_config(&temp_dir, 1)),
-            TcpNetwork::create(2, load_config(&temp_dir, 2)),
+            TcpNetwork::create(0, load_config(&temp_dir, 0), test_root_tag()),
+            TcpNetwork::create(1, load_config(&temp_dir, 1), test_root_tag()),
+            TcpNetwork::create(2, load_config(&temp_dir, 2), test_root_tag()),
         )
         .unwrap();
 
@@ -657,8 +680,8 @@ mod tests {
         write_config_files(&temp_dir, N_PARTIES, free_base_port());
 
         let (mut net0, mut net1) = try_join!(
-            TcpNetwork::create(0, load_config(&temp_dir, 0)),
-            TcpNetwork::create(1, load_config(&temp_dir, 1)),
+            TcpNetwork::create(0, load_config(&temp_dir, 0), test_root_tag()),
+            TcpNetwork::create(1, load_config(&temp_dir, 1), test_root_tag()),
         )
         .unwrap();
 

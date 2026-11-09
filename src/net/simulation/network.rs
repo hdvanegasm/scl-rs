@@ -6,13 +6,15 @@
 //! ready suspend the party (through the switchboard's `recv` futures) so the executor can advance
 //! virtual time. See [`SimNetwork`](crate::net::simulation::network::SimNetwork) for the full model.
 
-use crate::net;
+use crate::net::session::SessionId;
 use crate::net::simulation::event::Event;
+use crate::net::simulation::simulator::SIMULATION_ROOT_TAG;
 use crate::net::simulation::switchboard::recv::RecvAnyTimeout;
 use crate::net::simulation::switchboard::{
     recv::{Recv, RecvAny, RecvTimeout},
     Switchboard,
 };
+use crate::net::{self, ForkNetwork};
 use crate::net::{Network, NetworkError, Packet, PartyId};
 use crate::protocol::ProtocolId;
 use std::sync::Arc;
@@ -36,6 +38,12 @@ pub struct SimNetwork {
     parties: Vec<PartyId>,
     /// The shared in-memory router all parties communicate through.
     switchboard: Arc<std::sync::Mutex<Switchboard>>,
+    /// The session this handle sends, receives and records trace events in. [`SimNetwork::new`]
+    /// starts every party in the root session of [`SIMULATION_ROOT_TAG`].
+    session: SessionId,
+    /// The fork index of the next session forked from this handle; see
+    /// [`SessionId::with_child`].
+    next_child: u32,
 }
 
 impl SimNetwork {
@@ -50,6 +58,8 @@ impl SimNetwork {
             local,
             parties,
             switchboard,
+            session: SessionId::root(SIMULATION_ROOT_TAG),
+            next_child: 0,
         }
     }
 }
@@ -60,7 +70,17 @@ impl Network for SimNetwork {
     }
 
     async fn recv_any(&mut self) -> net::Result<(PartyId, Packet)> {
-        Ok(RecvAny::new(self.switchboard.clone(), self.local, self.parties.clone()).await)
+        Ok(RecvAny::new(
+            self.switchboard.clone(),
+            self.local,
+            self.parties
+                .iter()
+                .copied()
+                .filter(|&party| party != self.local)
+                .collect(),
+            self.session.clone(),
+        )
+        .await)
     }
 
     async fn recv_any_with_timeout(&mut self, timeout: Duration) -> net::Result<(PartyId, Packet)> {
@@ -69,12 +89,14 @@ impl Network for SimNetwork {
             self.local,
             self.parties.clone(),
             timeout,
+            self.session.clone(),
         )
         .await
     }
 
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> net::Result<usize> {
         self.switchboard.lock().expect("lock must be free").send(
+            self.session.clone(),
             self.local,
             party_id,
             packet.clone(),
@@ -83,7 +105,13 @@ impl Network for SimNetwork {
     }
 
     async fn recv_from(&mut self, party_id: PartyId) -> net::Result<Packet> {
-        let packet = Recv::new(self.switchboard.clone(), party_id, self.local).await;
+        let packet = Recv::new(
+            self.switchboard.clone(),
+            party_id,
+            self.local,
+            self.session.clone(),
+        )
+        .await;
         Ok(packet)
     }
 
@@ -92,7 +120,14 @@ impl Network for SimNetwork {
         party_id: PartyId,
         timeout: Duration,
     ) -> net::Result<Packet> {
-        RecvTimeout::new(self.switchboard.clone(), party_id, self.local, timeout).await
+        RecvTimeout::new(
+            self.switchboard.clone(),
+            party_id,
+            self.local,
+            timeout,
+            self.session.clone(),
+        )
+        .await
     }
 
     fn other(&self) -> net::Result<PartyId> {
@@ -119,6 +154,7 @@ impl Network for SimNetwork {
             Event::ProtocolBegin {
                 timestamp,
                 protocol_name,
+                session: self.session.clone(),
             },
         );
     }
@@ -131,7 +167,26 @@ impl Network for SimNetwork {
             Event::ProtocolEnd {
                 timestamp,
                 protocol_name,
+                session: self.session.clone(),
             },
         );
+    }
+}
+
+impl ForkNetwork for SimNetwork {
+    fn fork(&mut self) -> Self {
+        let session = self.session.with_child(self.next_child);
+        self.next_child += 1;
+        Self {
+            local: self.local,
+            parties: self.parties.clone(),
+            switchboard: self.switchboard.clone(),
+            session,
+            next_child: 0,
+        }
+    }
+
+    fn session(&self) -> &SessionId {
+        &self.session
     }
 }

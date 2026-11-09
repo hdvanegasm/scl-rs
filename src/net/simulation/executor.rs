@@ -3,21 +3,28 @@
 //! `run_simulation_with_idle` round-robins the party futures over a ready queue, re-polling a task only when
 //! its waker fires. When the ready queue drains but tasks are still parked, it invokes the `on_idle`
 //! callback to make external progress (deliver the next scheduled network event) and resumes; if
-//! `on_idle` reports that nothing can be delivered while tasks remain parked, the run panics,
-//! surfacing the protocol deadlock instead of hanging.
+//! `on_idle` reports that nothing can be delivered while tasks remain parked, the run panics with
+//! the report `on_idle` returned, surfacing the protocol deadlock instead of hanging.
 
 use std::{
     collections::VecDeque,
+    fmt::Display,
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll, Wake, Waker},
 };
 
-/// Result of an idle tick.
-pub(crate) enum IdleOutcome {
-    /// Nothing left to do but there are tasks still parked.
-    Deadlocked,
+/// Result of an idle tick: what `on_idle` achieved while every task was parked.
+///
+/// `R` is the caller's description of a deadlock. The executor only prints it, so it needs
+/// [`Display`] and nothing else, and the executor stays independent of the caller's types. The
+/// simulator passes the switchboard's
+/// [`DeadlockReport`](crate::net::simulation::switchboard::DeadlockReport).
+pub(crate) enum IdleOutcome<R> {
+    /// Nothing is left to deliver while tasks are still parked; the report says what they wait
+    /// for.
+    Deadlocked(R),
     /// Progress was made.
     Progressed,
 }
@@ -68,12 +75,14 @@ impl Wake for TaskWaker {
 ///
 /// Panics if `on_idle` returns [`IdleOutcome::Deadlocked`] while tasks remain parked: no task can make
 /// progress and nothing is left to deliver, so the protocol is genuinely stuck and the run is
-/// aborted rather than left to hang.
-pub(crate) fn run_simulation_with_idle<F>(
+/// aborted rather than left to hang. The panic message gives the number of parked tasks, followed
+/// by the report carried in `Deadlocked`.
+pub(crate) fn run_simulation_with_idle<F, R>(
     tasks: Vec<Pin<Box<dyn Future<Output = ()>>>>,
     mut on_idle: F,
 ) where
-    F: FnMut() -> IdleOutcome,
+    F: FnMut() -> IdleOutcome<R>,
+    R: Display,
 {
     // We mark the tasks completed as None.
     let mut tasks: Vec<Option<Pin<Box<dyn Future<Output = ()>>>>> =
@@ -129,8 +138,8 @@ pub(crate) fn run_simulation_with_idle<F>(
                 // The `on_idle` function returns progressed when a new event is popped. When the
                 // event queue is drained, we have hitted a problem: all tasks parked and no events to
                 // continue mean a real deadlock.
-                IdleOutcome::Deadlocked => {
-                    panic!("scheduler: {remaining_tasks} task(s) parked, nothing to deliver (deadlock)");
+                IdleOutcome::Deadlocked(report) => {
+                    panic!("scheduler: {remaining_tasks} task(s) parked, nothing to deliver (deadlock)\n{report}");
                 }
                 IdleOutcome::Progressed => {}
             },

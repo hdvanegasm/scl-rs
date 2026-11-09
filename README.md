@@ -315,7 +315,7 @@ its own party id and configuration file (hard-coded to party 0 below; in practic
 from command-line arguments):
 
 ```rust
-use scl_rs::net::{NetworkConfig, TcpNetwork};
+use scl_rs::net::{session::derive_root_tag, NetworkConfig, TcpNetwork};
 use scl_rs::protocol::{GeneralEnv, Protocol};
 use rand::{rngs::StdRng, SeedableRng};
 use std::path::Path;
@@ -328,8 +328,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load this node's peers, ports, and certificates from a JSON file.
     let config = NetworkConfig::new(Path::new("net_config_p0.json"))?;
 
+    // Every party passes the same root tag, naming this execution; include an epoch or run
+    // counter that is never reused.
+    let root_tag = derive_root_tag(b"send-recv/v1 run=1");
+
     // `create` performs the TLS handshake with every peer, so it is async.
-    let network = TcpNetwork::create(my_id, config).await?;
+    let network = TcpNetwork::create(my_id, config, root_tag).await?;
     let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
 
     // The very same protocol that ran on the simulator now runs over real TLS.
