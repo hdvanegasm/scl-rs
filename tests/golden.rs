@@ -77,9 +77,9 @@ const UPDATE_VAR: &str = "SCL_UPDATE_GOLDEN";
 /// RNG seeded with `scenario * 1000 + p`, so no two parties or scenarios share a stream.
 fn seeded_env(
     scenario: u64,
-) -> impl Fn(PartyId, SimNetwork) -> GeneralEnv<SimNetwork, ChaCha20Rng> {
+) -> impl Fn(PartyId, SimNetwork) -> GeneralEnvironment<SimNetwork, ChaCha20Rng> {
     move |party, net| {
-        GeneralEnv::new(
+        GeneralEnvironment::new(
             net,
             ChaCha20Rng::seed_from_u64(scenario * 1000 + party.as_usize() as u64),
         )

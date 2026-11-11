@@ -23,7 +23,7 @@
 //!
 //! | step                                                   | cost                          |
 //! |--------------------------------------------------------|-------------------------------|
-//! | each owner deals its `ℓ` values                        | one dealing round each        |
+//! | both owners deal their `ℓ` values, at the same time    | `ℓ` dealing rounds            |
 //! | `x̄ = (Σ[xᵢ]) · ℓ⁻¹`, `[uᵢ] = [xᵢ] − [x̄]` (same for `y`) | **free** — linear, no messages |
 //! | `ℓ` products `[uᵢ · vᵢ]`                               | **one** round, whatever `ℓ` is |
 //! | `Σ[uᵢvᵢ]`, then `· ℓ⁻¹`                                | **free**                      |
@@ -39,7 +39,8 @@
 //!
 //! Beaver multiplication spends one triple per product, and triples do not depend on the inputs. The
 //! example makes that split explicit — a `Preprocessing` phase generating six triples (`Random`,
-//! `Random`, `Double-Random`, then triple generation), and an online phase that spends them. The
+//! `Random` and `Double-Random`, all at once, then one batched triple generation), and an online
+//! phase that spends them. The
 //! bandwidth flamegraph this example writes puts numbers on the split: of the 3,648 bytes that cross
 //! the wire, `Preprocessing` is the largest phase at 56%, against 25% for the online
 //! `PassiveShamirMul` that spends its output (13% goes to sharing the inputs, 5% to revealing the
@@ -58,7 +59,10 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::{mersenne61::Mersenne61, FiniteField},
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
-    prelude::{simulate, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment},
+    prelude::{
+        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, Protocol, ProtocolId,
+        RandEnvironment,
+    },
     protocol::{
         passive_shamir::{mul::PassiveShamirMul, triple::ShamirTriple},
         share::{deal::PassiveDealShr, open::PassiveOpenShr},
@@ -89,6 +93,11 @@ const DATA_Y: [u64; VECTOR_LEN] = [2, 4, 5, 7, 8, 10];
 /// Deals one owner's whole vector: the owner secret-shares each of its `VECTOR_LEN` values, and
 /// every other party receives a share of each. The `id` is a constructor argument so the two owners'
 /// dealing phases appear as *distinct* towers in the flamegraph — identical ids would merge them.
+///
+/// The values are dealt one after another, not under a `JoinAll`. All of them have the same dealer
+/// and travel over the same links, so the better form is a batched dealing that puts all of a
+/// receiver's shares in one message; `PassiveDealShr` deals a single value, so that form would be a
+/// new protocol.
 struct DealVector {
     owner: PartyId,
     /// The private data — `Some` only at the owner.
@@ -148,27 +157,28 @@ struct SecureCovariance {
     y: Option<Vec<Mersenne61>>,
 }
 
-impl<E: RandEnvironment> Protocol<E> for SecureCovariance {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecureCovariance {
     /// The covariance — the one and only value anybody learns.
     type Output = Mersenne61;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
-        // --- Input phase: each owner shares its vector. -------------------------------------
-        let x_shares = DealVector {
-            owner: self.parties[OWNER_X],
-            values: self.x,
-            parties: self.parties.clone(),
-            id: ProtocolId::from("ShareX"),
-        }
-        .execute(env)
-        .await?;
-
-        let y_shares = DealVector {
-            owner: self.parties[OWNER_Y],
-            values: self.y,
-            parties: self.parties.clone(),
-            id: ProtocolId::from("ShareY"),
-        }
+        // --- Input phase: both owners share their vectors at the same time. -----------------
+        // The two dealings are independent and have different dealers, so they run concurrently,
+        // each in its own session. Every party runs both, even the parties that own no data.
+        let (x_shares, y_shares) = Join((
+            DealVector {
+                owner: self.parties[OWNER_X],
+                values: self.x,
+                parties: self.parties.clone(),
+                id: ProtocolId::from("ShareX"),
+            },
+            DealVector {
+                owner: self.parties[OWNER_Y],
+                values: self.y,
+                parties: self.parties.clone(),
+                id: ProtocolId::from("ShareY"),
+            },
+        ))
         .execute(env)
         .await?;
 
@@ -230,7 +240,7 @@ fn main() {
             x: (pid.as_usize() == OWNER_X).then(|| data_x.clone()),
             y: (pid.as_usize() == OWNER_Y).then(|| data_y.clone()),
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

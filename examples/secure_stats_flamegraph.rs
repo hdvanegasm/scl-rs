@@ -3,15 +3,24 @@
 //! `examples/bandwidth_flamegraph.rs` introduces the post-hoc bandwidth profiler
 //! ([`SimulationOutcome::bandwidth_tree_for`](scl_rs::net::simulation::simulator::SimulationOutcome::bandwidth_tree_for)
 //! and the folded-stacks export). This example composes protocols one level deeper, so the
-//! rendered flamegraph shows the classic *two-tower* shape — six frame levels, with the cost of
-//! each phase attributed to the exact call path that spent it:
+//! rendered flamegraph shows the classic *two-tower* shape, with the cost of each phase attributed
+//! to the exact call path that spent it:
 //!
 //! ```text
-//! <simulation>;SecStats;SumValues;InputPhase;PassiveDealLinearShr   ...
-//! <simulation>;SecStats;SumValues;PassiveOpenLinearShr              ...
-//! <simulation>;SecStats;SumSquares;InputPhase;PassiveDealLinearShr  ...
-//! <simulation>;SecStats;SumSquares;PassiveOpenLinearShr             ...
+//! <simulation>;SecStats;Join;SumValues;InputPhase;JoinAll;PassiveDealLinearShr   ...
+//! <simulation>;SecStats;Join;SumValues;PassiveOpenLinearShr                      ...
+//! <simulation>;SecStats;Join;SumSquares;InputPhase;JoinAll;PassiveDealLinearShr  ...
+//! <simulation>;SecStats;Join;SumSquares;PassiveOpenLinearShr                     ...
 //! ```
+//!
+//! The two sums are independent, so they run concurrently under a
+//! [`Join`](scl_rs::protocol::concurrent::Join); inside each, the `n` dealings run concurrently
+//! under a [`JoinAll`](scl_rs::protocol::concurrent::JoinAll). Every party still sends the same
+//! messages as it would running them one after another, but waits for the slowest instead of for
+//! their sum. A batched form, in which each party deals `x` and `x²` in one message and the two
+//! sums are opened in one message, would send half as many messages; it needs vectorized dealing
+//! and opening, which `PassiveDealShr` and `PassiveOpenShr` are not, and it would merge the two
+//! towers this example exists to show.
 //!
 //! The computation is *secure mean and variance*: each of the five parties holds a private value
 //! (think of a salary benchmark), and together they learn the mean and variance of the values —
@@ -26,7 +35,9 @@
 //! wrapped in two protocols with **distinct ids** (`SumValues`, `SumSquares`). Identical ids would
 //! produce identical call paths, and the renderer would merge the towers into one (correct
 //! totals, but the phase structure disappears). Distinct ids keep the two phases visible as
-//! separate towers — the reason to profile in the first place.
+//! separate towers — the reason to profile in the first place. Running them as two branches of a
+//! `Join` does not change this: the branches are sibling frames, and siblings with one id share a
+//! path.
 //!
 //! Inputs are kept below 2²⁰ so that the sum of squares stays far from the Mersenne-61 modulus:
 //! the opened field sums then equal the plain-integer sums, which the harness cross-checks.
@@ -38,7 +49,10 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
-    prelude::{simulate, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment},
+    prelude::{
+        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, JoinAll, Protocol, ProtocolId,
+        RandEnvironment,
+    },
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
     ss::shamir::ShamirSS,
 };
@@ -50,32 +64,36 @@ const INPUT_BOUND: u64 = 1 << 20;
 /// Shamir secret sharing over the Mersenne-61 field (one limb).
 type Share = ShamirSS<1, Mersenne61>;
 
-// Innermost composition layer: every party, in turn, deals a Shamir sharing of `value`. After the
-// loop each party holds one share of every party's contribution.
+// Innermost composition layer: every party deals a Shamir sharing of `value`, all dealings at
+// once. Afterwards each party holds one share of every party's contribution.
 struct InputPhase {
     value: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for InputPhase {
-    // One share per party in the computation.
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
+    // One share per party in the computation, in party order.
     type Output = Vec<Share>;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
         let me = env.network().local_party();
-        let mut shares = Vec::new();
-        for dealer in env.network().party_ids() {
-            let deal = if dealer == me {
-                let receivers = env.network().party_ids();
-                // Full-threshold sharing (degree n − 1): every party is needed to reconstruct,
-                // preserving this example's original semantics.
-                let degree = receivers.len() - 1;
-                PassiveDealShr::dealer(me, self.value, receivers, degree)
-            } else {
-                PassiveDealShr::receiver(dealer)
-            };
-            shares.push(deal.execute(env).await?);
-        }
-        Ok(shares)
+        let parties = env.network().party_ids();
+        // Full-threshold sharing (degree n − 1): every party is needed to reconstruct, preserving
+        // this example's original semantics.
+        let degree = parties.len() - 1;
+
+        // One dealing per party: this party deals in its own and receives in all the others.
+        // Every party builds the same list, in the same order, so the parties' sessions match.
+        let deals: Vec<PassiveDealShr<Share>> = parties
+            .iter()
+            .map(|&dealer| {
+                if dealer == me {
+                    PassiveDealShr::dealer(me, self.value, parties.clone(), degree)
+                } else {
+                    PassiveDealShr::receiver(dealer)
+                }
+            })
+            .collect();
+        JoinAll(deals).execute(env).await
     }
 
     fn id(&self) -> ProtocolId {
@@ -86,7 +104,7 @@ impl<E: RandEnvironment> Protocol<E> for InputPhase {
 // The summation logic both phases share: distribute sharings of `value`, add the collected shares
 // locally (free — Shamir sharing is linear), and open the sum. The callers wrap this in protocols
 // with distinct ids so the two phases stay distinguishable in the flamegraph.
-async fn share_sum_open<E: RandEnvironment>(
+async fn share_sum_open<E: RandEnvironment + ForkEnvironment>(
     env: &mut E,
     value: Mersenne61,
 ) -> Result<Mersenne61, Error> {
@@ -105,7 +123,7 @@ struct SumValues {
     input: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for SumValues {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumValues {
     type Output = Mersenne61;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -123,7 +141,7 @@ struct SumSquares {
     input: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for SumSquares {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumSquares {
     type Output = Mersenne61;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
@@ -135,20 +153,25 @@ impl<E: RandEnvironment> Protocol<E> for SumSquares {
     }
 }
 
-// Top level: run the two summation phases in sequence. The output is the pair of opened sums;
+// Top level: run the two summation phases concurrently. The output is the pair of opened sums;
 // mean and variance are derived from them in the clear.
 struct SecStats {
     input: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for SecStats {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecStats {
     // (Σ values, Σ squares), learned by everyone.
     type Output = (Mersenne61, Mersenne61);
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
-        let sum = SumValues { input: self.input }.execute(env).await?;
-        let sum_sq = SumSquares { input: self.input }.execute(env).await?;
-        Ok((sum, sum_sq))
+        // Neither sum needs the other, so each runs in its own session and the party waits for
+        // the slower one only. The outputs come back in tuple order.
+        Join((
+            SumValues { input: self.input },
+            SumSquares { input: self.input },
+        ))
+        .execute(env)
+        .await
     }
 
     fn id(&self) -> ProtocolId {
@@ -172,7 +195,7 @@ fn main() {
         |pid| SecStats {
             input: Mersenne61::from(inputs[pid.as_usize()]),
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

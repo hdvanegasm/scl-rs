@@ -3,7 +3,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Error, GeneralEnv, Protocol, ProtocolId};
+use scl_rs::protocol::{Environment, Error, GeneralEnvironment, Protocol, ProtocolId};
 use std::time::Duration;
 
 /// P0 waits with a timeout; P1 never sends. The recv must resolve to a Timeout error.
@@ -41,7 +41,7 @@ fn silent_party_times_out() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SilentPartyProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert!(outcome.outputs[&p0], "expected a timeout error for P0");
@@ -85,7 +85,7 @@ fn prompt_sender_succeeds() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| PromptSenderProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert!(outcome.outputs[&p0], "expected P0 to receive the packet");
@@ -126,7 +126,7 @@ fn recv_any_all_silent_times_out() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| AllSilentProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert!(outcome.outputs[&p0], "expected Timeout(None) for P0");
@@ -173,7 +173,7 @@ fn recv_any_late_packet_times_out() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| LateSenderProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert!(
@@ -221,7 +221,7 @@ fn recv_any_prompt_sender_succeeds() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| PromptAnyProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
     assert!(outcome.outputs[&p0], "expected P0 to receive the packet");

@@ -2,7 +2,7 @@
 //!
 //! An [`Event`] captures a single moment in a party's run — start/stop, a send or receive, a
 //! protocol boundary, a produced output — stamped with the party's *virtual* time. Events are
-//! appended to a [`SimulationTrace`](crate::net::simulation::SimulationTrace) as the protocol runs,
+//! appended to a [`SimulationTrace`] as the protocol runs,
 //! and each renders to a compact human-readable line through its [`Display`](std::fmt::Display) impl.
 //! [`EventType`] is the data-less discriminant, used to filter traces and to declare which event a
 //! [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) reacts to.
@@ -61,12 +61,12 @@ pub enum Event {
     SendData {
         /// Sender's virtual time when the packet was handed to the network.
         timestamp: Duration,
+        /// Session the packet was sent in: the session of the sending network handle.
+        session: SessionId,
         /// The directed link the packet was sent on (`sender` → `recipient`).
         link: Link,
         /// Size of the packet payload, in bytes.
         size: usize,
-        /// Session the packet was sent in: the session of the sending network handle.
-        session: SessionId,
         /// Per-type breakdown of the packet's elements as `(label, count)` pairs, in first-appearance
         /// order (from [`Packet::composition`](crate::net::Packet::composition)). Elements written
         /// without a type label are grouped under `unknown elem.`. Rendered after the byte size in

@@ -9,7 +9,7 @@ use scl_rs::{
         field::secp256k1_scalar::Secp256k1ScalarField,
     },
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Error, GeneralEnv, Protocol, RandEnvironment, Ring},
+    prelude::{simulate, Error, GeneralEnvironment, Protocol, RandEnvironment, Ring},
     protocol::{zk::schnorr::SchnorrPok, ProtocolId},
 };
 
@@ -56,7 +56,7 @@ fn run(
         SimpleNetworkConfig::default(),
         parties(),
         |pid| MaybeProve { pok: make_pok(pid) },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     )
     .outputs

@@ -2,9 +2,9 @@
 //!
 //! A hook implements [`TriggeredHook`](crate::net::simulation::hook::TriggeredHook) and is
 //! registered by passing it to [`simulate`](crate::net::simulation::simulator::simulate). Every
-//! time an [`Event`](crate::net::simulation::event::Event) is appended to a party's trace, each
+//! time an [`Event`] is appended to a party's trace, each
 //! hook whose [`trigger`](crate::net::simulation::hook::TriggeredHook::trigger) matches that
-//! event's [`EventType`](crate::net::simulation::event::EventType) runs. This is the extension
+//! event's [`EventType`] runs. This is the extension
 //! point for measuring a run (how many bytes each party put on the wire) or for steering it
 //! (injecting a reply when a party receives a particular message).
 //!

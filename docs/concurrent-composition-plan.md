@@ -2,11 +2,11 @@
 
 **Date:** 2026-10-07
 **Against:** `main` at v0.14.2 (`6b898c5`).
-**Status:** in progress (2026-11-09). Phase 0 is done (`38cc6e6`). Phase 1 is done in the working
-tree, not committed: the session-keyed switchboard, `SimNetwork` sessions, `session` on the four
-trace events, tests T3–T5 and the deadlock report (`SessionId` itself is committed, `e7cea51`).
-Phase 2 is written and its tests are in `tests/concurrent.rs`; one of them fails until
-`SimNetwork::fork` starts each child's fork count at 0. Phases 3–6 have not started.
+**Status:** in progress (2026-11-09). Phase 0 is done (`38cc6e6`). Phases 1 and 2 are done
+(`e7cea51`, `34c2856`, and the follow-up fixes of 2026-11-09): the session-keyed switchboard,
+`SimNetwork` sessions, `session` on the four trace events, the deadlock report, forking, and
+`Join`, `JoinAll` and `boxed`, with tests T1–T5, T7 and T10 passing on the simulator
+(`tests/concurrent.rs`). Phases 3–6 have not started.
 **How this was checked:** the timing figures in §1 come from a throwaway simulator probe run against
 v0.14.2. The trait and combinator signatures in §5.4–§5.5 were compiled against the v0.14.2 crate,
 including the `Send` bound on the combined future, nested `Join`s and the type-erased variant.
@@ -325,7 +325,7 @@ enum WriterCmd {
 struct Mailboxes {
     queues: HashMap<(PartyId, SessionId), VecDeque<Packet>>,
     waiters: HashMap<SessionId, Waker>,      // one per session, by I2
-    peer_state: HashMap<PartyId, PeerState>, // Open | Closed | Failed(NetworkError)
+    peer_state: HashMap<PartyId, PeerState>, // Open | Closed | Failed(reason)
     retired: HashSet<SessionId>,             // dropped sessions; late frames are discarded
 }
 ```
@@ -350,10 +350,17 @@ The core is dropped together with the last handle, root or forked (see _Lifecycl
   packet. This is cancel-safe by construction and stronger than today's guarantee.
 - **Peer failure.** When a reader task hits EOF or an error, or a writer task gets a write error,
   the task marks the peer `Closed`/`Failed` and wakes every waiter. After draining the queue, a
-  receive from that peer returns `ConnectionClosed(Some(p))` or the stored error.
+  receive from that peer returns `ConnectionClosed(Some(p))` if the peer closed cleanly, or
+  `NetworkError::PeerFailed { peer: p, reason }` if it failed. **Decided 2026-11-10:** a failure
+  is reported through this new variant, and not by handing the original error to the first
+  receive that sees it and `ConnectionClosed(Some(p))` to the later ones. `NetworkError` is not
+  `Clone`, so the original error can be returned only once. With the variant every session that
+  touches the peer gets the same error, whichever asks first. `NetworkError` is
+  `#[non_exhaustive]`, so the variant breaks no `match`.
   `recv_any` returns `ConnectionClosed(None)` once every peer is closed and drained. A decode
   error cannot be attributed to a session, so it fails the whole peer.
-- **Send.** `send_to` checks `peer_state` and returns the stored error if the peer has failed.
+- **Send.** `send_to` checks `peer_state` and returns `NetworkError::PeerFailed` if the peer has
+  failed.
   Otherwise it encodes the complete frame (length prefix, session header and body) into one
   buffer, enqueues `WriterCmd::Frame` on that peer's channel, and returns the payload size. The
   writer task performs `write_all` and `flush` for each frame in queue order.
@@ -435,7 +442,8 @@ impl<N: ForkNetwork, R: CryptoRng + SeedableRng + Send> ForkEnvironment for Gene
 New module `protocol::concurrent`:
 
 ```rust
-/// Heterogeneous: a tuple of 2..=12 protocols of any types; output is the tuple of outputs.
+/// Heterogeneous: a tuple of 2..=6 protocols of any types; output is the tuple of outputs.
+/// For more, nest `Join`s, or use `JoinAll` when the protocols have one type.
 pub struct Join<T>(pub T);
 // macro-generated for each arity:
 impl<E: ForkEnvironment, P0: Protocol<E>, P1: Protocol<E>> Protocol<E> for Join<(P0, P1)>
@@ -692,7 +700,7 @@ running; it still has to compile, so a test cannot exist before the types it nam
   `'static`, not `E` (§5.5).
 - **Tests:** T1, T2, T7 and T10, plus T3, T4 and T5 end to end through `Join` on the simulator.
 - `ForkNetwork` and its impl for `SimNetwork`; `ForkEnvironment` and its impl for `GeneralEnv`.
-- `protocol::concurrent`: `Join` for arities 2..=12 (macro), `JoinAll`, `BoxedProtocol`/`boxed`.
+- `protocol::concurrent`: `Join` for arities 2..=6 (macro), `JoinAll`, `BoxedProtocol`/`boxed`.
 - Prelude: `ForkEnvironment`, `Join`, `JoinAll`.
 - **Exit:** T1, T2, T3, T4, T5, T7 and T10 pass on the simulator.
 - Size: M.
@@ -792,6 +800,10 @@ Phases 1–4 ship **together**. Releasing combinators that work on the simulator
 - The MSRV is now 1.88, required by the new `sha2` dependency of `SessionId::digest`.
 - `TcpNetwork::recv_any` now returns the lowest ready sender id. `send_to` returns once the frame
   is queued, and a write error is reported by the next operation on that peer.
+- `NetworkError` gains `PeerFailed { peer, reason }` (§5.3, *Peer failure*). On `TcpNetwork`, a
+  read error, an undecodable frame or a write error on a peer is reported as `PeerFailed` by every
+  later receive from that peer and send to it, where 0.14.x returned the underlying `IoError` or
+  `SerializationError`. The enum is `#[non_exhaustive]`, so no `match` breaks.
 - Run every `Join`/`JoinAll` on every party (I1, §5.1). A protocol that let bystanders skip a
   sub-protocol must give them a branch that returns immediately instead.
 - Custom environments: implement `ForkEnvironment` only if you want to use the combinators.

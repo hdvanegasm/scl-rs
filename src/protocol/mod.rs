@@ -232,21 +232,21 @@ pub trait ForkEnvironment: Environment {
 /// [`RandEnvironment`]. If a protocol requires further information that needs to be passed to deep
 /// layers of protocol composition, we recommend the API user to create a different struct that
 /// implements the [`Environment`] trait.
-pub struct GeneralEnv<N: Network, R: CryptoRng + Send> {
+pub struct GeneralEnvironment<N: Network, R: CryptoRng + Send> {
     /// Network in which the protocol is being executed.
     pub network: N,
     /// Session RNG used by protocols that sample secret material (see [`RandEnvironment`]).
     pub rng: R,
 }
 
-impl<N: Network, R: CryptoRng + Send> GeneralEnv<N, R> {
+impl<N: Network, R: CryptoRng + Send> GeneralEnvironment<N, R> {
     /// Creates a new general environment.
     pub fn new(network: N, rng: R) -> Self {
         Self { network, rng }
     }
 }
 
-impl<R, N> Environment for GeneralEnv<N, R>
+impl<R, N> Environment for GeneralEnvironment<N, R>
 where
     R: CryptoRng + Send,
     N: Network,
@@ -262,7 +262,7 @@ where
     }
 }
 
-impl<R, N> ForkEnvironment for GeneralEnv<N, R>
+impl<R, N> ForkEnvironment for GeneralEnvironment<N, R>
 where
     R: CryptoRng + SeedableRng + Send,
     N: ForkNetwork,
@@ -272,7 +272,7 @@ where
     }
 }
 
-impl<R: CryptoRng + Send, N: Network> RandEnvironment for GeneralEnv<N, R> {
+impl<R: CryptoRng + Send, N: Network> RandEnvironment for GeneralEnvironment<N, R> {
     type Rng = R;
     fn rng_mut(&mut self) -> &mut Self::Rng {
         &mut self.rng

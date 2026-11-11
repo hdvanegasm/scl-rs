@@ -125,6 +125,14 @@ pub enum NetworkError {
     /// blamed for the timeout.
     #[error("timed out waiting for a packet from {}", fmt_timeout_party(.0))]
     Timeout(Option<PartyId>),
+    /// The connection with a peer failed: a read, a decode or a write went wrong.
+    #[error("the connection with peer {peer} failed: {reason}")]
+    PeerFailed {
+        /// Peer that failed.
+        peer: PartyId,
+        /// Reason of failure.
+        reason: String,
+    },
 }
 
 /// Renders the awaited party of a [`NetworkError::Timeout`] for its error message: the specific

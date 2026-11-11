@@ -15,7 +15,7 @@
 //! that path sent itself:
 //!
 //! ```text
-//! <simulation>;SecSumShamirShr;InputPhase;PassiveDealLinearShr 20
+//! <simulation>;SecSumShamirShr;InputPhase;JoinAll;PassiveDealLinearShr 20
 //! ```
 //!
 //! Any standard renderer turns that file into an interactive SVG. This example runs a three-party
@@ -27,9 +27,15 @@
 //!
 //! 1. `SecSumShamirShr` — the top level: share the inputs, add the shares locally (free — Shamir
 //!    sharing is linear), and open the sum.
-//! 2. `InputPhase` — every party in turn acts as a dealer, distributing a Shamir sharing of its
-//!    private input with the library's `PassiveDealShr`.
+//! 2. `InputPhase` — every party acts as a dealer, distributing a Shamir sharing of its private
+//!    input with the library's `PassiveDealShr`. The `n` dealings are independent, so they run
+//!    concurrently under a [`JoinAll`](scl_rs::protocol::concurrent::JoinAll), each in its own
+//!    session: one round instead of `n`.
 //! 3. `PassiveOpenLinearShr` — the parties reveal their shares of the sum and reconstruct it.
+//!
+//! Why `JoinAll` and not a batched dealing: each dealing has a different dealer, so every link
+//! carries exactly one share either way. A single protocol in which all parties deal at once would
+//! send the same messages, and `PassiveDealShr` deals for one dealer only.
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -38,7 +44,10 @@ use std::fs;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
-    prelude::{simulate, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment, Ring},
+    prelude::{
+        simulate, Error, ForkEnvironment, GeneralEnvironment, JoinAll, Protocol, ProtocolId,
+        RandEnvironment, Ring,
+    },
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
     ss::shamir::ShamirSS,
 };
@@ -46,34 +55,38 @@ use scl_rs::{
 /// Shamir secret sharing over the Mersenne-61 field (one limb).
 type Share = ShamirSS<1, Mersenne61>;
 
-// Middle layer: every party, in turn, deals a Shamir sharing of its private input. After the loop
-// each party holds one share of every party's input. This exists as its own protocol (rather than
-// inlined in the top level) so the "input distribution" cost shows up as a distinct frame in the
-// flamegraph, with the individual deals nested under it.
+// Middle layer: every party deals a Shamir sharing of its private input, all dealings at once.
+// Afterwards each party holds one share of every party's input. This exists as its own protocol
+// (rather than inlined in the top level) so the "input distribution" cost shows up as a distinct
+// frame in the flamegraph, with the individual deals nested under it.
 struct InputPhase {
     input: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for InputPhase {
-    // One share per party in the computation.
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
+    // One share per party in the computation, in party order.
     type Output = Vec<Share>;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
         let me = env.network().local_party();
-        let mut shares = Vec::new();
-        for dealer in env.network().party_ids() {
-            let deal = if dealer == me {
-                let receivers = env.network().party_ids();
-                // Full-threshold sharing (degree n − 1): every party is needed to reconstruct,
-                // preserving this example's original semantics.
-                let degree = receivers.len() - 1;
-                PassiveDealShr::dealer(me, self.input, receivers, degree)
-            } else {
-                PassiveDealShr::receiver(dealer)
-            };
-            shares.push(deal.execute(env).await?);
-        }
-        Ok(shares)
+        let parties = env.network().party_ids();
+        // Full-threshold sharing (degree n − 1): every party is needed to reconstruct, preserving
+        // this example's original semantics.
+        let degree = parties.len() - 1;
+
+        // One dealing per party: this party deals in its own and receives in all the others.
+        // Every party builds the same list, in the same order, so the parties' sessions match.
+        let deals: Vec<PassiveDealShr<Share>> = parties
+            .iter()
+            .map(|&dealer| {
+                if dealer == me {
+                    PassiveDealShr::dealer(me, self.input, parties.clone(), degree)
+                } else {
+                    PassiveDealShr::receiver(dealer)
+                }
+            })
+            .collect();
+        JoinAll(deals).execute(env).await
     }
 
     fn id(&self) -> ProtocolId {
@@ -88,7 +101,7 @@ struct SecSumShamirShr {
     input: Mersenne61,
 }
 
-impl<E: RandEnvironment> Protocol<E> for SecSumShamirShr {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecSumShamirShr {
     // The sum of every party's input, learned by everyone.
     type Output = Mersenne61;
 
@@ -120,7 +133,7 @@ fn main() {
         |_| SecSumShamirShr {
             input: Mersenne61::random(&mut rand::rng()),
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

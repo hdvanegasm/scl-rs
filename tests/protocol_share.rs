@@ -8,7 +8,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Abbreviate, Error, GeneralEnv, Protocol, RandEnvironment},
+    prelude::{simulate, Abbreviate, Error, GeneralEnvironment, Protocol, RandEnvironment},
     protocol::{
         share::{
             deal::PassiveDealShr,
@@ -89,7 +89,7 @@ where
         |pid| DealThenOpen::<S> {
             deal: deal_for(pid, dealer, secret, threshold),
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -158,7 +158,7 @@ where
             a,
             b,
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -226,7 +226,7 @@ where
             deal: deal_for(pid, dealer, secret, threshold),
             receiver,
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

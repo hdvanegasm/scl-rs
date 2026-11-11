@@ -1,7 +1,7 @@
 //! Deterministic, single-threaded simulator for MPC protocols.
 //!
-//! A protocol is written *once*, generic over the [`Network`](crate::net::Network) trait, and runs
-//! unchanged on either a real TCP/TLS network ([`TcpNetwork`](crate::net::TcpNetwork)) or this
+//! A protocol is written *once*, generic over the [`Network`] trait, and runs
+//! unchanged on either a real TCP/TLS network ([`TcpNetwork`]) or this
 //! simulator ([`SimNetwork`](crate::net::simulation::network::SimNetwork)). The simulator needs no sockets, threads, or
 //! wall-clock timing: it models the network analytically and advances a *virtual* clock, so a run
 //! is fully reproducible and reports timings close to a real deployment with the same network
@@ -18,7 +18,7 @@
 //!
 //! The single rule that makes a protocol portable across both executors: it may only suspend
 //! (`.await`) through abstractions both executors implement — in practice the
-//! [`Network`](crate::net::Network) trait. Suspending through a tokio-only primitive (a raw
+//! [`Network`] trait. Suspending through a tokio-only primitive (a raw
 //! `tokio::time::sleep`, `tokio::spawn`, a background thread) would have nothing to wake it under
 //! the deterministic executor and breaks reproducibility.
 //!
@@ -38,7 +38,7 @@
 //!   recorded events, and the built-in [`MetricHook`](crate::net::simulation::hook::MetricHook).
 //! - [`network`](crate::net::simulation::network) —
 //!   [`SimNetwork`](crate::net::simulation::network::SimNetwork), the simulated
-//!   [`Network`](crate::net::Network) implementation.
+//!   [`Network`] implementation.
 //! - [`simulator`](crate::net::simulation::simulator) — the top-level
 //!   [`simulate`](crate::net::simulation::simulator::simulate) driver, returning a
 //!   [`SimulationOutcome`](crate::net::simulation::simulator::SimulationOutcome) of per-party outputs

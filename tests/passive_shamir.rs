@@ -9,7 +9,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Error, GeneralEnv, Protocol, RandEnvironment},
+    prelude::{simulate, Error, GeneralEnvironment, Protocol, RandEnvironment},
     protocol::{
         passive_shamir::{
             double_rand_share::PassiveRandDoubleShr,
@@ -88,7 +88,7 @@ fn triples_satisfy_c_equals_a_times_b() {
         SimpleNetworkConfig::default(),
         all.clone(),
         |_| GenTriples { king },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -136,7 +136,7 @@ fn double_random_halves_hide_the_same_secret() {
         SimpleNetworkConfig::default(),
         all.clone(),
         |_| GenDoubles,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 
@@ -221,7 +221,7 @@ fn beaver_multiplication_shares_the_product() {
         SimpleNetworkConfig::default(),
         all.clone(),
         |_| MulRandomPairs { king: all[0] },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

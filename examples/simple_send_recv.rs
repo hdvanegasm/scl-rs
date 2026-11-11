@@ -6,7 +6,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, Environment, Error, Protocol},
-    protocol::{GeneralEnv, ProtocolId},
+    protocol::{GeneralEnvironment, ProtocolId},
 };
 
 // A protocol is a struct that implements the `Protocol` trait.
@@ -77,7 +77,7 @@ fn main() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         // The last argument is the list of hooks: callbacks that fire as each event is recorded, to
         // observe or steer the run. This protocol needs none. See `scl_rs::net::simulation::hook`.
         vec![],

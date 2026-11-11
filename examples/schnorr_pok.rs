@@ -245,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SimpleNetworkConfig::wan(),
         vec![prover, verifier],
         proto_builder,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

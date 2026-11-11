@@ -422,7 +422,8 @@ pub mod prelude {
     };
     pub use crate::protocol::{
         concurrent::{Join, JoinAll},
-        Environment, Error, ForkEnvironment, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
+        Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
+        RandEnvironment,
     };
 }
 

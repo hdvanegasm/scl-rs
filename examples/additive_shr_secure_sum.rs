@@ -34,7 +34,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::secp256k1_scalar::Secp256k1ScalarField,
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
-    prelude::{simulate, Environment, Error, GeneralEnv, Protocol, Ring},
+    prelude::{simulate, Environment, Error, GeneralEnvironment, Protocol, Ring},
     protocol::ProtocolId,
     ss::additive::AdditiveSS,
 };
@@ -203,7 +203,7 @@ fn main() {
                 input: Secp256k1ScalarField::random(&mut rng),
             }
         },
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

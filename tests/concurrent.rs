@@ -33,7 +33,7 @@ use scl_rs::{
             rand_share::PassiveRandShr,
             triple::{PassiveTriple, ShamirTriple},
         },
-        Environment, Error, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
+        Environment, Error, GeneralEnvironment, Protocol, ProtocolId, RandEnvironment,
     },
     ss::{
         shamir::{DoubleShare, ShamirSS},
@@ -43,7 +43,7 @@ use scl_rs::{
 
 type F = Mersenne61;
 type Share = ShamirSS<1, F>;
-type Env = GeneralEnv<SimNetwork, ChaCha20Rng>;
+type Env = GeneralEnvironment<SimNetwork, ChaCha20Rng>;
 
 /// Number of parties and corruption threshold of the secret-sharing tests: DN07 needs
 /// `n >= 2t + 1`, and each run of `PassiveRandShr` or `PassiveRandDoubleShr` yields `n - t = 3`
@@ -61,7 +61,7 @@ fn parties() -> Vec<PartyId> {
 
 /// Gives every party its own fixed seed, so that two runs with the same parties are identical.
 fn seeded_env(party: PartyId, network: SimNetwork) -> Env {
-    GeneralEnv::new(network, ChaCha20Rng::seed_from_u64(party.as_usize() as u64))
+    GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(party.as_usize() as u64))
 }
 
 /// Reconstructs the secret behind the share that `get` picks from each party's output.
@@ -475,6 +475,43 @@ fn t1_join_all_of_boxed_protocols_maps_each_output() {
     );
     for p in parties() {
         assert_eq!(outcome.outputs[&p], vec![N - T, 10 * (N - T)], "party {p}");
+    }
+}
+
+/// Each protocol of a `JoinAll` opens its own trace scope, in the session of its fork: `JoinAll`
+/// calls `execute` on its protocols, as `Join` does. A boxed protocol opens exactly one scope,
+/// under the name of the protocol it was made from.
+#[test]
+fn t1_join_all_runs_each_protocol_in_its_own_scope_and_session() {
+    let outcome = simulate(
+        SimpleNetworkConfig::default(),
+        parties(),
+        |_| JoinAllOfBoxed,
+        seeded_env,
+        vec![],
+    );
+
+    let expected: Vec<(String, String)> = {
+        let mut expected: Vec<(String, String)> = [
+            ("JoinAll", "root"),
+            ("PassiveRandShr", "0"),
+            ("PassiveRandDoubleShr", "1"),
+        ]
+        .iter()
+        .map(|(name, session)| (name.to_string(), session.to_string()))
+        .collect();
+        expected.sort();
+        expected
+    };
+    for p in parties() {
+        assert_eq!(
+            scopes(
+                outcome.traces[&p].events(),
+                &["JoinAll", "PassiveRandShr", "PassiveRandDoubleShr"]
+            ),
+            expected,
+            "party {p}: the protocols of the `JoinAll` opened unexpected scopes"
+        );
     }
 }
 

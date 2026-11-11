@@ -59,7 +59,7 @@ use scl_rs::{
         simulation::{event::EventType, network::SimNetwork, simulator::simulate},
         Network, NetworkConfig as TlsNetworkConfig, PartyId, TcpNetwork,
     },
-    prelude::{Environment, GeneralEnv, Protocol},
+    prelude::{Environment, GeneralEnvironment, Protocol},
 };
 
 use protocols::{barrier, BulkTransfer, PingPong};
@@ -152,11 +152,11 @@ impl Row {
 
 /// The environment both backends run under: no protocol here consumes randomness, so the RNG is
 /// seeded to a constant and exists only to satisfy the bound.
-type Env<N> = GeneralEnv<N, ChaCha20Rng>;
+type Env<N> = GeneralEnvironment<N, ChaCha20Rng>;
 
 /// Builds that environment for `network`.
 fn environment<N: Network>(network: N) -> Env<N> {
-    GeneralEnv::new(network, ChaCha20Rng::seed_from_u64(0))
+    GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(0))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

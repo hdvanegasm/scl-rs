@@ -1,9 +1,9 @@
 //! In-memory message router and virtual-time scheduler shared by every party in a simulation.
 //!
 //! A single [`Switchboard`](crate::net::simulation::switchboard::Switchboard) backs all parties on
-//! the simulator's single-threaded core. It owns the per-link message queues, the parked wakers of
-//! suspended receives, and a priority queue of scheduled events ordered by virtual time. `send`
-//! enqueues a delivery at the sender's clock plus a link delay (see
+//! the simulator's single-threaded core. It owns the message queues and the parked wakers of
+//! suspended receives, both kept per link and session, and a priority queue of scheduled events
+//! ordered by virtual time. `send` enqueues a delivery at the sender's clock plus a link delay (see
 //! [`Delay`](crate::net::simulation::switchboard::Delay)), and the executor calls `deliver_next`
 //! whenever no party can make progress, advancing virtual time to the next event and waking the
 //! receiver.
@@ -121,7 +121,7 @@ enum TimedRecvOut {
 /// deliberately keyed by the [`Link`] alone: all sessions on a link share one stream, so a packet
 /// never overtakes one sent earlier on the same link, whatever its session.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
-pub struct MailboxKey {
+struct MailboxKey {
     link: Link,
     session_id: SessionId,
 }
@@ -148,9 +148,9 @@ impl MailboxKey {
 
 /// In-memory message router shared by all party tasks on the scheduler thread.
 pub struct Switchboard {
-    /// Messages in each link between two parties.
+    /// The packets delivered and not yet received, per mailbox: a directed link within a session.
     msg_queues: HashMap<MailboxKey, VecDeque<Packet>>,
-    /// Waker for a link.
+    /// The waker of the receive waiting on each mailbox, if any.
     parked: HashMap<MailboxKey, Waker>,
     /// Enqueued events that are ready to be taken.
     events: BinaryHeap<Reverse<ScheduledEvent>>,
@@ -256,7 +256,8 @@ impl Switchboard {
         }));
     }
 
-    /// Schedules a wake-up on a link at the virtual instant `deadline`.
+    /// Schedules a wake-up of the receive waiting on `link` in `session`, at the virtual instant
+    /// `deadline`.
     ///
     /// If the awaited packet wins the race, the timer goes stale but stays in the heap; popping it
     /// later is harmless (see `deliver_next`), so no cancellation is needed.
@@ -327,7 +328,9 @@ impl Switchboard {
                         .or_default()
                         .push_back(packet);
                 }
-                // We can wake the current link as the task may progress with the new delivered message.
+                // Wake the receive parked on this mailbox, if any: its task may progress with the
+                // delivered packet, or see that its deadline passed. Receives parked on the same
+                // link in other sessions stay parked.
                 if let Some(waker) = self.parked.remove(&event.key) {
                     waker.wake();
                 }
@@ -405,19 +408,19 @@ impl Switchboard {
         }
     }
 
-    /// Parks a waker.
+    /// Parks `waker` on the mailbox of `link` in `session`, replacing the waker parked there, if
+    /// any.
     fn park(&mut self, session: SessionId, link: Link, waker: Waker) {
         let mb = MailboxKey::new(link, session);
         self.parked.insert(mb, waker);
     }
 
-    /// Tries to receive the next packet destined for `local` from any of `senders`,
-    /// without blocking.
+    /// Tries to receive the next packet sent to `local` in `session` by any of `senders`, without
+    /// blocking.
     ///
-    /// Among the links that currently have a queued packet, the one with the lowest
-    /// sender id is chosen, which keeps the result deterministic and reproducible.
-    /// Returns the packet together with the sender it came from, or `None` if no link
-    /// has a packet ready.
+    /// Among the senders with a packet queued in this session, the one with the lowest id is
+    /// chosen, which keeps the result deterministic and reproducible. Returns the packet together
+    /// with the sender it came from, or `None` if none of them has a packet ready in this session.
     fn try_recv_any(
         &mut self,
         session: &SessionId,
@@ -436,7 +439,8 @@ impl Switchboard {
             })
             .min_by_key(PartyId::as_usize)?;
 
-        // Remove the other peers from the parked list as the future is resolving.
+        // The future is resolving, so remove the wakers it parked: one on this session's mailbox
+        // of each sender. Wakers that other sessions parked on the same links stay.
         for &peer in senders {
             let link = Link::new(peer, local);
             let mb = MailboxKey::new(link, session.clone());
@@ -468,14 +472,15 @@ impl Switchboard {
             .min_by_key(PartyId::as_usize);
 
         // Nothing is ready and the deadline has not passed: keep waiting. Return `None` so the
-        // caller re-parks, leaving the wakers on every inbound link in place.
+        // caller re-parks, leaving this session's wakers on every inbound link in place.
         if ready_sender.is_none() && self.clock_of(local) < deadline {
             return TimedRecvOut::None;
         }
 
         // The receive is resolving now — with a packet or a timeout — and will not park again, so
-        // drop the wakers parked on every inbound link before returning (as the single-sender
-        // success path in `try_recv_any` does).
+        // drop the wakers it parked, one on this session's mailbox of every inbound link, before
+        // returning (as the success path in `try_recv_any` does). Wakers that other sessions
+        // parked on the same links stay.
         for &peer in senders {
             let link = Link::new(peer, local);
             let mailbox = MailboxKey::new(link, session.clone());
@@ -490,8 +495,9 @@ impl Switchboard {
         }
     }
 
-    /// Parks `waker` on every link delivering to `local`, so that a send from any of
-    /// `senders` wakes the task. Used by [`RecvAny`] to suspend until any peer sends.
+    /// Parks `waker` on the mailbox of every link from one of `senders` to `local`, in `session`,
+    /// so that a delivery from any of them in that session wakes the task. Used by [`RecvAny`] to
+    /// suspend until any peer sends.
     fn park_any(&mut self, session: &SessionId, local: PartyId, senders: &[PartyId], waker: Waker) {
         for &sender in senders {
             let link = Link::new(sender, local);
@@ -534,20 +540,21 @@ where
 
 /// What a [`ScheduledEvent`] does when it fires.
 enum EventKind {
-    /// Delivers a packet on the link.
+    /// Delivers a packet to the event's mailbox.
     Delivery(Packet),
-    /// Wakes a timed receive parked on the link so it can observe that its deadline passed.
+    /// Wakes a timed receive parked on the event's mailbox, so it can observe that its deadline
+    /// passed.
     Timer,
 }
 
 /// An event scheduled on the switchboard's virtual timeline: a packet delivery or a
-/// recv-timeout deadline on a link.
+/// recv-timeout deadline on a mailbox.
 struct ScheduledEvent {
     /// Virtual instant at which the event fires (a packet's arrival, or a timer's deadline).
     arrival: Duration,
     /// A sequential tie breaker in case two events fire at the same time.
     seq: usize,
-    /// The link the event fires on.
+    /// The mailbox the event fires on: a directed link within a session.
     key: MailboxKey,
     /// What happens when the event fires.
     kind: EventKind,
@@ -772,10 +779,12 @@ mod tests {
     /// The notes the deadlock report's `Display` gives each mailbox with undelivered packets,
     /// printed after `party <recipient> `: what the recipient is doing when the run deadlocks.
     /// The `Display` impl must print these exact phrases.
+    const LOST_WAKE_UP: &str = "is waiting for these packets but was never woken: a lost wake-up, \
+                                which is a bug in the simulator, not in the protocol";
     const SAME_SESSION: &str = "is waiting in this session, but for a different sender";
     const OTHER_SESSIONS: &str = "is waiting in other sessions";
     const NOT_WAITING: &str = "is not waiting";
-    const NOTES: [&str; 3] = [SAME_SESSION, OTHER_SESSIONS, NOT_WAITING];
+    const NOTES: [&str; 4] = [LOST_WAKE_UP, SAME_SESSION, OTHER_SESSIONS, NOT_WAITING];
 
     /// Calls `deliver_next` on a switchboard with no scheduled events and returns its report.
     fn deadlock_report_of(sb: &mut Switchboard) -> DeadlockReport {
@@ -801,6 +810,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Deadlock report, lost wake-up: a receive is parked on a mailbox that holds packets. No
+    /// receive future gets there, since each tries to receive before it parks and every delivery
+    /// wakes the receive parked on its mailbox, so the test builds the state by hand: it parks
+    /// without trying to receive first. Party 2 waits for party 0 or party 1 in the root session,
+    /// as a receive-any does, and party 0's packet is already in its mailbox. The lost wake-up
+    /// takes precedence over "a different sender", although party 2 also waits for party 1.
+    #[test]
+    fn deadlock_report_flags_a_lost_wake_up() {
+        let mut sb = switchboard();
+        let (p0, p1, p2) = (party(0), party(1), party(2));
+        sb.send(root(), p0, p2, packet(1));
+        assert!(matches!(sb.deliver_next(), IdleOutcome::Progressed));
+        let (waker, woken) = counting_waker();
+        sb.park_any(&root(), p2, &[p0, p1], waker);
+
+        let report = deadlock_report_of(&mut sb);
+        assert_eq!(woken.count(), 0, "nothing was delivered after the park");
+        assert_eq!(report.undelivered, BTreeMap::from([((p2, root(), p0), 1)]));
+        assert_eq!(
+            report.waiting,
+            BTreeMap::from([((p2, root()), BTreeSet::from([p0, p1]))])
+        );
+        assert_note(&report.to_string(), p2, LOST_WAKE_UP);
     }
 
     /// Deadlock report, recipient waiting in the same session for another sender: two packets

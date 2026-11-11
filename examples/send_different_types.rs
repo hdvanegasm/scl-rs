@@ -11,7 +11,7 @@ use scl_rs::{
     math::{ec::secp256k1::Secp256k1, field::secp256k1_scalar::Secp256k1ScalarField},
     net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
     prelude::{simulate, EllipticCurve, Environment, Error, Protocol, Ring},
-    protocol::{GeneralEnv, ProtocolId},
+    protocol::{GeneralEnvironment, ProtocolId},
     ss::additive::AdditiveSS,
 };
 
@@ -70,7 +70,7 @@ fn main() {
         SimpleNetworkConfig::default(),
         vec![p0, p1],
         |_| SendRecvProtocol,
-        |_, net| GeneralEnv::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
+        |_, net| GeneralEnvironment::new(net, ChaCha20Rng::from_rng(&mut rand::rng())),
         vec![],
     );
 

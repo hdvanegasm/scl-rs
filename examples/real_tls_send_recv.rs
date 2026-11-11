@@ -47,7 +47,7 @@ use std::path::Path;
 
 use scl_rs::{
     net::{session::derive_root_tag, Network, NetworkConfig, Packet, TcpNetwork},
-    prelude::{Environment, Error, GeneralEnv, Protocol},
+    prelude::{Environment, Error, GeneralEnvironment, Protocol},
     protocol::ProtocolId,
 };
 
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // include an epoch or run counter it never reuses.
     let root_tag = derive_root_tag(b"real_tls_send_recv/v1");
     let network = TcpNetwork::create(my_id, config, root_tag).await?;
-    let mut env = GeneralEnv::new(network, ChaCha20Rng::from_rng(&mut rand::rng()));
+    let mut env = GeneralEnvironment::new(network, ChaCha20Rng::from_rng(&mut rand::rng()));
     let their_id = SendRecvProtocol.execute(&mut env).await?;
     println!("Party {my_id} received id {their_id} from the other party");
 

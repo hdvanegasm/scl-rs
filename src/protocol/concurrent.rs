@@ -8,14 +8,14 @@
 //!   different types, and outputs the tuple of their outputs.
 //! - [`JoinAll`](crate::protocol::concurrent::JoinAll) runs any number of protocols of one type,
 //!   and outputs a `Vec` of their outputs in input order. To put protocols of different types in
-//!   one `JoinAll`, box each with [`Protocol::boxed`](crate::protocol::Protocol::boxed), which maps
+//!   one `JoinAll`, box each with [`Protocol::boxed`], which maps
 //!   its output into a common type.
 //!
 //! Both are ordinary [`Protocol`]s: they nest, so a `Join` may contain another `Join`, and they are
 //! called with `execute` like any other protocol. Their environment must implement
 //! [`ForkEnvironment`]. A combinator forks the environment once per sub-protocol, and each
 //! sub-protocol runs on its own child environment, with a network handle on its own child session
-//! (see [`ForkNetwork`](crate::net::ForkNetwork)) and its own RNG. Messages of different
+//! (see [`ForkNetwork`]) and its own RNG. Messages of different
 //! sub-protocols therefore never mix, even over the same links.
 //!
 //! The concurrency stays within the calling party's task: no task or thread is spawned. A
@@ -56,7 +56,7 @@
 //!
 //! # Randomness
 //!
-//! With [`GeneralEnv`](crate::protocol::GeneralEnv), each child's RNG is seeded from the parent's
+//! With [`GeneralEnv`], each child's RNG is seeded from the parent's
 //! RNG when the child is forked, so a run with seeded RNGs stays reproducible. Forking draws from
 //! the parent's RNG, though, so running sub-protocols under a combinator instead of one after
 //! another changes the random values they sample. A test that compares the two forms should
@@ -166,9 +166,11 @@ impl_protocol_for_join!(P0 p0 e0, P1 p1 e1, P2 p2 e2, P3 p3 e3, P4 p4 e4, P5 p5 
 /// input order.
 ///
 /// `JoinAll(vec![p0, p1, …])` is itself a [`Protocol`]. Running it forks the environment once per
-/// element, in input order and before any of them starts. It then runs each protocol on its own
-/// child environment, and returns once all of them have finished, with the outputs in input order,
-/// whatever order the protocols finish in. An empty `Vec` forks nothing and outputs an empty `Vec`.
+/// element, in input order and before any of them starts. It then runs each protocol with
+/// [`execute`](Protocol::execute) on its own child environment, so that in a simulation trace each
+/// protocol appears under its own name and in its own session. It returns once all of them have
+/// finished, with the outputs in input order, whatever order the protocols finish in. An empty
+/// `Vec` forks nothing and outputs an empty `Vec`.
 ///
 /// Every party must run the same `JoinAll`, with a `Vec` of the same length: the number of forks
 /// must not depend on the party. See [Every party runs every
@@ -199,7 +201,7 @@ where
             self.0
                 .into_iter()
                 .zip(envs.iter_mut())
-                .map(|(p, env)| p.run(env)),
+                .map(|(p, env)| p.execute(env)),
         )
         .await
     }

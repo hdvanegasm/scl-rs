@@ -1,79 +1,246 @@
 //! Real-network backend: connects this node to every party over mutually authenticated TLS.
 //!
-//! This is the production counterpart to the deterministic [`simulation`](crate::net::simulation)
+//! This is the production counterpart to the deterministic [`simulation`]
 //! backend; both implement the shared [`Network`] trait defined in [`crate::net`].
 
-use crate::net::Element;
+use crate::net::session::SessionId;
+use crate::net::ForkNetwork;
+use crate::net::NetworkError::ConnectionClosed;
 
 use super::channel;
 use super::{Network, NetworkConfig, NetworkError, Packet, PartyId, Result};
-use futures_util::future::try_join_all;
+use futures_util::future::poll_fn;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
-use tokio::io::{AsyncWriteExt, WriteHalf};
+use tokio::io::{self, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
+use tokio::task::AbortHandle;
 use tokio_rustls::rustls::server::WebPkiClientVerifier;
 use tokio_rustls::rustls::{ClientConfig, ServerConfig};
 use tokio_rustls::TlsStream;
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_stream::{Stream, StreamExt, StreamMap};
+use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
-/// Read side of a peer connection: a stream that yields one decoded [`Packet`] per delimited frame.
-///
-/// For a socket peer this wraps a [`FramedRead`] over the TLS stream's read half, so a partially
-/// read frame stays buffered across polls and a dropped receive future is cancel-safe. For the
-/// loop-back peer it wraps the receiving end of an in-process `mpsc` channel. Both are boxed behind
-/// the same type so the receive paths can treat every peer uniformly.
-type PacketStream = Pin<Box<dyn Stream<Item = Result<Packet>> + Send>>;
+const LENGTH_PREFIX_BYTES: usize = 8;
 
-/// Write side of a peer connection.
-///
-/// Mirrors [`PacketStream`]: either the write half of a peer's TLS stream or the sending end of the
-/// loop-back `mpsc` channel.
-enum PeerWriter {
-    /// Sending end of the in-process loop-back channel (messages from this node to itself).
-    LoopBack(UnboundedSender<Packet>),
-    /// Write half of a peer's TLS stream.
-    Socket(WriteHalf<TlsStream<TcpStream>>),
+fn encode_frame(session: &SessionId, packet: &Packet) -> Result<Vec<u8>> {
+    let body = postcard::to_allocvec(&(session.path(), &packet))?;
+    let mut frame = Vec::with_capacity(LENGTH_PREFIX_BYTES + body.len());
+    frame.extend_from_slice(&(body.len() as u64).to_le_bytes());
+    frame.extend_from_slice(&body);
+    Ok(frame)
 }
 
-impl PeerWriter {
-    /// Sends a [`Packet`] to the peer, returning the number of payload bytes sent.
-    ///
-    /// On a socket this writes the postcard-encoded packet with an 8-byte little-endian length
-    /// prefix (matching the `LengthDelimitedCodec` on the read side) and flushes it. On the
-    /// loop-back channel it hands the packet to the receiver directly.
-    async fn send(&mut self, packet: Packet) -> Result<usize> {
-        match self {
-            PeerWriter::LoopBack(sender) => {
-                let size_pkg = packet.size();
-                sender.send(packet)?;
-                Ok(size_pkg)
+fn decode_frame(root_tag: [u8; 32], body: &[u8]) -> Result<(SessionId, Packet)> {
+    let (path, elements) = postcard::from_bytes(body)?;
+    let sid = SessionId::new(root_tag, path);
+    Ok((sid, Packet::new(elements)))
+}
+
+type Socket = TlsStream<TcpStream>;
+
+#[derive(Debug)]
+enum WriterCmd {
+    Frame(Vec<u8>),
+    Close(oneshot::Sender<Result<()>>),
+}
+
+#[derive(Debug)]
+enum PeerState {
+    Open,
+    Closed,
+    Failed(String),
+}
+
+#[derive(Debug, Default)]
+struct SessionMailbox {
+    queue: BTreeMap<PartyId, VecDeque<Packet>>,
+    waiter: Option<Waker>,
+}
+
+#[derive(Default, Debug)]
+struct Mailboxes {
+    sessions: HashMap<SessionId, SessionMailbox>,
+    peers: HashMap<PartyId, PeerState>,
+    retired: HashSet<SessionId>,
+}
+
+impl Mailboxes {
+    fn deliver(&mut self, sender: PartyId, session: SessionId, packet: Packet) -> Option<Waker> {
+        if self.retired.contains(&session) {
+            None
+        } else {
+            let mailbox = self.sessions.entry(session).or_default();
+            mailbox.queue.entry(sender).or_default().push_back(packet);
+            mailbox.waiter.take()
+        }
+    }
+
+    fn end_peer(&mut self, peer: PartyId, end: PeerState) -> Vec<Waker> {
+        if let Some(state @ PeerState::Open) = self.peers.get_mut(&peer) {
+            *state = end;
+        }
+        self.sessions
+            .values_mut()
+            .filter_map(|mailbox| mailbox.waiter.take())
+            .collect()
+    }
+
+    fn peer_error(&self, peer: PartyId) -> Option<NetworkError> {
+        match self.peers.get(&peer)? {
+            PeerState::Open => None,
+            PeerState::Closed => Some(ConnectionClosed(Some(peer))),
+            PeerState::Failed(reason) => Some(NetworkError::PeerFailed {
+                peer,
+                reason: reason.clone(),
+            }),
+        }
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        session: &SessionId,
+        sender: PartyId,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Packet>> {
+        let queued = self
+            .sessions
+            .get_mut(session)
+            .and_then(|mailbox| mailbox.queue.get_mut(&sender))
+            .and_then(VecDeque::pop_front);
+        if let Some(packet) = queued {
+            return Poll::Ready(Ok(packet));
+        }
+
+        if let Some(error) = self.peer_error(sender) {
+            return Poll::Ready(Err(error));
+        }
+
+        self.sessions.entry(session.clone()).or_default().waiter = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn poll_recv_any(
+        &mut self,
+        session: &SessionId,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(PartyId, Packet)>> {
+        if let Some(mailbox) = self.sessions.get_mut(session) {
+            for (pid, queue) in &mut mailbox.queue {
+                if let Some(packet) = queue.pop_front() {
+                    return Poll::Ready(Ok((*pid, packet)));
+                }
             }
-            PeerWriter::Socket(stream) => {
-                let bytes = postcard::to_allocvec(&packet)?;
-                let len_message = bytes.len().to_le_bytes();
-                stream.write_all(&len_message).await?;
-                stream.write_all(&bytes).await?;
-                stream.flush().await?;
-                Ok(packet.size())
+        }
+
+        if self
+            .peers
+            .values()
+            .all(|state| !matches!(state, PeerState::Open))
+        {
+            return Poll::Ready(Err(NetworkError::ConnectionClosed(None)));
+        }
+
+        self.sessions.entry(session.clone()).or_default().waiter = Some(cx.waker().clone());
+        Poll::Pending
+    }
+
+    fn retire(&mut self, sid: &SessionId) {
+        self.sessions.remove(sid);
+        self.retired.insert(sid.clone());
+    }
+}
+
+async fn read_loop(
+    peer: PartyId,
+    mut frames: FramedRead<ReadHalf<Socket>, LengthDelimitedCodec>,
+    mailboxes: Arc<Mutex<Mailboxes>>,
+    root_tag: [u8; 32],
+) {
+    // This variable defines how is the state of the peer.
+    let end = loop {
+        match frames.next().await {
+            Some(Ok(body)) => match decode_frame(root_tag, &body) {
+                Ok((sid, packet)) => {
+                    // A packet has been received in the stream. Put it in the mailbox and wake the
+                    // task to process it.
+                    let waker = mailboxes
+                        .lock()
+                        .expect("the mutex can not be poisoned")
+                        .deliver(peer, sid, packet);
+                    if let Some(waker) = waker {
+                        waker.wake();
+                    }
+                }
+                // The frame was not decoded correctly. We return an error.
+                Err(error) => break PeerState::Failed(error.to_string()),
+            },
+            Some(Err(error)) => break PeerState::Failed(error.to_string()),
+            // There's no connection with the peer.
+            None => break PeerState::Closed,
+        }
+    };
+
+    // We report the end state of the party and wake all the receive sleep tasks.
+    let wakers = mailboxes
+        .lock()
+        .expect("the mutex can not be poisoned")
+        .end_peer(peer, end);
+    wakers.into_iter().for_each(Waker::wake);
+}
+
+async fn write_loop(
+    peer: PartyId,
+    mut socket: WriteHalf<Socket>,
+    mut commands_receiver: UnboundedReceiver<WriterCmd>,
+    mailboxes: Arc<Mutex<Mailboxes>>,
+) {
+    while let Some(command) = commands_receiver.recv().await {
+        match command {
+            WriterCmd::Frame(frame) => {
+                let written = async {
+                    socket.write_all(&frame).await?;
+                    socket.flush().await
+                };
+                if let Err(error) = written.await {
+                    let wakers = mailboxes
+                        .lock()
+                        .expect("the mutex can not be poisoned")
+                        .end_peer(peer, PeerState::Failed(error.to_string()));
+                    wakers.into_iter().for_each(Waker::wake);
+                    return;
+                }
+            }
+            WriterCmd::Close(sender) => {
+                let result = socket.shutdown().await.map_err(NetworkError::IoError);
+                let _ = sender.send(result);
+                return;
             }
         }
     }
 
-    /// Closes the peer connection. Shuts down the TLS stream's write half for a socket; the
-    /// loop-back channel needs no explicit shutdown, so this is a no-op there.
-    async fn close(&mut self) -> Result<()> {
-        if let PeerWriter::Socket(socket_writer) = self {
-            socket_writer.shutdown().await?;
+    let _ = socket.shutdown().await;
+}
+
+#[derive(Debug, Default)]
+struct TcpCore {
+    parties: Vec<PartyId>,
+    writers: HashMap<PartyId, UnboundedSender<WriterCmd>>,
+    mailboxes: Arc<Mutex<Mailboxes>>,
+    readers: Vec<AbortHandle>,
+}
+
+impl Drop for TcpCore {
+    fn drop(&mut self) {
+        for reader in &self.readers {
+            reader.abort();
         }
-        Ok(())
     }
 }
 
@@ -85,17 +252,18 @@ impl PeerWriter {
 /// them at once through the underlying `StreamMap`.
 pub struct TcpNetwork {
     /// ID of the party running this node.
-    local_party_id: PartyId,
-    /// Write side of every peer connection, keyed by peer ID.
-    writers: HashMap<PartyId, PeerWriter>,
-    /// Read side of every peer connection, keyed by peer ID. Polling the whole map yields the next
-    /// packet from whichever peer delivers first; polling a single entry receives from that peer.
-    receivers: StreamMap<PartyId, PacketStream>,
-    /// Identifies this execution: the root tag of every session on this network (see
-    /// [`create`](TcpNetwork::create)).
-    // First read by the session-aware frame decoder (concurrent-composition plan, Phase 3).
-    #[allow(dead_code)]
-    root_tag: [u8; 32],
+    local_pid: PartyId,
+    session: SessionId,
+    core: Arc<TcpCore>,
+    next_child: u32,
+}
+
+impl Drop for TcpNetwork {
+    fn drop(&mut self) {
+        if let Ok(mut mailboxes) = self.core.mailboxes.lock() {
+            mailboxes.retire(&self.session)
+        }
+    }
 }
 
 impl TcpNetwork {
@@ -123,32 +291,6 @@ impl TcpNetwork {
             .map_err(NetworkError::TlsError)?;
 
         Ok((client_conf, server_conf))
-    }
-
-    /// Splits a peer's TLS stream into its write and read halves, wrapping the read half in a
-    /// length-delimited, postcard-decoding [`PacketStream`]. The codec uses an 8-byte little-endian
-    /// length prefix to match what [`PeerWriter::send`] writes on the socket.
-    fn split_socket(stream: TlsStream<TcpStream>) -> (PeerWriter, PacketStream) {
-        let (read_half, write_half) = tokio::io::split(stream);
-        let codec = LengthDelimitedCodec::builder()
-            .little_endian()
-            .length_field_length(8)
-            .new_codec();
-        let reader: PacketStream = Box::pin(FramedRead::new(read_half, codec).map(|frame| {
-            let bytes = frame?;
-            let inner_bytes: Vec<Element> = postcard::from_bytes(&bytes)?;
-            Ok(Packet::new(inner_bytes))
-        }));
-        (PeerWriter::Socket(write_half), reader)
-    }
-
-    /// Builds the loop-back peer: an in-process `mpsc` channel whose sender becomes the
-    /// [`PeerWriter`] and whose receiver becomes the [`PacketStream`]. Lets a node send packets to
-    /// itself through the same interface it uses for remote peers.
-    fn create_loopback() -> (PeerWriter, PacketStream) {
-        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-        let reader: PacketStream = Box::pin(UnboundedReceiverStream::new(receiver).map(Ok));
-        (PeerWriter::LoopBack(sender), reader)
     }
 
     /// Creates a new network using the ID of the current party and the number of parties connected
@@ -186,14 +328,10 @@ impl TcpNetwork {
         log::info!("listening on {:?}", server_address);
 
         let (client_conf, server_conf) = Self::configure_tls(&config)?;
+        let parties: Vec<PartyId> = (0..n_parties).map(PartyId::from).collect();
 
-        // Channels are kept indexed by peer ID. Client connections and the loop-back channel land
-        // at a known index, but a server accept resolves the peer only after the handshake, so each
-        // slot is filled by the `remote_id` the accept reports rather than by loop order.
-        let mut writers = HashMap::new();
-        let mut readers = StreamMap::new();
-
-        for i in 0..n_parties {
+        let mut sockets = HashMap::new();
+        for i in parties.iter().map(PartyId::as_usize) {
             match i.cmp(&id) {
                 Ordering::Less => {
                     log::info!("connecting as a client with peer ID {i}");
@@ -208,59 +346,87 @@ impl TcpNetwork {
                         &client_conf,
                     )
                     .await?;
-                    let (writer, reader) = Self::split_socket(stream);
-                    readers.insert(PartyId::from(i), reader);
-                    writers.insert(PartyId::from(i), writer);
+                    sockets.insert(PartyId::from(i), stream);
                 }
                 Ordering::Greater => {
                     log::info!("acting as a server, waiting for a peer to connect");
                     let (stream, remote_id) =
                         channel::accept_connection(&server_listener, &server_conf).await?;
                     log::info!("accepted connection from peer ID {remote_id}");
-                    let (writer, reader) = Self::split_socket(stream);
-                    readers.insert(PartyId::from(remote_id), reader);
-                    writers.insert(PartyId::from(remote_id), writer);
+                    sockets.insert(PartyId::from(remote_id), stream);
                 }
-                Ordering::Equal => {
-                    log::info!("adding the loop-back channel");
-                    let (writer, reader) = Self::create_loopback();
-                    readers.insert(PartyId::from(id), reader);
-                    writers.insert(PartyId::from(id), writer);
-                }
+                Ordering::Equal => {}
             }
         }
 
         // Check that all parties are present
-        for i in 0..n_parties {
-            if !writers.contains_key(&PartyId::from(i)) {
+        for i in parties.iter().map(PartyId::as_usize) {
+            if id != i && !sockets.contains_key(&PartyId::from(i)) {
                 return Err(NetworkError::PartyNotFound(PartyId::from(i)));
             }
         }
 
+        // Create the mailboxes and spawn tasks.
+        //
+        // This needs to be done after all the parties are
+        // connected because a later connection will return an error an leave an open socket in a
+        // running task.
+        let mailboxes = Arc::new(Mutex::new(Mailboxes {
+            sessions: HashMap::new(),
+            peers: sockets
+                .keys()
+                .map(|peer| (*peer, PeerState::Open))
+                .collect(),
+            retired: HashSet::new(),
+        }));
+
+        let mut writers = HashMap::new();
+        let mut readers = Vec::new();
+        for (peer, socket) in sockets {
+            let (read_half, write_half) = io::split(socket);
+            let codec = LengthDelimitedCodec::builder()
+                .little_endian()
+                .length_field_length(LENGTH_PREFIX_BYTES)
+                .new_codec();
+            let frames = FramedRead::new(read_half, codec);
+            let reader = tokio::spawn(read_loop(peer, frames, mailboxes.clone(), root_tag));
+            readers.push(reader.abort_handle());
+
+            let (tx, rx) = mpsc::unbounded_channel();
+            tokio::spawn(write_loop(peer, write_half, rx, mailboxes.clone()));
+            writers.insert(peer, tx);
+        }
+
         Ok(Self {
-            writers,
-            receivers: readers,
-            local_party_id: PartyId::from(id),
-            root_tag,
+            local_pid: PartyId::from(id),
+            session: SessionId::root(root_tag),
+            core: Arc::new(TcpCore {
+                parties,
+                writers,
+                mailboxes,
+                readers,
+            }),
+            next_child: 0,
         })
     }
 
     /// Sends a packet to every party in the network, including this node's own loop-back channel.
     /// Returns the number of payload bytes written for the last peer.
     pub async fn send(&mut self, packet: &Packet) -> Result<usize> {
-        let mut bytes_sent = 0;
-        for writer in self.writers.values_mut() {
-            bytes_sent = writer.send(packet.clone()).await?;
+        let mut size = 0;
+        for party in self.core.parties.clone() {
+            size += self.send_to(party, packet).await?
         }
-        Ok(bytes_sent)
+        Ok(size)
     }
 
     /// Receives one packet from each party in the network, including this node's own loop-back
     /// channel, ordered by ascending party ID.
     pub async fn recv(&mut self) -> Result<Vec<Packet>> {
         let mut packets = Vec::new();
-        for i in 0..self.receivers.len() {
-            packets.push(self.recv_from(PartyId::from(i)).await?);
+        for party in self.core.parties.clone() {
+            let p = self.recv_from(party).await?;
+            packets.push(p);
         }
         Ok(packets)
     }
@@ -268,65 +434,104 @@ impl TcpNetwork {
 
 impl Network for TcpNetwork {
     fn party_ids(&self) -> Vec<PartyId> {
-        self.writers.keys().copied().collect()
+        self.core.parties.clone()
     }
 
     async fn recv_any(&mut self) -> Result<(PartyId, Packet)> {
-        match self.receivers.next().await {
-            Some((peer_id, result_packet)) => Ok((peer_id, result_packet?)),
-            None => Err(NetworkError::ConnectionClosed(None)),
-        }
+        poll_fn(|cx| {
+            self.core
+                .mailboxes
+                .lock()
+                .expect("the mutex should not be poisoned")
+                .poll_recv_any(&self.session, cx)
+        })
+        .await
     }
 
     async fn recv_any_with_timeout(&mut self, timeout: Duration) -> Result<(PartyId, Packet)> {
-        match tokio::time::timeout(timeout, self.receivers.next()).await {
-            Ok(Some((pid, pkt_result))) => Ok((pid, pkt_result?)),
-            Ok(None) => Err(NetworkError::ConnectionClosed(None)),
-            Err(_) => Err(NetworkError::Timeout(None)),
-        }
+        let recv_fut = poll_fn(|cx| {
+            self.core
+                .mailboxes
+                .lock()
+                .expect("the mutex should not be poisoned")
+                .poll_recv_any(&self.session, cx)
+        });
+        tokio::time::timeout(timeout, recv_fut)
+            .await
+            .unwrap_or(Err(NetworkError::Timeout(None)))
     }
 
     fn other(&self) -> Result<PartyId> {
-        if self.writers.len() != 2 {
-            Err(NetworkError::ExpectedTwoNodeNet(self.writers.len()))
+        if self.party_ids().len() != 2 {
+            Err(NetworkError::ExpectedTwoNodeNet(self.party_ids().len()))
         } else {
-            Ok(PartyId::from(1 - self.local_party_id.as_usize()))
+            Ok(PartyId::from(1 - self.local_pid.as_usize()))
         }
     }
 
-    /// Sends a packet of information to a given party.
+    /// Sends a packet of information to a given party, in this handle's session.
+    ///
+    /// A send to a peer queues the encoded frame for that peer's writer task and returns without
+    /// waiting for the write. A send to this party itself goes straight into this session's own
+    /// mailbox. Either way the future never suspends, so dropping it (as a fail-fast join does to a
+    /// sibling) cannot leave a frame half written. Returns the payload size of the packet.
+    ///
+    /// # Error
+    ///
+    /// - [`NetworkError::PartyNotFound`] if `party_id` is not a party of the network.
+    /// - [`NetworkError::PeerFailed`] if the connection with the peer has failed.
+    /// - [`NetworkError::ConnectionClosed`] if the peer's writer has stopped, after
+    ///   [`close`](Network::close) or a failed write.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize> {
-        let bytes_sent = self
-            .writers
-            .get_mut(&party_id)
-            .ok_or(NetworkError::PartyNotFound(party_id))?
-            .send(packet.clone())
-            .await?;
-        Ok(bytes_sent)
+        if party_id.as_usize() >= self.core.parties.len() {
+            return Err(NetworkError::PartyNotFound(party_id));
+        }
+
+        if party_id == self.local_pid {
+            // Simulates a loop-back channel.
+            let waker = self
+                .core
+                .mailboxes
+                .lock()
+                .expect("the mutex can not be poisoned")
+                .deliver(self.local_pid, self.session.clone(), packet.clone());
+            if let Some(waker) = waker {
+                waker.wake();
+            }
+            return Ok(packet.size());
+        }
+
+        if let Some(error @ NetworkError::PeerFailed { .. }) = self
+            .core
+            .mailboxes
+            .lock()
+            .expect("the mutex can not be poisoned")
+            .peer_error(party_id)
+        {
+            return Err(error);
+        }
+
+        let frame = encode_frame(&self.session, packet)?;
+        self.core.writers[&party_id]
+            .send(WriterCmd::Frame(frame))
+            .map_err(|_| NetworkError::ConnectionClosed(Some(party_id)))?;
+        Ok(packet.size())
     }
 
-    /// Sends every message concurrently — one independent TLS socket per peer.
+    /// Sends each `(party, packet)` in `messages`, in order.
     ///
-    /// Each peer's write half is independent, so rather than awaiting the sends one after another
-    /// (the default), this drives them all concurrently *within the current task* via
-    /// [`try_join_all`]: a fan-out round then costs roughly one send's latency instead of their sum.
-    /// No task is spawned, so this stays a plain `.await` over `Network` futures. Targets are
-    /// validated up front, so a missing peer is reported before any packet is sent.
+    /// Every target is checked first, so a missing peer is reported before any packet is sent. The
+    /// sends need no joining: [`send_to`](Network::send_to) only queues the frame for the peer's
+    /// writer task, and the writer tasks already write to their sockets concurrently.
     async fn send_many(&mut self, messages: &[(PartyId, Packet)]) -> Result<()> {
-        for (party_id, _) in messages {
-            if !self.writers.contains_key(party_id) {
-                return Err(NetworkError::PartyNotFound(*party_id));
+        for (pid, _) in messages {
+            if pid.as_usize() >= self.core.parties.len() {
+                return Err(NetworkError::PartyNotFound(*pid));
             }
         }
-        // `iter_mut` hands out a disjoint `&mut` per peer, so every matched send borrows a different
-        // writer and they can all be in flight at once.
-        let sends = self.writers.iter_mut().filter_map(|(party_id, writer)| {
-            messages
-                .iter()
-                .find(|(target, _)| target == party_id)
-                .map(|(_, packet)| writer.send(packet.clone()))
-        });
-        try_join_all(sends).await?;
+        for (pid, p) in messages {
+            self.send_to(*pid, p).await?;
+        }
         Ok(())
     }
 
@@ -335,42 +540,100 @@ impl Network for TcpNetwork {
         party_id: PartyId,
         timeout: Duration,
     ) -> Result<Packet> {
-        let (_, reader) = self
-            .receivers
-            .iter_mut()
-            .find(|(id, _)| *id == party_id)
-            .ok_or(NetworkError::PartyNotFound(party_id))?;
-
-        match tokio::time::timeout(timeout, reader.next()).await {
-            Ok(result) => result.ok_or(NetworkError::ConnectionClosed(Some(party_id)))?,
-            Err(_) => Err(NetworkError::Timeout(Some(party_id))),
+        if party_id.as_usize() >= self.core.parties.len() {
+            return Err(NetworkError::PartyNotFound(party_id));
         }
+        let recv_fut = poll_fn(|cx| {
+            self.core
+                .mailboxes
+                .lock()
+                .expect("the mutex should not be poisoned")
+                .poll_recv_from(&self.session, party_id, cx)
+        });
+        tokio::time::timeout(timeout, recv_fut)
+            .await
+            .unwrap_or(Err(NetworkError::Timeout(Some(party_id))))
     }
 
     /// Receives a packet from a given party.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet> {
-        let (_, reader) = self
-            .receivers
-            .iter_mut()
-            .find(|(id, _)| *id == party_id)
-            .ok_or(NetworkError::PartyNotFound(party_id))?;
-        match reader.next().await {
-            Some(packet) => packet,
-            None => Err(NetworkError::ConnectionClosed(Some(party_id))),
+        if party_id.as_usize() >= self.core.parties.len() {
+            return Err(NetworkError::PartyNotFound(party_id));
         }
+        poll_fn(|cx| {
+            self.core
+                .mailboxes
+                .lock()
+                .expect("the mutex should not be poisoned")
+                .poll_recv_from(&self.session, party_id, cx)
+        })
+        .await
     }
 
     /// Closes the network by closing each channel.
+    /// Closes the network.
     async fn close(&mut self) -> Result<()> {
-        for writer in self.writers.values_mut() {
-            writer.close().await?;
+        if self.session.depth() > 0 {
+            // A forked handle only gives up its own session.
+            self.core
+                .mailboxes
+                .lock()
+                .expect("the mutex must not be poisoned")
+                .retire(&self.session);
+            return Ok(());
         }
-        self.receivers.clear();
-        Ok(())
+        let mut acks = Vec::new();
+        for writer in self.core.writers.values() {
+            let (ack, done) = oneshot::channel();
+            // A writer that already exited has nothing left to close.
+            if writer.send(WriterCmd::Close(ack)).is_ok() {
+                acks.push(done);
+            }
+        }
+        let mut result = Ok(());
+        for done in acks {
+            if let Ok(Err(error)) = done.await {
+                result = result.and(Err(error));
+            }
+        }
+        for reader in &self.core.readers {
+            reader.abort();
+        }
+
+        let mut wakers = Vec::new();
+        {
+            let mut mailboxes = self
+                .core
+                .mailboxes
+                .lock()
+                .expect("the mutex must not be poisoned");
+            for peer in self.core.writers.keys() {
+                wakers.extend(mailboxes.end_peer(*peer, PeerState::Closed));
+            }
+        }
+        wakers.into_iter().for_each(Waker::wake);
+        result
     }
 
     fn local_party(&self) -> PartyId {
-        self.local_party_id
+        self.local_pid
+    }
+}
+
+impl ForkNetwork for TcpNetwork {
+    fn fork(&mut self) -> Self {
+        let session = self.session.with_child(self.next_child);
+        self.next_child += 1;
+        Self {
+            local_pid: self.local_pid,
+            session,
+            core: self.core.clone(),
+            next_child: 0,
+        }
+    }
+
+    fn session(&self) -> &SessionId {
+        &self.session
     }
 }
 
@@ -378,13 +641,29 @@ impl Network for TcpNetwork {
 mod tests {
     use std::fs;
     use std::net::Ipv4Addr;
+    use std::sync::atomic::{AtomicU16, Ordering};
     use std::{fs::File, io::Write};
 
+    use futures_util::future::try_join_all;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha20Rng;
     use rcgen::{CertificateParams, Issuer, KeyPair, SanType};
     use tempfile::TempDir;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::try_join;
     use tokio_rustls::{rustls::pki_types::ServerName, TlsAcceptor, TlsConnector};
+
+    use crate::math::field::mersenne61::Mersenne61;
+    use crate::protocol::concurrent::Join;
+    use crate::protocol::passive_shamir::{
+        double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr,
+    };
+    use crate::protocol::{
+        Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
+        RandEnvironment,
+    };
+    use crate::ss::shamir::{DoubleShare, ShamirSS};
+    use crate::ss::LinearShare;
 
     use super::super::NetworkConfigFile;
     use super::*;
@@ -456,12 +735,17 @@ mod tests {
         }
     }
 
+    /// Returns the base of a block of ports that no other test of this binary uses.
+    ///
+    /// Party `i` listens on `base + i`, so a test needs a run of consecutive ports. Asking the OS
+    /// for one free port reserves only that one: its neighbours may belong to another test running
+    /// in parallel, or be the source port of some connection. The blocks are handed out from a
+    /// counter instead, below Linux's default ephemeral range (32768-60999), which is where the OS
+    /// picks source ports from.
     fn free_base_port() -> u16 {
-        std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port()
+        const BLOCK: u16 = 40;
+        static NEXT: AtomicU16 = AtomicU16::new(20_000);
+        NEXT.fetch_add(BLOCK, Ordering::Relaxed)
     }
 
     #[tokio::test]
@@ -696,6 +980,382 @@ mod tests {
         );
 
         net1.close().await.unwrap();
+    }
+
+    type F = Mersenne61;
+    type Share = ShamirSS<1, F>;
+
+    /// `n` networks connected to each other over mTLS loopback, indexed by party.
+    async fn connected(n: usize) -> Vec<TcpNetwork> {
+        let dir = tempfile::tempdir().unwrap();
+        write_party_certs(&dir, n);
+        write_config_files(&dir, n, free_base_port());
+        try_join_all((0..n).map(|i| TcpNetwork::create(i, load_config(&dir, i), test_root_tag())))
+            .await
+            .unwrap()
+    }
+
+    /// How long a session test may run before [`within`] fails it.
+    const TEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// Runs `test`, and fails instead of hanging if it does not finish within `limit`: a routing
+    /// bug shows up as a receive that never returns.
+    async fn within<T>(limit: Duration, test: impl std::future::Future<Output = T>) -> T {
+        tokio::time::timeout(limit, test)
+            .await
+            .unwrap_or_else(|_| panic!("the test did not finish within {limit:?}"))
+    }
+
+    /// A packet holding `tag`, so that packets can be told apart by equality.
+    fn packet(tag: u64) -> Packet {
+        let mut packet = Packet::empty();
+        packet.write(&tag).unwrap();
+        packet
+    }
+
+    fn party(id: usize) -> PartyId {
+        PartyId::from(id)
+    }
+
+    /// T3: on one link, session B's frame is written before session A's, while the receiver
+    /// already waits in A. Each session receives its own packet.
+    #[tokio::test]
+    async fn sessions_on_one_tls_link_receive_only_their_own_packets() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let (mut a0, mut b0) = (net0.fork(), net0.fork());
+            let (mut a1, mut b1) = (net1.fork(), net1.fork());
+
+            // `biased;` makes `join!` poll in the order written: the receive in A is pending
+            // before anything is sent. Without it, `join!` rotates which future it polls first.
+            let (received_a, ()) = tokio::join!(biased; a1.recv_from(party(0)), async {
+                b0.send_to(party(1), &packet(2)).await.unwrap();
+                a0.send_to(party(1), &packet(1)).await.unwrap();
+            });
+            assert_eq!(received_a.unwrap(), packet(1));
+            assert_eq!(b1.recv_from(party(0)).await.unwrap(), packet(2));
+        })
+        .await;
+    }
+
+    /// T5: a frame for session 0.3 arrives before the receiver has forked that session. It waits,
+    /// and the receiver gets it once it forks down to 0.3.
+    #[tokio::test]
+    async fn a_frame_for_a_session_not_yet_forked_waits_for_the_fork() {
+        /// Forks `handle` four times and returns the handle on its child 3.
+        fn child_3(handle: &mut TcpNetwork) -> TcpNetwork {
+            for _ in 0..3 {
+                handle.fork();
+            }
+            handle.fork()
+        }
+
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+
+            let mut branch0 = net0.fork();
+            let mut early0 = child_3(&mut branch0);
+            assert_eq!(early0.session().to_string(), "0.3");
+            early0.send_to(party(1), &packet(7)).await.unwrap();
+            // One reader files the frames of a link in order, so once this root-session packet
+            // is received, the frame for 0.3 has been filed too.
+            net0.send_to(party(1), &packet(0)).await.unwrap();
+            assert_eq!(net1.recv_from(party(0)).await.unwrap(), packet(0));
+
+            let mut branch1 = net1.fork();
+            let mut early1 = child_3(&mut branch1);
+            assert_eq!(early1.recv_from(party(0)).await.unwrap(), packet(7));
+        })
+        .await;
+    }
+
+    /// Three parties run a `Join` of two protocols of different types over mTLS.
+    struct RandomAndDoubles;
+
+    const T8_PARTIES: usize = 3;
+    const T8_THRESHOLD: usize = 1;
+
+    /// The random sharings, and the two halves of each double sharing.
+    type RandomAndDoublesOutput = (Vec<Share>, Vec<(Share, Share)>);
+
+    impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for RandomAndDoubles {
+        type Output = RandomAndDoublesOutput;
+
+        async fn run(self, env: &mut E) -> std::result::Result<Self::Output, Error> {
+            let parties = env.network().party_ids();
+            let (random, doubles) = Join((
+                PassiveRandShr::<1, F>::new(T8_THRESHOLD, parties.clone())?,
+                PassiveRandDoubleShr::<1, F>::new(T8_THRESHOLD, parties)?,
+            ))
+            .execute(env)
+            .await?;
+            let doubles = doubles.into_iter().map(DoubleShare::into_parts).collect();
+            Ok((random, doubles))
+        }
+
+        fn id(&self) -> ProtocolId {
+            ProtocolId::from("RandomAndDoubles")
+        }
+    }
+
+    #[tokio::test]
+    async fn join_of_two_protocols_over_tls() {
+        within(TEST_TIMEOUT, async {
+            let parties: Vec<PartyId> = (0..T8_PARTIES).map(PartyId::from).collect();
+            let runs = connected(T8_PARTIES).await.into_iter().enumerate().map(
+                |(i, network)| async move {
+                    let mut env =
+                        GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(i as u64));
+                    let output = RandomAndDoubles.execute(&mut env).await?;
+                    env.network.close().await?;
+                    Ok::<_, Error>(output)
+                },
+            );
+            let outputs = try_join_all(runs).await.unwrap();
+
+            // Forking draws from the parent's RNG, so the shares depend on how the protocols
+            // were composed: check what they open to, not the shares themselves.
+            let open = |get: &dyn Fn(&RandomAndDoublesOutput) -> Share| {
+                let shares: Vec<Share> = outputs.iter().map(get).collect();
+                <Share as LinearShare>::secret_from_shares(&shares, &parties).unwrap()
+            };
+            for k in 0..T8_PARTIES - T8_THRESHOLD {
+                assert_ne!(open(&|o| o.0[k].clone()), F::from(0u64));
+                assert_eq!(
+                    open(&|o| o.1[k].0.clone()),
+                    open(&|o| o.1[k].1.clone()),
+                    "double sharing {k}: the two halves hide different secrets"
+                );
+            }
+        })
+        .await;
+    }
+
+    /// A receive that times out loses nothing. The packet that arrives afterwards is
+    /// received by the next receive in the same session.
+    #[tokio::test]
+    async fn a_timed_out_receive_does_not_lose_the_next_packet() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let (mut a0, mut a1) = (net0.fork(), net1.fork());
+
+            let timed_out = a1
+                .recv_from_with_timeout(party(0), Duration::from_millis(50))
+                .await;
+            assert!(
+                matches!(&timed_out, Err(NetworkError::Timeout(Some(peer))) if *peer == party(0)),
+                "expected Timeout(Some(0)), got {timed_out:?}"
+            );
+            let timed_out = a1.recv_any_with_timeout(Duration::from_millis(50)).await;
+            assert!(
+                matches!(&timed_out, Err(NetworkError::Timeout(None))),
+                "expected Timeout(None), got {timed_out:?}"
+            );
+
+            a0.send_to(party(1), &packet(9)).await.unwrap();
+            assert_eq!(a1.recv_from(party(0)).await.unwrap(), packet(9));
+        })
+        .await;
+    }
+
+    /// Sends one large packet to the other party, then waits for a reply that never comes.
+    struct SendThenWait(Packet);
+
+    impl<E: Environment> Protocol<E> for SendThenWait {
+        type Output = ();
+
+        async fn run(self, env: &mut E) -> std::result::Result<(), Error> {
+            let other = env.network().other()?;
+            env.network_mut().send_to(other, &self.0).await?;
+            env.network_mut().recv_from(other).await?;
+            Ok(())
+        }
+
+        fn id(&self) -> ProtocolId {
+            ProtocolId::from("SendThenWait")
+        }
+    }
+
+    /// Fails at once.
+    struct Fail;
+
+    impl<E: Environment> Protocol<E> for Fail {
+        type Output = ();
+
+        async fn run(self, _env: &mut E) -> std::result::Result<(), Error> {
+            Err(Error::Input)
+        }
+
+        fn id(&self) -> ProtocolId {
+            ProtocolId::from("Fail")
+        }
+    }
+
+    /// A `Join` fails fast while its other branch has a 1 MiB frame under way. The frame
+    /// still arrives whole, and the parent session works afterwards: the dropped branch left no
+    /// partial frame on the stream.
+    #[tokio::test]
+    async fn a_join_that_fails_fast_leaves_the_stream_usable() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let mut big = Packet::empty();
+            big.write(&vec![0xABu8; 1024 * 1024]).unwrap();
+
+            let mut env0 = GeneralEnvironment::new(net0, ChaCha20Rng::seed_from_u64(0));
+            // `try_join!` polls in the order written, so `SendThenWait` queues its frame and
+            // waits. `Fail` then fails, and the `Join` drops `SendThenWait` where it is.
+            let joined = Join((SendThenWait(big.clone()), Fail))
+                .execute(&mut env0)
+                .await;
+            assert!(matches!(joined, Err(Error::Input)), "the Join must fail");
+            env0.network.send_to(party(1), &packet(5)).await.unwrap();
+
+            // Party 1 forks as its own `Join` would: the large frame is in child session 0.
+            let (mut branch, _other_branch) = (net1.fork(), net1.fork());
+            assert_eq!(branch.recv_from(party(0)).await.unwrap(), big);
+            assert_eq!(net1.recv_from(party(0)).await.unwrap(), packet(5));
+        })
+        .await;
+    }
+
+    /// When a peer closes, the receives waiting for it in every session end with
+    /// `ConnectionClosed`.
+    #[tokio::test]
+    async fn a_closing_peer_ends_the_receives_of_every_session() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let (mut a1, mut b1) = (net1.fork(), net1.fork());
+
+            // Three kinds of receive: a `recv_from` in a forked session, a `recv_any` in another,
+            // and a `recv_from` in the root session.
+            let (in_a, in_b, in_root, closed) = tokio::join!(
+                a1.recv_from(party(0)),
+                b1.recv_any(),
+                net1.recv_from(party(0)),
+                net0.close(),
+            );
+
+            closed.unwrap();
+            for result in [in_a, in_root] {
+                assert!(
+                    matches!(&result, Err(NetworkError::ConnectionClosed(Some(peer))) if *peer == party(0)),
+                    "expected ConnectionClosed(Some(0)), got {result:?}"
+                );
+            }
+            assert!(
+                matches!(&in_b, Err(NetworkError::ConnectionClosed(None))),
+                "expected ConnectionClosed(None), got {in_b:?}"
+            );
+        })
+        .await;
+    }
+
+    /// Dropping the last handle without `close()` still closes the connections, so the
+    /// peer's receive ends with `ConnectionClosed`.
+    #[tokio::test]
+    async fn dropping_the_network_without_close_closes_the_connections() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            drop(net0);
+
+            let result = net1.recv_from(party(0)).await;
+            assert!(
+                matches!(&result, Err(NetworkError::ConnectionClosed(Some(peer))) if *peer == party(0)),
+                "expected ConnectionClosed(Some(0)), got {result:?}"
+            );
+        })
+        .await;
+    }
+
+    /// After the root handle's `close()`, nothing more can arrive. A receive, in the root session
+    /// or in a forked one, ends with `ConnectionClosed` instead of waiting for ever, and a send
+    /// fails.
+    #[tokio::test]
+    async fn after_close_receives_and_sends_end_with_connection_closed() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (_net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let mut forked = net0.fork();
+            net0.close().await.unwrap();
+
+            for result in [
+                net0.recv_from(party(1)).await,
+                forked.recv_from(party(1)).await,
+                net0.send_to(party(1), &packet(1)).await.map(|_| packet(0)),
+            ] {
+                assert!(
+                    matches!(&result, Err(NetworkError::ConnectionClosed(Some(peer))) if *peer == party(1)),
+                    "expected ConnectionClosed(Some(1)), got {result:?}"
+                );
+            }
+        })
+        .await;
+    }
+
+    /// `recv_any` takes from the lowest ready sender, as the simulator does. Parties 1 and 2 each
+    /// send one packet in a child session, then one in the root session. Once party 0 has received
+    /// both root packets, both child packets are filed, whatever order they arrived in.
+    #[tokio::test]
+    async fn recv_any_takes_the_lowest_ready_sender() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(3).await;
+            let (mut net2, mut net1, mut net0) = (
+                nets.pop().unwrap(),
+                nets.pop().unwrap(),
+                nets.pop().unwrap(),
+            );
+            let (mut a0, mut a1, mut a2) = (net0.fork(), net1.fork(), net2.fork());
+
+            // Party 2 sends first.
+            for (child, root, me) in [(&mut a2, &mut net2, 2), (&mut a1, &mut net1, 1)] {
+                child.send_to(party(0), &packet(me)).await.unwrap();
+                root.send_to(party(0), &packet(0)).await.unwrap();
+            }
+            net0.recv_from(party(2)).await.unwrap();
+            net0.recv_from(party(1)).await.unwrap();
+
+            assert_eq!(a0.recv_any().await.unwrap(), (party(1), packet(1)));
+            assert_eq!(a0.recv_any().await.unwrap(), (party(2), packet(2)));
+        })
+        .await;
+    }
+
+    /// Dropping a forked handle retires its session: what was queued for it is freed, and a frame
+    /// that arrives for it later is discarded instead of queued. The effect is visible only in the
+    /// mailbox map, which this test reads directly.
+    #[tokio::test]
+    async fn frames_for_a_retired_session_are_discarded() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (mut net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let mut a0 = net0.fork();
+            let a1 = net1.fork();
+            let session = a1.session().clone();
+            let has_mailbox = |net: &TcpNetwork| {
+                let mailboxes = net.core.mailboxes.lock().unwrap();
+                mailboxes.sessions.contains_key(&session)
+            };
+
+            // One frame arrives before the handle is dropped, one after.
+            a0.send_to(party(1), &packet(1)).await.unwrap();
+            net0.send_to(party(1), &packet(0)).await.unwrap();
+            net1.recv_from(party(0)).await.unwrap();
+            assert!(has_mailbox(&net1));
+            drop(a1);
+            assert!(!has_mailbox(&net1));
+
+            a0.send_to(party(1), &packet(2)).await.unwrap();
+            net0.send_to(party(1), &packet(0)).await.unwrap();
+            net1.recv_from(party(0)).await.unwrap();
+            assert!(!has_mailbox(&net1));
+        })
+        .await;
     }
 
     #[test]
