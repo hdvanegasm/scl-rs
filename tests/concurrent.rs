@@ -1,13 +1,13 @@
 //! End-to-end tests of concurrent composition (`protocol::concurrent`) on the deterministic
-//! simulator: Phase 2 of `docs/concurrent-composition-plan.md`, tests T1, T2, T3, T4, T5, T7 and
-//! T10 of its §8.
+//! simulator: correctness, timing, session routing, determinism, and the deadlock report when the
+//! parties do not fork symmetrically.
 //!
 //! - Secret-shared outputs are checked by what they open to, never against the shares of a
 //!   sequential run: forking draws from the parent's RNG, so the same seeds give different shares
 //!   under a combinator.
-//! - The bandwidth tree and the trace `Display` are not asserted on. Until Phase 4, the tree parser
-//!   keeps one stack of protocol scopes per party, so interleaved branches nest wrongly in it.
-//!   Elapsed times (`metrics()`) and raw `Event` lists are already correct under concurrency.
+//! - The bandwidth tree and the trace `Display` are not asserted on here; `tests/trace_tree.rs`
+//!   covers them under concurrency. These tests read elapsed times (`metrics()`) and raw `Event`
+//!   lists.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,7 +21,10 @@ use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{
         simulation::{
-            channel::SimpleNetworkConfig, event::Event, network::SimNetwork, simulator::simulate,
+            channel::{Link, NetworkConfig, SimpleNetworkConfig},
+            event::Event,
+            network::SimNetwork,
+            simulator::simulate,
         },
         Network, Packet, PartyId,
     },
@@ -160,8 +163,7 @@ impl<E: Environment> Protocol<E> for Exchange {
             .filter(|&p| p != local)
             .collect();
         for _ in 0..self.rounds {
-            let mut packet = Packet::empty();
-            packet.write(&[0u8; 32])?;
+            let packet = exchange_packet();
             for &other in &others {
                 network.send_to(other, &packet).await?;
             }
@@ -177,11 +179,20 @@ impl<E: Environment> Protocol<E> for Exchange {
     }
 }
 
+/// The packet `Exchange` sends to every other party in each round.
+/// `elapsed_time_is_the_critical_path` reads its size to bound how long a packet can wait for the
+/// link.
+fn exchange_packet() -> Packet {
+    let mut packet = Packet::empty();
+    packet.write(&[0u8; 32]).unwrap();
+    packet
+}
+
 // ---------------------------------------------------------------------------------------------
-// T1: correctness.
+// Correctness.
 // ---------------------------------------------------------------------------------------------
 
-/// T1 (a): a `Join` of three protocols of different types, one of which consumes sharings
+/// A `Join` of three protocols of different types, one of which consumes sharings
 /// computed before it. The factors and the triples are prepared one after another; then fresh
 /// random sharings, double sharings and the products are computed in one `Join`.
 struct JoinOfDifferentTypes {
@@ -228,7 +239,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Joi
 }
 
 #[test]
-fn t1_join_of_different_types_opens_correctly() {
+fn join_of_different_types_opens_correctly() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         parties(),
@@ -261,7 +272,7 @@ fn t1_join_of_different_types_opens_correctly() {
     }
 }
 
-/// T1 (b): a `JoinAll` of 8 multiplications, each on its own factors and its own triple.
+/// A `JoinAll` of 8 multiplications, each on its own factors and its own triple.
 struct JoinAllOfMultiplications {
     king: PartyId,
 }
@@ -319,7 +330,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E>
 }
 
 #[test]
-fn t1_join_all_of_multiplications_opens_correctly() {
+fn join_all_of_multiplications_opens_correctly() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         parties(),
@@ -337,7 +348,7 @@ fn t1_join_all_of_multiplications_opens_correctly() {
     }
 }
 
-/// T1 (c): `Join`s nested three levels deep.
+/// `Join`s nested three levels deep.
 struct NestedJoins;
 
 /// The random sharings and the halves of the double sharings, from the outermost `Join` inwards.
@@ -379,7 +390,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Nes
 /// gives it (`ForkNetwork`, *Session assignment*): the `i`-th fork of a handle, counting from 0, is
 /// on its session's child `i`, and a child handle starts its own count at 0.
 #[test]
-fn t1_nested_joins_open_correctly_in_the_sessions_of_the_fork_order() {
+fn nested_joins_open_correctly_in_the_sessions_of_the_fork_order() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         parties(),
@@ -465,7 +476,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Joi
 }
 
 #[test]
-fn t1_join_all_of_boxed_protocols_maps_each_output() {
+fn join_all_of_boxed_protocols_maps_each_output() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         parties(),
@@ -482,7 +493,7 @@ fn t1_join_all_of_boxed_protocols_maps_each_output() {
 /// calls `execute` on its protocols, as `Join` does. A boxed protocol opens exactly one scope,
 /// under the name of the protocol it was made from.
 #[test]
-fn t1_join_all_runs_each_protocol_in_its_own_scope_and_session() {
+fn join_all_runs_each_protocol_in_its_own_scope_and_session() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         parties(),
@@ -516,7 +527,7 @@ fn t1_join_all_runs_each_protocol_in_its_own_scope_and_session() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// T2: timing.
+// Timing.
 // ---------------------------------------------------------------------------------------------
 
 /// The preprocessing of `tests/passive_shamir.rs::MulRandomPairs`: four random sharings and one
@@ -569,7 +580,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Pre
     }
 }
 
-/// T2 (a): on the WAN preset (50 ms per hop), the preprocessing takes the sum of its steps'
+/// On the WAN preset (50 ms per hop), the preprocessing takes the sum of its steps'
 /// latencies when they run one after another, and its critical path under a `Join`:
 ///
 /// - each `PassiveRandShr` is one hop (50 ms), and `PassiveRandDoubleShr` two (100 ms);
@@ -580,7 +591,7 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Pre
 ///
 /// The serialization of these small packets over 100 Mbps adds well under 1 ms.
 #[test]
-fn t2_join_cuts_preprocessing_time_to_the_critical_path() {
+fn join_cuts_preprocessing_time_to_the_critical_path() {
     let elapsed = |concurrent: bool| {
         let outcome = simulate(
             SimpleNetworkConfig::wan(),
@@ -620,8 +631,8 @@ fn t2_join_cuts_preprocessing_time_to_the_critical_path() {
     }
 }
 
-/// A composition tree for T2 (b): leaves are all-to-all exchanges, inner nodes run their children
-/// one after another (`Seq`) or concurrently (`Par`).
+/// A composition tree for `elapsed_time_is_the_critical_path`: leaves are all-to-all exchanges,
+/// inner nodes run their children one after another (`Seq`) or concurrently (`Par`).
 #[derive(Clone, Debug)]
 enum Tree {
     Leaf(u32),
@@ -636,6 +647,15 @@ impl Tree {
             Tree::Leaf(rounds) => *rounds,
             Tree::Seq(children) => children.iter().map(Tree::rounds).sum(),
             Tree::Par(children) => children.iter().map(Tree::rounds).max().unwrap_or(0),
+        }
+    }
+
+    /// The largest number of leaves that run at the same time.
+    fn width(&self) -> u32 {
+        match self {
+            Tree::Leaf(_) => 1,
+            Tree::Seq(children) => children.iter().map(Tree::width).max().unwrap_or(0),
+            Tree::Par(children) => children.iter().map(Tree::width).sum(),
         }
     }
 }
@@ -712,24 +732,41 @@ fn elapsed_times(tree: &Tree) -> Vec<Duration> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
 
-    /// T2 (b): with every hop taking the same time `hop`, a party's elapsed time is exactly the
-    /// tree's critical path: `Seq` adds its children's rounds, `Par` takes their maximum.
+    /// A party's elapsed time is the tree's critical path, `Seq` adding its children's
+    /// rounds and `Par` taking their maximum, plus what its packets wait for the link. Leaves that
+    /// run at the same time send on the same links, and a link serializes one packet at a time,
+    /// so in each round a packet waits for at most one packet of every other such leaf.
+    ///
+    /// When nothing runs alongside anything else (`width() == 1`) the allowance is zero, and the
+    /// two bounds pin the time to the critical path exactly.
     #[test]
-    fn t2_elapsed_time_is_the_critical_path(tree in trees()) {
+    fn elapsed_time_is_the_critical_path(tree in trees()) {
         let hop = elapsed_times(&Tree::Leaf(1))[0];
         prop_assert!(hop > Duration::ZERO);
+        let serialization = SimpleNetworkConfig::wan()
+            .channel_config(Link::new(party(0), party(1)))
+            .transmission(exchange_packet().size())
+            .serialization();
+        prop_assert!(serialization > Duration::ZERO && serialization < hop);
+
+        let critical_path = hop * tree.rounds();
+        let waiting = serialization * (tree.width() - 1) * tree.rounds();
         for (p, time) in elapsed_times(&tree).into_iter().enumerate() {
-            prop_assert_eq!(time, hop * tree.rounds(), "party {}", p);
+            prop_assert!(time >= critical_path, "party {}: {:?} < {:?}", p, time, critical_path);
+            prop_assert!(
+                time <= critical_path + waiting,
+                "party {}: {:?} > {:?} + {:?}", p, time, critical_path, waiting
+            );
         }
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// T3, T4, T5: session routing, end to end through `Join`.
+// Session routing, end to end through `Join`.
 // ---------------------------------------------------------------------------------------------
 
-/// Branch A of T3. Party 0 waits for a ping from party 1 in this session, then sends 1. Party 1
-/// sends the ping, then waits for the value.
+/// Branch A of `each_branch_receives_only_its_own_session`. Party 0 waits for a ping from party 1
+/// in this session, then sends 1. Party 1 sends the ping, then waits for the value.
 struct IsolationA;
 
 impl<E: Environment> Protocol<E> for IsolationA {
@@ -752,7 +789,8 @@ impl<E: Environment> Protocol<E> for IsolationA {
     }
 }
 
-/// Branch B of T3. Party 0 sends 2 at once; party 1 waits for it.
+/// Branch B of `each_branch_receives_only_its_own_session`. Party 0 sends 2 at once; party 1
+/// waits for it.
 struct IsolationB;
 
 impl<E: Environment> Protocol<E> for IsolationB {
@@ -773,11 +811,11 @@ impl<E: Environment> Protocol<E> for IsolationB {
     }
 }
 
-/// T3: B's value reaches party 1 first, while party 1's branch A is already waiting on the same
+/// B's value reaches party 1 first, while party 1's branch A is already waiting on the same
 /// link. Both values are `u64`, so a mix-up would deserialize without error; each branch must
 /// still get its own value.
 #[test]
-fn t3_each_branch_receives_only_its_own_session() {
+fn each_branch_receives_only_its_own_session() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         vec![party(0), party(1)],
@@ -788,7 +826,8 @@ fn t3_each_branch_receives_only_its_own_session() {
     assert_eq!(outcome.outputs[&party(1)], (1, 2));
 }
 
-/// One branch of T4. Party 0 sends `value`; party 1 receives it, with `recv_any` or `recv_from`.
+/// One branch of `concurrent_receives_on_one_link_are_both_woken`. Party 0 sends `value`; party 1
+/// receives it, with `recv_any` or `recv_from`.
 struct WakeBranch {
     value: u64,
     any: bool,
@@ -855,10 +894,10 @@ impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for LostWak
     }
 }
 
-/// T4: both receives park on the same link, in different sessions, before either packet arrives.
+/// Both receives park on the same link, in different sessions, before either packet arrives.
 /// Resolving one must not drop the other's wake-up, whichever is polled first.
 #[test]
-fn t4_concurrent_receives_on_one_link_are_both_woken() {
+fn concurrent_receives_on_one_link_are_both_woken() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         vec![party(0), party(1)],
@@ -869,7 +908,8 @@ fn t4_concurrent_receives_on_one_link_are_both_woken() {
     assert_eq!(outcome.outputs[&party(1)], ((10, 20), (30, 40)));
 }
 
-/// The fourth branch of T5. Party 0 sends 7; party 1 receives it.
+/// The fourth branch of `a_packet_for_a_session_not_yet_forked_waits_for_the_fork`. Party 0
+/// sends 7; party 1 receives it.
 struct EarlyBranch;
 
 impl<E: Environment> Protocol<E> for EarlyBranch {
@@ -918,12 +958,12 @@ impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for EarlyAr
     }
 }
 
-/// T5: the link is first-in, first-out, so party 0's packet in session 3 reaches party 1 before
+/// The link is first-in, first-out, so party 0's packet in session 3 reaches party 1 before
 /// the root-session packet that party 1 waits for before it forks. The packet waits in a mailbox
 /// of a session party 1 has not forked yet, and branch 3 takes it once it does. Both parties fork
 /// four times in the root session, so the symmetric-forking rule holds.
 #[test]
-fn t5_a_packet_for_a_session_not_yet_forked_waits_for_the_fork() {
+fn a_packet_for_a_session_not_yet_forked_waits_for_the_fork() {
     let outcome = simulate(
         SimpleNetworkConfig::default(),
         vec![party(0), party(1)],
@@ -935,7 +975,7 @@ fn t5_a_packet_for_a_session_not_yet_forked_waits_for_the_fork() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// T7: determinism.
+// Determinism.
 // ---------------------------------------------------------------------------------------------
 
 /// Triple generation with its three independent steps in one `Join`.
@@ -965,10 +1005,10 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Joi
     }
 }
 
-/// T7: the same seeds give the same events and outputs, including through a `JoinAll` of more
+/// The same seeds give the same events and outputs, including through a `JoinAll` of more
 /// than 30 protocols, where `try_join_all` switches to a `FuturesOrdered` with one waker per child.
 #[test]
-fn t7_same_seeds_give_the_same_events_and_outputs() {
+fn same_seeds_give_the_same_events_and_outputs() {
     const COUNT: usize = 40;
     let run = || {
         simulate(
@@ -1003,7 +1043,7 @@ fn t7_same_seeds_give_the_same_events_and_outputs() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// T10: violations of symmetric forking.
+// Violations of symmetric forking.
 // ---------------------------------------------------------------------------------------------
 
 /// Only party 0, the king, runs the two exchanges in a `Join`; the others run them one after
@@ -1030,11 +1070,11 @@ impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for OnlyThe
     }
 }
 
-/// T10 (a): the king's packets land in sessions 0 and 1, which the other parties never fork, and
+/// The king's packets land in sessions 0 and 1, which the other parties never fork, and
 /// theirs land in the king's root session, which the king has left for sessions 0 and 1. The
 /// report shows both.
 #[test]
-fn t10_only_the_king_forking_deadlocks_with_the_orphaned_sessions_named() {
+fn only_the_king_forking_deadlocks_with_the_orphaned_sessions_named() {
     let message = panic_message_of(|| {
         simulate(
             SimpleNetworkConfig::default(),
@@ -1100,10 +1140,10 @@ impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Bystand
     }
 }
 
-/// T10 (b): the first `Join` completes, since only its participants communicate in it. The second
+/// The first `Join` completes, since only its participants communicate in it. The second
 /// one deadlocks: the participants run it in sessions 2 and 3, the bystander in sessions 0 and 1.
 #[test]
-fn t10_a_bystander_skipping_a_join_deadlocks_the_next_join() {
+fn a_bystander_skipping_a_join_deadlocks_the_next_join() {
     let message = panic_message_of(|| {
         simulate(
             SimpleNetworkConfig::default(),

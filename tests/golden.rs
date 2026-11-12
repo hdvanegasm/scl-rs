@@ -1,9 +1,8 @@
 //! Golden snapshot of the simulator's observable behaviour for purely sequential protocols.
 //!
-//! This is Phase 0 of `docs/concurrent-composition-plan.md`: the baseline that proves goal G6
-//! ("code that never forks keeps its behaviour") across the later phases. Every scenario runs with
-//! fixed seeds and fixed inputs, and its rendering is compared byte-for-byte against
-//! `tests/golden/<scenario>.txt`.
+//! It is the baseline that shows code that never forks keeps its behaviour as the simulator
+//! changes underneath it. Every scenario runs with fixed seeds and fixed inputs, and its rendering
+//! is compared byte-for-byte against `tests/golden/<scenario>.txt`.
 //!
 //! Each golden file holds, per scenario:
 //!

@@ -124,7 +124,6 @@ impl SessionId {
     ///
     /// Crate-internal: outside the network backends, sessions are created only through
     /// [`root`](SessionId::root) and [`with_child`](SessionId::with_child).
-    #[allow(dead_code)] // first used by the `TcpNetwork` frame decoder (concurrent-composition plan, Phase 3).
     pub(crate) fn new(root_tag: [u8; 32], path: Vec<u32>) -> Self {
         Self { root_tag, path }
     }

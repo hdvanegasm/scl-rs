@@ -74,7 +74,7 @@ SecStats {
             [     0.554s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           0 -> 3 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           0 -> 4 (10 bytes: 1 Shamir shr.)
-            [     0.554s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           0 <- 4 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           0 <- 3 (10 bytes: 1 Shamir shr.)
@@ -114,7 +114,7 @@ SecStats {
   27 SendData       252000000
   28 SendData       252000000
   29 SendData       252000000
-  30 ReceiveData    252000000
+  30 ReceiveData    252400000
   31 ReceiveData    302400000
   32 ReceiveData    302400000
   33 ReceiveData    302400000
@@ -148,7 +148,7 @@ SecStats {
   61 SendData       554400000
   62 SendData       554400000
   63 SendData       554400000
-  64 ReceiveData    554400000
+  64 ReceiveData    554800000
   65 ReceiveData    604800000
   66 ReceiveData    604800000
   67 ReceiveData    604800000
@@ -229,7 +229,7 @@ SecStats {
             [     0.554s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           1 -> 3 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           1 -> 4 (10 bytes: 1 Shamir shr.)
-            [     0.554s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           1 <- 4 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           1 <- 3 (10 bytes: 1 Shamir shr.)
@@ -269,7 +269,7 @@ SecStats {
   27 SendData       252000000
   28 SendData       252000000
   29 SendData       252000000
-  30 ReceiveData    252000000
+  30 ReceiveData    252400000
   31 ReceiveData    302400000
   32 ReceiveData    302400000
   33 ReceiveData    302400000
@@ -303,7 +303,7 @@ SecStats {
   61 SendData       554400000
   62 SendData       554400000
   63 SendData       554400000
-  64 ReceiveData    554400000
+  64 ReceiveData    554800000
   65 ReceiveData    604800000
   66 ReceiveData    604800000
   67 ReceiveData    604800000
@@ -384,7 +384,7 @@ SecStats {
             [     0.554s] SEND           2 -> 1 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           2 -> 3 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           2 -> 4 (10 bytes: 1 Shamir shr.)
-            [     0.554s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           2 <- 4 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           2 <- 0 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           2 <- 1 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           2 <- 3 (10 bytes: 1 Shamir shr.)
@@ -424,7 +424,7 @@ SecStats {
   27 SendData       252000000
   28 SendData       252000000
   29 SendData       252000000
-  30 ReceiveData    252000000
+  30 ReceiveData    252400000
   31 ReceiveData    302400000
   32 ReceiveData    302400000
   33 ReceiveData    302400000
@@ -458,7 +458,7 @@ SecStats {
   61 SendData       554400000
   62 SendData       554400000
   63 SendData       554400000
-  64 ReceiveData    554400000
+  64 ReceiveData    554800000
   65 ReceiveData    604800000
   66 ReceiveData    604800000
   67 ReceiveData    604800000
@@ -539,7 +539,7 @@ SecStats {
             [     0.554s] SEND           3 -> 1 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           3 -> 2 (10 bytes: 1 Shamir shr.)
             [     0.554s] SEND           3 -> 4 (10 bytes: 1 Shamir shr.)
-            [     0.554s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
+            [     0.555s] RECV           3 <- 4 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           3 <- 0 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           3 <- 1 (10 bytes: 1 Shamir shr.)
             [     0.605s] RECV           3 <- 2 (10 bytes: 1 Shamir shr.)
@@ -579,7 +579,7 @@ SecStats {
   27 SendData       252000000
   28 SendData       252000000
   29 SendData       252000000
-  30 ReceiveData    252000000
+  30 ReceiveData    252400000
   31 ReceiveData    302400000
   32 ReceiveData    302400000
   33 ReceiveData    302400000
@@ -613,7 +613,7 @@ SecStats {
   61 SendData       554400000
   62 SendData       554400000
   63 SendData       554400000
-  64 ReceiveData    554400000
+  64 ReceiveData    554800000
   65 ReceiveData    604800000
   66 ReceiveData    604800000
   67 ReceiveData    604800000

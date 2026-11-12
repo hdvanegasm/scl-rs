@@ -50,6 +50,7 @@
 //!
 //! Run it with `cargo run --example secure_covariance`.
 
+/// The offline phase: the triple generation, which does not depend on the inputs.
 mod preprocessing;
 
 use std::fs;
@@ -72,22 +73,31 @@ use scl_rs::{
 
 /// Five parties tolerating two passive corruptions: `n >= 2t + 1`, as DN07 requires.
 const N_PARTIES: usize = 5;
+/// The number of passive corruptions tolerated, which is also the degree of every sharing.
 const THRESHOLD: usize = 2;
 
 /// How many measurements each data owner holds — and therefore how many secure multiplications the
 /// circuit needs, all of them in one round.
 const VECTOR_LEN: usize = 6;
 
+/// Shamir secret sharing over the Mersenne-61 field (one limb).
 type Share = ShamirSS<1, Mersenne61>;
+/// A multiplication triple of [`Share`]s.
 type Triple = ShamirTriple<1, Mersenne61>;
 
 /// The two parties that actually hold data. The other three take part without contributing.
+///
+/// `OWNER_X` holds [`DATA_X`].
 const OWNER_X: usize = 0;
+/// The owner of [`DATA_Y`]; see [`OWNER_X`].
 const OWNER_Y: usize = 1;
 
 /// The two private datasets. Chosen so the means (15 and 6) and the covariance (9) are whole
 /// numbers, which lets the harness cross-check the MPC result against plain integer arithmetic.
+///
+/// `DATA_X` is held by [`OWNER_X`].
 const DATA_X: [u64; VECTOR_LEN] = [10, 12, 14, 16, 18, 20];
+/// The dataset held by [`OWNER_Y`]; see [`DATA_X`].
 const DATA_Y: [u64; VECTOR_LEN] = [2, 4, 5, 7, 8, 10];
 
 /// Deals one owner's whole vector: the owner secret-shares each of its `VECTOR_LEN` values, and
@@ -99,10 +109,13 @@ const DATA_Y: [u64; VECTOR_LEN] = [2, 4, 5, 7, 8, 10];
 /// receiver's shares in one message; `PassiveDealShr` deals a single value, so that form would be a
 /// new protocol.
 struct DealVector {
+    /// The party that holds the vector and deals it.
     owner: PartyId,
     /// The private data — `Some` only at the owner.
     values: Option<Vec<Mersenne61>>,
+    /// The parties that receive a share of each value.
     parties: Vec<PartyId>,
+    /// The id this dealing reports, distinct per owner.
     id: ProtocolId,
 }
 
@@ -150,10 +163,14 @@ fn centre(shares: &[Share], inv_len: &Mersenne61) -> Vec<Share> {
 
 /// The whole computation, top to bottom.
 struct SecureCovariance {
+    /// The parties of the computation.
     parties: Vec<PartyId>,
+    /// The party that reconstructs the masked values, in triple generation and in the
+    /// multiplication.
     king: PartyId,
     /// This party's dataset, if it owns one.
     x: Option<Vec<Mersenne61>>,
+    /// The `y` dataset: `Some` only at [`OWNER_Y`], as `x` is only at [`OWNER_X`].
     y: Option<Vec<Mersenne61>>,
 }
 

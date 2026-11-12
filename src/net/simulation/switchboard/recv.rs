@@ -32,9 +32,13 @@ use super::{Switchboard, TimedRecvOut};
 /// on all the links delivering messages to `local`. This future resolves imediately after a link
 /// gets a message.
 pub(crate) struct RecvAny {
+    /// The shared router the packet is awaited on.
     switchboard: Arc<Mutex<Switchboard>>,
+    /// The receiving party.
     local: PartyId,
+    /// The parties a packet is awaited from.
     senders: Vec<PartyId>,
+    /// The session the packet is awaited in: only a packet sent in this session resolves it.
     session: SessionId,
 }
 
@@ -76,8 +80,11 @@ impl Future for RecvAny {
 /// This primitive waits in a receive instruction, and then resumes when the send is
 /// performed. Each link has the possibility to halt until there is some packet available to poll.
 pub(crate) struct Recv {
+    /// The shared router the packet is awaited on.
     switchboard: Arc<Mutex<Switchboard>>,
+    /// The directed link (`sender` -> `recipient`) the packet is expected on.
     link: Link,
+    /// The session the packet is awaited in: only a packet sent in this session resolves it.
     session: SessionId,
 }
 
@@ -134,6 +141,7 @@ pub(crate) struct RecvTimeout {
     /// virtual instant at which the receive is first polled plus the timeout, and stays `None`
     /// until that first poll sets it.
     deadline: Option<Duration>,
+    /// The session the packet is awaited in: only a packet sent in this session resolves it.
     session: SessionId,
 }
 
@@ -210,6 +218,7 @@ pub(crate) struct RecvAnyTimeout {
     /// virtual instant at which the receive is first polled plus the timeout, and stays `None`
     /// until that first poll sets it.
     deadline: Option<Duration>,
+    /// The session the packet is awaited in: only a packet sent in this session resolves it.
     session: SessionId,
 }
 

@@ -47,7 +47,7 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   - `Display` shows the path only: `root` for the root session, otherwise the fork indices joined
     by dots, e.g. `0`, `1.0`, `0.3.1`. The root tag is not shown.
 
-  A message header will carry only the path, since the root tag is fixed per network instance.
+  A `TcpNetwork` frame carries only the path, since the root tag is fixed per network instance.
   `SessionId` is re-exported from the prelude.
 
 - **`Display` for `PartyId`**, which shows the bare index, e.g. `2`. Width, fill and alignment
@@ -71,13 +71,14 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   a child handle starts its own count at 0. So the parties agree on a session only if they fork
   alike: within a session, every party must make the same forks in the same order. After one
   skipped fork, every later fork in that session gets a different index on the party that skipped
-  it. `SimNetwork` implements the trait; `TcpNetwork` does not yet.
+  it. `SimNetwork` and `TcpNetwork` implement the trait.
 
 - **`protocol::ForkEnvironment`**, an `Environment` whose `fork()` returns a child environment on
-  a forked network handle. `GeneralEnv` implements it when its network implements `ForkNetwork`
-  and its RNG implements `SeedableRng`. The child's RNG is seeded from the parent's RNG, so a run
-  with seeded RNGs stays reproducible. Forking draws from the parent's RNG, though, so running
-  sub-protocols under a combinator instead of one after another changes the values they sample.
+  a forked network handle. `GeneralEnvironment` implements it when its network implements
+  `ForkNetwork` and its RNG implements `SeedableRng`. The child's RNG is seeded from the parent's
+  RNG, so a run with seeded RNGs stays reproducible. Forking draws from the parent's RNG, though,
+  so running sub-protocols under a combinator instead of one after another changes the values they
+  sample.
 
 - **`protocol::concurrent`**, combinators that run independent sub-protocols concurrently within
   one party. Sub-protocols called one after another with `execute` make a party wait for the sum
@@ -109,6 +110,12 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `'static`; the environment need not be. A boxed protocol reports the inner protocol's `id`, so
   its trace scope keeps the inner protocol's name.
 
+- **`NetworkError::PeerFailed { peer, reason }`**: the connection with `peer` failed, through a
+  read error, a frame that does not decode, or a write error; `reason` is that error's message.
+  `TcpNetwork` returns it from every later send to that peer and receive from it (see *Changed*),
+  so every session learns of the failure, whichever asks first. `NetworkError` is
+  `#[non_exhaustive]`, so no `match` breaks.
+
 ### Changed
 
 - **Breaking: `TcpNetwork::create(id, config, root_tag)`** takes the execution's root tag as a
@@ -116,8 +123,39 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   another execution on the same parties. There is deliberately no default, because a silently
   reused tag is the failure the parameter exists to prevent. Migration: derive one with
   `derive_root_tag`, e.g.
-  `TcpNetwork::create(id, config, derive_root_tag(b"my-protocol/v1 run=1"))`. The tag is not used
-  on the wire yet; it becomes the root of every session once `TcpNetwork` is session-aware.
+  `TcpNetwork::create(id, config, derive_root_tag(b"my-protocol/v1 run=1"))`. The tag is the root
+  of every session of the network, and is never sent: a frame carries only its session's path, and
+  each party rebuilds the session from its own tag.
+
+- **Breaking: `TcpNetwork` is session-aware, and its wire format changes.** Each frame carries the
+  session it was sent in: its body is the `postcard` encoding of the session's path and the packet,
+  where it was the packet alone, so a party on 0.14.x and a party on this version cannot talk to
+  each other. Each connection now has a reader task and a writer task. The reader files every
+  frame under its session and sender, and a receive takes only from its own session; a frame for a
+  session this party has not forked yet waits until it does, and frames for a session whose handle
+  was dropped or closed are discarded. For code that never forks, the following also changes:
+  - `send_to` returns once the frame is queued for the peer's writer task, not once it is written.
+    Dropping a send, as a fail-fast `Join` does to a sibling, can no longer leave part of a frame
+    on the stream.
+  - A failed connection with a peer (a read error, a frame that does not decode, or a write error)
+    is reported as `NetworkError::PeerFailed` by every later send to that peer and, once the
+    packets already received from it are taken, by every later receive from it, in every session.
+    0.14.x returned the `IoError` or `SerializationError` itself. A clean close is still
+    `ConnectionClosed(Some(peer))`.
+  - `recv_any` and `recv_any_with_timeout` return the packet of the lowest ready sender, as the
+    simulator does, instead of following the order of the underlying `StreamMap`. They no longer
+    return a single peer's error: they wait while any peer is open, and return
+    `ConnectionClosed(None)` once none is and nothing is left to take in the session.
+  - `party_ids()` returns the parties in ascending order, instead of `HashMap` order.
+  - After `close()` on the root handle, receives from peers, in every session, still take what is
+    already queued, then end with `ConnectionClosed`, where a `recv_from` returned
+    `PartyNotFound`; sends to peers fail with `ConnectionClosed(Some(peer))`. `close()` on a
+    forked handle gives up only that handle's session.
+  - `NetworkError::SendError` is no longer returned: it came only from the old loop-back channel.
+
+- **Breaking: `protocol::GeneralEnv` is renamed `GeneralEnvironment`**, in `protocol` and in the
+  prelude. Its type parameters, fields, `new` and trait impls are unchanged. Migration: rename the
+  imports and uses, e.g. `GeneralEnvironment::new(network, rng)`.
 
 - **MSRV raised from 1.85.1 to 1.88**, because the new `sha2` 0.11.1 dependency (used by
   `SessionId::digest`) requires it. The CI MSRV job builds on 1.88.

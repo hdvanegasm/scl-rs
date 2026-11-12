@@ -57,6 +57,7 @@ use scl_rs::{
     ss::shamir::ShamirSS,
 };
 
+/// Number of parties in the computation.
 const N_PARTIES: usize = 5;
 /// Inputs stay below this bound so Σx² cannot wrap around the Mersenne-61 modulus.
 const INPUT_BOUND: u64 = 1 << 20;
@@ -64,9 +65,10 @@ const INPUT_BOUND: u64 = 1 << 20;
 /// Shamir secret sharing over the Mersenne-61 field (one limb).
 type Share = ShamirSS<1, Mersenne61>;
 
-// Innermost composition layer: every party deals a Shamir sharing of `value`, all dealings at
-// once. Afterwards each party holds one share of every party's contribution.
+/// Innermost composition layer: every party deals a Shamir sharing of `value`, all dealings at
+/// once. Afterwards each party holds one share of every party's contribution.
 struct InputPhase {
+    /// This party's contribution, which it deals.
     value: Mersenne61,
 }
 
@@ -101,9 +103,9 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
     }
 }
 
-// The summation logic both phases share: distribute sharings of `value`, add the collected shares
-// locally (free — Shamir sharing is linear), and open the sum. The callers wrap this in protocols
-// with distinct ids so the two phases stay distinguishable in the flamegraph.
+/// The summation logic both phases share: distribute sharings of `value`, add the collected
+/// shares locally (free — Shamir sharing is linear), and open the sum. The callers wrap this in
+/// protocols with distinct ids so the two phases stay distinguishable in the flamegraph.
 async fn share_sum_open<E: RandEnvironment + ForkEnvironment>(
     env: &mut E,
     value: Mersenne61,
@@ -118,8 +120,9 @@ async fn share_sum_open<E: RandEnvironment + ForkEnvironment>(
     PassiveOpenShr::new(sum_share).execute(env).await
 }
 
-// First tower: the sum of the parties' values.
+/// First tower: the sum of the parties' values.
 struct SumValues {
+    /// This party's private value.
     input: Mersenne61,
 }
 
@@ -135,9 +138,10 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumValues {
     }
 }
 
-// Second tower: the sum of the parties' *squared* values. The square is computed locally on the
-// party's own input before sharing — no secure multiplication needed.
+/// Second tower: the sum of the parties' *squared* values. The square is computed locally on the
+/// party's own input before sharing — no secure multiplication needed.
 struct SumSquares {
+    /// This party's private value, squared locally before it is shared.
     input: Mersenne61,
 }
 
@@ -153,9 +157,10 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumSquares {
     }
 }
 
-// Top level: run the two summation phases concurrently. The output is the pair of opened sums;
-// mean and variance are derived from them in the clear.
+/// Top level: run the two summation phases concurrently. The output is the pair of opened sums;
+/// mean and variance are derived from them in the clear.
 struct SecStats {
+    /// This party's private value.
     input: Mersenne61,
 }
 

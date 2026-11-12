@@ -28,6 +28,7 @@ use crate::{
             hook::TriggeredHook,
             network::SimNetwork,
             switchboard::{ConfigDelay, Switchboard},
+            tree::{Item, TraceTree, ROOT},
             SimulationError, SimulationTrace,
         },
         PartyId,
@@ -256,18 +257,28 @@ impl<O> SimulationOutcome<O> {
     ///
     /// # Errors
     ///
-    /// Returns [`SimulationError::PartyNotFound`] if this outcome holds no trace for `party`.
+    /// Returns [`SimulationError::PartyNotFound`] if this outcome holds no trace for `party`, and
+    /// [`SimulationError::MalformedTrace`] if the party's protocol scopes do not nest: a scope ends
+    /// that is not the one open in its session, or ends in a session where no scope is open.
     pub fn bandwidth_tree_for(
         &self,
         party: PartyId,
     ) -> Result<ProtocolBandwidthTree, SimulationError> {
-        Ok(ProtocolBandwidthTree::parse(
+        let trace = self
+            .traces
+            .get(&party)
+            .ok_or(SimulationError::PartyNotFound(party))?;
+        let tree = TraceTree::build(trace.events());
+        if let Some(anomaly) = tree.anomalies.first() {
+            return Err(SimulationError::MalformedTrace {
+                event_idx: anomaly.event_index,
+                reason: anomaly.reason.clone(),
+            });
+        }
+        Ok(ProtocolBandwidthTree::from_scope(
+            &tree,
+            ROOT,
             ProtocolId::from("<simulation>"),
-            &mut self
-                .traces
-                .get(&party)
-                .ok_or(SimulationError::PartyNotFound(party))?
-                .events(),
         ))
     }
 
@@ -311,42 +322,32 @@ impl<O> SimulationOutcome<O> {
 /// appear as separate children. Build one with [`SimulationOutcome::bandwidth_tree_for`] and
 /// export it with [`write_folded`](ProtocolBandwidthTree::write_folded).
 pub struct ProtocolBandwidthTree {
+    /// The protocol this node stands for. The root stands for the whole run and is named
+    /// `<simulation>`.
     id: ProtocolId,
+    /// Payload bytes the protocol sent itself, excluding its sub-protocols and self-sends.
     self_bytes: usize,
+    /// One node per sub-protocol call, in the order the calls began in the trace.
     children: Vec<ProtocolBandwidthTree>,
 }
 
 impl ProtocolBandwidthTree {
-    /// Builds the node for the protocol whose [`ProtocolBegin`](Event::ProtocolBegin) the cursor
-    /// sits just after, consuming events through its matching [`ProtocolEnd`](Event::ProtocolEnd)
-    /// (or to the end of the trace for a truncated trace or the synthetic root). Each
-    /// [`SendData`](Event::SendData) is attributed to the innermost open protocol.
-    fn parse(protocol_id: ProtocolId, events: &mut &[Event]) -> Self {
-        let mut metric = Self {
-            id: protocol_id,
-            self_bytes: 0,
-            children: vec![],
-        };
-
-        while let Some((first, rest)) = events.split_first() {
-            *events = rest;
-            match first {
-                Event::SendData { link, size, .. } => {
-                    // Self-sends never touch the wire (TcpNetwork loops them back in-process),
-                    // so they don't count as bandwidth.
-                    if link.sender() != link.recipient() {
-                        metric.self_bytes += size;
-                    }
-                }
-                Event::ProtocolBegin { protocol_name, .. } => {
-                    let child = Self::parse(*protocol_name, events);
-                    metric.children.push(child);
-                }
-                Event::ProtocolEnd { .. } => return metric,
-                _ => {}
-            }
+    /// Copies the scope `node` of `tree`, and the scopes below it, into a bandwidth tree. `id` names
+    /// the root; every other node is named after its protocol.
+    fn from_scope(tree: &TraceTree, node: usize, id: ProtocolId) -> Self {
+        let scope = &tree.nodes[node];
+        Self {
+            id: scope.id.unwrap_or(id),
+            self_bytes: scope.self_bytes,
+            children: scope
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Child(child) => Some(Self::from_scope(tree, *child, id)),
+                    Item::Event(_) => None,
+                })
+                .collect(),
         }
-        metric
     }
 
     /// Writes this tree to `out` in the folded-stacks format understood by flamegraph tools.

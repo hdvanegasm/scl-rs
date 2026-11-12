@@ -203,7 +203,7 @@ clock and returns a `SimulationOutcome` with each party's typed output and its e
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::simulator::simulate;
 use scl_rs::net::PartyId;
-use scl_rs::protocol::GeneralEnv;
+use scl_rs::protocol::GeneralEnvironment;
 use rand::{rngs::StdRng, SeedableRng};
 
 let p0 = PartyId::from(0_usize);
@@ -215,7 +215,7 @@ let outcome = simulate(
     // Per-party protocol factory.
     |_| SendRecvProtocol,
     // Per-party environment factory: wrap the simulated network with a session RNG.
-    |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
+    |_, net| GeneralEnvironment::new(net, StdRng::from_rng(&mut rand::rng())),
     vec![],
 );
 
@@ -296,7 +296,7 @@ simulate(
     SimpleNetworkConfig::default(),
     vec![p0, p1],
     |_| SendRecvProtocol,
-    |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
+    |_, net| GeneralEnvironment::new(net, StdRng::from_rng(&mut rand::rng())),
     vec![metrics.clone()],
 );
 
@@ -316,7 +316,7 @@ from command-line arguments):
 
 ```rust
 use scl_rs::net::{session::derive_root_tag, NetworkConfig, TcpNetwork};
-use scl_rs::protocol::{GeneralEnv, Protocol};
+use scl_rs::protocol::{GeneralEnvironment, Protocol};
 use rand::{rngs::StdRng, SeedableRng};
 use std::path::Path;
 
@@ -334,7 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // `create` performs the TLS handshake with every peer, so it is async.
     let network = TcpNetwork::create(my_id, config, root_tag).await?;
-    let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
+    let mut env = GeneralEnvironment::new(network, StdRng::from_rng(&mut rand::rng()));
 
     // The very same protocol that ran on the simulator now runs over real TLS.
     let output = SendRecvProtocol.execute(&mut env).await?;

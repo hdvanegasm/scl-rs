@@ -35,10 +35,16 @@ use crate::{
 /// triple reused for a second product would mask it with the same `a` and `b`, and the two openings
 /// together would reveal both inputs.
 pub struct PassiveShamirMul<const LIMBS: usize, F> {
+    /// This party's share of the left factor of each product.
     x_shares: Vec<ShamirSS<LIMBS, F>>,
+    /// This party's share of the right factor of each product.
     y_shares: Vec<ShamirSS<LIMBS, F>>,
+    /// This party's share of one triple per product, consumed: the `i`-th masks the `i`-th
+    /// product.
     triples: Vec<ShamirTriple<LIMBS, F>>,
+    /// The parties of the run, sorted.
     parties: Vec<PartyId>,
+    /// The party that reconstructs the masked values and sends them back to every party.
     king: PartyId,
 }
 

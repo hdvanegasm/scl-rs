@@ -19,8 +19,14 @@ use crate::{
 /// every party — the shares must be combined in the same order everywhere or the outputs do not lie
 /// on a common polynomial.
 pub struct PassiveRandShr<const LIMBS: usize, F> {
+    /// The number of passive corruptions tolerated, which is also the degree of every sharing,
+    /// dealt and output.
     t: usize,
+    /// The parties of the run, sorted, so that column `i` of `vandermonde` is the same dealer at
+    /// every party.
     parties: Vec<PartyId>,
+    /// The extraction matrix, built once by `new`: `n - t` rows, one column per dealer in the
+    /// order of `parties`. It maps the `n` dealt sharings onto the `n - t` outputs.
     vandermonde: Matrix<F>,
 }
 

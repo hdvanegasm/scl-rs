@@ -122,7 +122,9 @@ enum TimedRecvOut {
 /// never overtakes one sent earlier on the same link, whatever its session.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct MailboxKey {
+    /// The directed link the mailbox's packets travel on.
     link: Link,
+    /// The session the mailbox's packets were sent in.
     session_id: SessionId,
 }
 
@@ -159,6 +161,10 @@ pub struct Switchboard {
     /// The arrival time of the last message scheduled on each link, used to keep per-link
     /// delivery FIFO (see [`send`](Switchboard::send)).
     last_arrivals: HashMap<Link, Duration>,
+    /// The virtual instant until which each link is busy serializing the messages already sent on
+    /// it (see [`send`](Switchboard::send)). Per link, like `last_arrivals`: the sessions on a
+    /// link share its bandwidth.
+    busy_until: HashMap<Link, Duration>,
     /// The delay model for this switchboard.
     delay: Box<dyn Delay>,
     /// Sequential counter for scheduled events.
@@ -180,22 +186,33 @@ impl Switchboard {
             events: BinaryHeap::new(),
             clocks: HashMap::new(),
             last_arrivals: HashMap::new(),
+            busy_until: HashMap::new(),
             delay: Box::new(delay),
             hooks,
             seq: 0,
         }
     }
 
+    /// Moves the traces recorded so far out of the switchboard, leaving it with none.
+    ///
+    /// The simulator calls it once, after the run, to build the
+    /// [`SimulationOutcome`](crate::net::simulation::simulator::SimulationOutcome).
     pub(crate) fn take_traces(&mut self) -> HashMap<PartyId, SimulationTrace> {
         std::mem::take(&mut self.traces)
     }
 
+    /// Returns the next sequence number for a scheduled event, and advances the counter.
+    ///
+    /// Scheduled events are ordered by arrival time, then by this number, so events that arrive at
+    /// the same instant are delivered in the order they were scheduled.
     fn next_seq(&mut self) -> usize {
         let returned_seq = self.seq;
         self.seq += 1;
         returned_seq
     }
 
+    /// Appends `event` to the trace of `party`, then runs every hook whose trigger matches the
+    /// event's type, or that triggers on every event.
     pub(crate) fn record_event(&mut self, party: PartyId, event: Event) {
         self.traces
             .entry(party)
@@ -240,13 +257,22 @@ impl Switchboard {
             },
         );
 
+        // Link occupancy: the link serializes one message at a time, so this one starts once the
+        // messages sent before it on this link are out, and holds the link for its own
+        // serialization time. The propagation time is added after that and holds nothing.
+        let trans_time = self.delay.transmission(link, packet.size());
+        let start = now.max(self.busy_until.get(&link).copied().unwrap_or_default());
+        let busy_until = start + trans_time.serialization();
+        self.busy_until.insert(link, busy_until);
+
         // Clamp the arrival so it is not earlier than the previously scheduled arrival on this
         // link (per-link FIFO); ties are broken by `seq`, which preserves the send order.
-        let mut arrival_time = now + self.delay.delay(link, packet.size());
+        let mut arrival_time = busy_until + trans_time.propagation();
         if let Some(&last_arrival) = self.last_arrivals.get(&link) {
             arrival_time = arrival_time.max(last_arrival);
         }
         self.last_arrivals.insert(link, arrival_time);
+
         let seq = self.next_seq();
         self.events.push(Reverse(ScheduledEvent {
             arrival: arrival_time,
@@ -452,6 +478,13 @@ impl Switchboard {
         Some((sender, packet))
     }
 
+    /// Takes the next packet `local` receives in `session` from the sender with the lowest id in
+    /// `senders` that has one, unless none is ready.
+    ///
+    /// With none ready, it returns [`TimedRecvOut::Timeout`] once `local`'s clock has reached
+    /// `deadline`, and [`TimedRecvOut::None`] before that, so the caller parks again. On a packet
+    /// or a timeout it removes the wakers the receive parked in `session`. Used by
+    /// [`RecvAnyTimeout`](recv::RecvAnyTimeout).
     fn try_recv_any_with_deadline(
         &mut self,
         session: &SessionId,
@@ -496,8 +529,8 @@ impl Switchboard {
     }
 
     /// Parks `waker` on the mailbox of every link from one of `senders` to `local`, in `session`,
-    /// so that a delivery from any of them in that session wakes the task. Used by [`RecvAny`] to
-    /// suspend until any peer sends.
+    /// so that a delivery from any of them in that session wakes the task. Used by
+    /// [`RecvAny`](recv::RecvAny) to suspend until any peer sends.
     fn park_any(&mut self, session: &SessionId, local: PartyId, senders: &[PartyId], waker: Waker) {
         for &sender in senders {
             let link = Link::new(sender, local);
@@ -507,10 +540,58 @@ impl Switchboard {
     }
 }
 
+/// The two parts of the delay: serialization and propagation.
+///
+/// The link is busy with a message for its serialization time, and a message sent meanwhile
+/// on the same link starts once the link is free. The propagation time is added after that,
+/// and does not hold the link.
+///
+/// Public because it is the return type of [`Delay::transmission`], which implementors outside
+/// the crate override, and of
+/// [`ChannelConfig::transmission`](crate::net::simulation::channel::ChannelConfig::transmission).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TransmissionTime {
+    serialization: Duration,
+    propagation: Duration,
+}
+
+impl TransmissionTime {
+    /// A transmission that holds the link for `serialization` and then travels for
+    /// `propagation`.
+    pub fn new(serialization: Duration, propagation: Duration) -> Self {
+        Self {
+            serialization,
+            propagation,
+        }
+    }
+
+    /// The time the link is busy pushing the message out; no other message on the link starts
+    /// meanwhile.
+    pub fn serialization(&self) -> Duration {
+        self.serialization
+    }
+
+    /// The one-way latency the message pays after it is out; it does not hold the link.
+    pub fn propagation(&self) -> Duration {
+        self.propagation
+    }
+}
+
 /// Computes a network delay over a link.
 pub trait Delay: Send {
     /// The delay for the link.
     fn delay(&self, link: Link, size_bytes: usize) -> Duration;
+
+    /// Computes the transmission time.
+    ///
+    /// The default has no serialization time, so messages on one link never wait for each
+    /// other.
+    fn transmission(&self, link: Link, size_bytes: usize) -> TransmissionTime {
+        TransmissionTime {
+            serialization: Duration::ZERO,
+            propagation: self.delay(link, size_bytes),
+        }
+    }
 }
 
 /// A constant delay for all the links in the network.
@@ -535,6 +616,10 @@ where
 {
     fn delay(&self, link: Link, size_bytes: usize) -> Duration {
         self.0.channel_config(link).message_delay(size_bytes)
+    }
+
+    fn transmission(&self, link: Link, size_bytes: usize) -> TransmissionTime {
+        self.0.channel_config(link).transmission(size_bytes)
     }
 }
 
@@ -582,10 +667,9 @@ impl PartialEq for ScheduledEvent {
 
 impl Eq for ScheduledEvent {}
 
-/// Phase 1 of the concurrent-composition plan (`docs/concurrent-composition-plan.md`) at the
-/// switchboard level: session routing (tests T3, T4 and T5 of §8) and the deadlock report (§5.2).
-/// They drive `send`, `deliver_next`, `try_recv*` and `park*` directly with explicit sessions, so
-/// they need no fork API.
+/// Tests of the switchboard on its own: session routing and the deadlock report. They drive
+/// `send`, `deliver_next`, `try_recv*` and `park*` directly with explicit sessions, so they need no
+/// fork API.
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -636,7 +720,7 @@ mod tests {
         (Waker::from(Arc::clone(&counter)), counter)
     }
 
-    /// T3: isolation under adversarial ordering. On one link, session B's packet is sent and
+    /// Isolation under adversarial ordering. On one link, session B's packet is sent and
     /// delivered before session A's, while the receiver is already waiting in A. B's delivery
     /// neither wakes A's waiter nor reaches A's mailbox, and each session receives exactly its own
     /// packet. On a switchboard keyed by link alone, A's receive would take B's packet.
@@ -683,7 +767,7 @@ mod tests {
         Timed,
     }
 
-    /// T4: party 2 waits in two sessions at once, both on the link 0 → 2: a receive-any from
+    /// Party 2 waits in two sessions at once, both on the link 0 → 2: a receive-any from
     /// parties 0 and 1 in session A, and a receive from party 0 in session B. A's packet arrives
     /// and the receive-any resolves. B's packet then arrives on 0 → 2, and B's waiter must still
     /// be parked to be woken.
@@ -756,7 +840,7 @@ mod tests {
         }
     }
 
-    /// T5: early arrival. A packet sent in session 0.3 before the receiver has ever used that
+    /// Early arrival. A packet sent in session 0.3 before the receiver has ever used that
     /// session is buffered, and is received once the receiver asks for it. Neither the root
     /// session nor the parent session 0 sees it.
     #[test]
@@ -862,8 +946,8 @@ mod tests {
 
     /// Deadlock report, recipient waiting only in other sessions: party 0's packet reaches party 1
     /// in session 4, while party 1 waits for party 0 in session 3. This is the symptom of the
-    /// parties' fork counters going out of step (invariant I1); test T10 checks the same through
-    /// `simulate` in Phase 2.
+    /// parties' fork counters going out of step, i.e. of parties not performing the same sequence
+    /// of forks; `tests/concurrent.rs` checks the same through `simulate`.
     #[test]
     fn deadlock_report_names_the_orphaned_session_and_where_the_recipient_waits() {
         let mut sb = switchboard();
@@ -896,8 +980,8 @@ mod tests {
     }
 
     /// Deadlock report, recipient not waiting: party 1 never consumes party 0's two packets, while
-    /// party 0 waits for a reply from party 1. In Phase 1 every unfinished party has a parked
-    /// receive, so party 1 has finished.
+    /// party 0 waits for a reply from party 1. Here every unfinished party has a parked receive,
+    /// so party 1 has finished.
     #[test]
     fn deadlock_report_flags_packets_whose_recipient_is_not_waiting() {
         let mut sb = switchboard();

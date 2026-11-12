@@ -20,8 +20,15 @@ use crate::{
 /// `parties` is held sorted, so column `i` of the extraction matrix refers to the same dealer at
 /// every party.
 pub struct PassiveRandDoubleShr<const LIMBS: usize, F> {
+    /// The number of passive corruptions tolerated, which is also the degree of the lower half of
+    /// every double sharing; the upper half has degree `2t`.
     t: usize,
+    /// The parties of the run, sorted, so that column `i` of `vandermonde` is the same dealer at
+    /// every party.
     parties: Vec<PartyId>,
+    /// The extraction matrix, built once by `new`: `n - t` rows, one column per dealer in the
+    /// order of `parties`. The same matrix is applied to both halves, which is what makes the
+    /// `k`-th outputs of the two halves share a secret.
     vandermonde: Matrix<F>,
 }
 

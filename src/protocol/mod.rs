@@ -206,7 +206,7 @@ pub trait RandEnvironment: Environment {
 /// of different children never mix, and whatever else the environment holds, split or shared as
 /// its implementation chooses.
 ///
-/// [`GeneralEnv`] implements it when its network implements [`ForkNetwork`] and its RNG
+/// [`GeneralEnvironment`] implements it when its network implements [`ForkNetwork`] and its RNG
 /// implements [`SeedableRng`].
 pub trait ForkEnvironment: Environment {
     /// Returns a child environment, and advances this environment's fork count.
@@ -220,9 +220,9 @@ pub trait ForkEnvironment: Environment {
     /// this means every party must run every `Join` and `JoinAll`, with the same number of
     /// sub-protocols.
     ///
-    /// For [`GeneralEnv`], the child's RNG is seeded from this environment's RNG. A run with
-    /// seeded RNGs therefore stays reproducible, but forking draws from this RNG, so it changes
-    /// the values sampled from it afterwards.
+    /// For [`GeneralEnvironment`], the child's RNG is seeded from this environment's RNG. A run
+    /// with seeded RNGs therefore stays reproducible, but forking draws from this RNG, so it
+    /// changes the values sampled from it afterwards.
     fn fork(&mut self) -> Self;
 }
 

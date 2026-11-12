@@ -19,21 +19,21 @@ distribution to a sliver.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/comparison/comparison_dark_bandwidth_limited.png">
-  <img alt="Bandwidth-limited scenario: the simulator under-predicts both protocols, by 3.4 % for PingPong and 10.6 % for BulkTransfer, against extremely tight real distributions." src="../../docs/comparison/comparison_bandwidth_limited.png">
+  <img alt="Bandwidth-limited scenario: the simulator under-predicts both protocols, by 1.8 % for PingPong and 10.6 % for BulkTransfer, against extremely tight real distributions." src="../../docs/comparison/comparison_bandwidth_limited.png">
 </picture>
 
 ### Window-limited, loss-less
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/comparison/comparison_dark_window_limited.png">
-  <img alt="Window-limited scenario: the nominal prediction over-predicts by 2.3 % and 7.0 %; calibrating the window brings both to within 2.1 %." src="../../docs/comparison/comparison_window_limited.png">
+  <img alt="Window-limited scenario: the nominal prediction over-predicts by 1.9 % and 7.1 %; calibrating the window brings both to within 1.7 %." src="../../docs/comparison/comparison_window_limited.png">
 </picture>
 
 ### Lossy
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/comparison/comparison_dark_lossy.png">
-  <img alt="Lossy scenario: PingPong is predicted within 0.7 %, while BulkTransfer is over-predicted by 400 % against a real distribution spanning 0.7 to 7.1 seconds." src="../../docs/comparison/comparison_lossy.png">
+  <img alt="Lossy scenario: PingPong is over-predicted by 10.3 % against the real median and 2.3 % against the mean, while BulkTransfer is over-predicted by 379 % against a real distribution spanning 0.7 to 6.3 seconds." src="../../docs/comparison/comparison_lossy.png">
 </picture>
 
 ### Summary
@@ -42,14 +42,14 @@ Positive means the simulator over-predicts (predicted slower than reality). Part
 
 | Scenario | Protocol | Prediction | Sim (s) | Real median (s) | Real mean (s) | Real min–max (s) | vs median | vs mean |
 |---|---|---|---|---|---|---|---|---|
-| bandwidth-limited | ping_pong | nominal | 3.512 | 3.634 | 3.634 | 3.625–3.641 | −3.4 % | −3.4 % |
-| bandwidth-limited | bulk_transfer | nominal | 4.410 | 4.933 | 4.933 | 4.929–4.937 | −10.6 % | −10.6 % |
-| window-limited | ping_pong | nominal | 3.098 | 3.029 | 3.028 | 3.023–3.033 | +2.3 % | +2.3 % |
-| window-limited | ping_pong | **calibrated** | 3.091 | 3.029 | 3.028 | 3.023–3.033 | **+2.1 %** | +2.1 % |
-| window-limited | bulk_transfer | nominal | 1.744 | 1.630 | 1.626 | 1.445–1.635 | +7.0 % | +7.3 % |
-| window-limited | bulk_transfer | calibrated | 1.630 | 1.630 | 1.626 | 1.445–1.635 | +0.0 %* | +0.3 %* |
-| lossy | ping_pong | nominal | 3.358 | 3.380 | 3.454 | 3.025–4.803 | −0.7 % | −2.8 % |
-| lossy | bulk_transfer | nominal | 6.125 | 1.225 | 1.969 | 0.727–7.108 | +399.8 % | +211.1 % |
+| bandwidth-limited | ping_pong | nominal | 3.512 | 3.575 | 3.575 | 3.569–3.587 | −1.8 % | −1.8 % |
+| bandwidth-limited | bulk_transfer | nominal | 4.410 | 4.935 | 4.934 | 4.929–4.937 | −10.6 % | −10.6 % |
+| window-limited | ping_pong | nominal | 3.098 | 3.040 | 3.039 | 3.029–3.049 | +1.9 % | +1.9 % |
+| window-limited | ping_pong | **calibrated** | 3.091 | 3.040 | 3.039 | 3.029–3.049 | **+1.7 %** | +1.7 % |
+| window-limited | bulk_transfer | nominal | 1.744 | 1.629 | 1.629 | 1.625–1.632 | +7.1 % | +7.1 % |
+| window-limited | bulk_transfer | calibrated | 1.629 | 1.629 | 1.629 | 1.625–1.632 | +0.0 %* | +0.0 %* |
+| lossy | ping_pong | nominal | 3.358 | 3.044 | 3.282 | 3.028–4.118 | +10.3 % | +2.3 % |
+| lossy | bulk_transfer | nominal | 6.125 | 1.279 | 1.702 | 0.729–6.347 | +378.9 % | +259.8 % |
 
 \* **Circular, and not evidence.** The calibrated window was recovered from `bulk_transfer`'s own
 median, so it agrees with it by construction. The out-of-sample check is the calibrated `ping_pong`
@@ -59,18 +59,23 @@ row, which was not used to fit the window.
 
 **The loss formula's error is confined to bandwidth-dominated protocols.** This is the sharpest
 result here, and it is more specific than "treat lossy timings as order-of-magnitude". `PingPong`
-under 1 % loss is predicted to within 0.7 %, while `BulkTransfer` on the *same shaped link* is over-
-predicted by 400 %. The `√(3/2p)` term enters only through throughput, so a protocol whose running
-time is dominated by round trips barely touches it, and one dominated by serialization is priced
-almost entirely by it.
+under 1 % loss is predicted to within 2.3 % of the real mean, while `BulkTransfer` on the *same
+shaped link* is over-predicted by 260 % against the mean and 379 % against the median. The
+`√(3/2p)` term enters only through throughput, so a protocol whose running time is dominated by
+round trips barely touches it, and one dominated by serialization is priced almost entirely by it.
+
+`PingPong`'s error against the median (+10.3 %) is larger than against the mean because its median
+sits on the loss-less floor: 26 of the 50 runs finished within 3.1 s, and the loss-less
+window-limited runs, on the same RTT and bandwidth, took 3.029–3.049 s. The mean also counts the
+slower runs, and it is a mean that the formula predicts (below).
 
 **Lossy runs are not reproducible**, which is the reason this harness repeats rather than reporting
-a single number: `bulk_transfer` spanned 0.727 s to 7.108 s across 50 identical trials (CV 75 %).
+a single number: `bulk_transfer` spanned 0.729 s to 6.347 s across 50 identical trials (CV 69 %).
 Note the mean sits well above the median — the distribution is strongly right-skewed, so the
-mean-based error (+211 %) and the median-based one (+400 %) tell different stories. The formula
+mean-based error (+260 %) and the median-based one (+379 %) tell different stories. The formula
 claims to predict an ensemble *mean*, which is why both are tabulated.
 
-**The bandwidth-limited regime under-predicts**, by 3.4 % (`ping_pong`) and 10.6 % (`bulk_transfer`).
+**The bandwidth-limited regime under-predicts**, by 1.8 % (`ping_pong`) and 10.6 % (`bulk_transfer`).
 The simulator prices an idealized steady-state throughput, and the shaped link's real goodput falls a
 little short of it — from protocol framing and the `tc` rate limiter's own accounting the model does
 not reproduce — a shortfall that grows with bytes moved, so the bulk transfer's gap exceeds the
@@ -78,7 +83,7 @@ latency-bound ping-pong's. It is not TCP slow start: at 1 Mbit/s the bandwidth-d
 12.5 KB, below Linux's initial congestion window, so the pipe fills within the first round trip. This
 is left uncorrected deliberately — it is overhead a short MPC protocol genuinely pays.
 
-**Loss-less runs are extremely reproducible** — CV of 0.0–0.1 % over 50 repetitions — so the
+**Loss-less runs are extremely reproducible** — CV of 0.0–0.2 % over 50 repetitions — so the
 distributions in the first two figures are honestly that tight, not a rendering artifact.
 
 ## Quick start

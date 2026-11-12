@@ -50,6 +50,8 @@ pub trait FiniteField<const LIMBS: usize>:
     fn inverse(&self) -> Result<Self, FieldError>;
 }
 
+/// Implements [`Abbreviate`] for each of the given field types, with the trace label
+/// `field elem.`.
 macro_rules! impl_field_abbreviation {
     ($($t:ty),+ $(,)?) => {
         $(impl Abbreviate for $t {

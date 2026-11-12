@@ -12,6 +12,7 @@
 //! and [`wan`](crate::net::simulation::channel::SimpleNetworkConfig::wan) presets, and
 //! [`ChannelConfigBuilder`] builds custom per-link configurations.
 
+use crate::net::simulation::switchboard::TransmissionTime;
 use crate::net::simulation::{Result, SimulationError};
 use crate::net::PartyId;
 use std::time::Duration;
@@ -28,7 +29,9 @@ use std::time::Duration;
 /// orientation.
 #[derive(Hash, PartialEq, Eq, Copy, Clone, Debug)]
 pub struct Link {
+    /// The party that sends on this link.
     sender: PartyId,
+    /// The party that receives on this link.
     recipient: PartyId,
 }
 
@@ -214,6 +217,8 @@ impl ChannelConfig {
         }
     }
 
+    /// The throughput of the channel with no loss, in bits per second: the bandwidth, or one
+    /// window per RTT if that is lower.
     fn lossless_throughput(&self) -> f64 {
         let rtt = self.rtt.to_secs();
         let wind_size = 8.0 * self.window_size.value() as f64;
@@ -223,6 +228,11 @@ impl ChannelConfig {
         f64::min(bandwidth, max_throughput)
     }
 
+    /// The throughput of the channel under loss, in bits per second: `sqrt(3 / (2p))` segments of
+    /// one MSS per RTT, for a loss fraction `p`. See [`PackageLoss`] for the source of the formula
+    /// and how far it can be trusted here.
+    ///
+    /// Only meaningful for `p > 0`: at `p = 0` it is infinite.
     fn lossy_throughput(&self) -> f64 {
         let mss = self.mss.value() as f64;
         let loss_term = f64::sqrt(3.0 / (2.0 * self.package_loss.value()));
@@ -230,6 +240,11 @@ impl ChannelConfig {
         loss_term * (8.0 * mss / rtt)
     }
 
+    /// The time from sending a message of `n` bytes over a TCP channel to its arrival: its size
+    /// with headers over the throughput, plus one one-way hop (RTT/2).
+    ///
+    /// The throughput is the loss-less one, or the lossy one when the channel loses packets and
+    /// that is lower.
     fn recv_time_tcp(&self, n: usize) -> Duration {
         let total_size_bits = self.size_with_header_bits(n);
         let mut actual_throughput = self.lossless_throughput();
@@ -244,6 +259,8 @@ impl ChannelConfig {
         Duration::from_secs_f64(t)
     }
 
+    /// The size in bits of `n_bytes` bytes once split into segments of at most one MSS, each with
+    /// a TCP/IP header of [`TCP_IP_HEADER_SIZE`](Self::TCP_IP_HEADER_SIZE) bytes.
     fn size_with_header_bits(&self, n_bytes: usize) -> f64 {
         let num_packets = f64::ceil(n_bytes as f64 / self.mss.value() as f64);
         8.0 * (n_bytes as f64 + num_packets * Self::TCP_IP_HEADER_SIZE as f64)
@@ -254,6 +271,24 @@ impl ChannelConfig {
         match self.net_type {
             NetworkType::Tcp => self.recv_time_tcp(n_bytes),
             NetworkType::Instant => Duration::ZERO,
+        }
+    }
+
+    /// Splits [`message_delay`](Self::message_delay) into the two parts of a transfer:
+    /// `(serialization, propagation)`.
+    ///
+    /// *Serialization* is the time the link is busy pushing the message's bits out, at the
+    /// channel's throughput. While it lasts, the link cannot start another message. *Propagation*
+    /// is the one-way latency, half the RTT, which every message pays whatever else is on the
+    /// link. The two always add up to `message_delay(n_bytes)` exactly.
+    pub fn transmission(&self, n_bytes: usize) -> TransmissionTime {
+        match self.net_type {
+            NetworkType::Tcp => {
+                let total = self.recv_time_tcp(n_bytes);
+                let propagation = Duration::from_secs_f64(self.rtt.to_secs() / 2.0).min(total);
+                TransmissionTime::new(total - propagation, propagation)
+            }
+            NetworkType::Instant => TransmissionTime::new(Duration::ZERO, Duration::ZERO),
         }
     }
 }
@@ -276,11 +311,17 @@ pub struct ChannelConfigBuilder {
 }
 
 impl ChannelConfigBuilder {
+    /// Default network type: a TCP channel.
     const DEFAULT_NET_TYPE: NetworkType = NetworkType::Tcp;
+    /// Default bandwidth: 1 Mbps.
     const DEFAULT_BANDWIDTH: Bandwidth = Bandwidth(1000000);
+    /// Default RTT: 100 ms.
     const DEFAULT_RTT: Rtt = Rtt(100);
+    /// Default MSS: 1460 bytes, the MSS of a 1500-byte Ethernet MTU.
     const DEFAULT_MSS: Mss = Mss(1460);
+    /// Default loss: none.
     const DEFAULT_PACKAGE_LOSS: PackageLoss = PackageLoss(0.0);
+    /// Default window size: 64 KiB.
     const DEFAULT_WINDOW_SIZE: WindowSize = WindowSize(65536);
 
     /// Sets the network type to the provided for the configuration.
@@ -378,6 +419,7 @@ impl Default for ChannelConfigBuilder {
 /// the MPC literature.
 #[derive(Debug, Clone)]
 pub struct SimpleNetworkConfig {
+    /// The configuration of every link between two different parties.
     channel_config: ChannelConfig,
 }
 

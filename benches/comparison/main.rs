@@ -103,15 +103,21 @@ impl Which {
 
 /// One measurement: a single party's elapsed time for one protocol run on one backend.
 struct Row {
+    /// The network scenario the run was made under.
     scenario: Scenario,
+    /// The protocol that was run.
     protocol: Which,
     /// `real` or `sim`.
     source: &'static str,
     /// `shaped` for a real run; `nominal` or `calibrated` for a simulated one.
     variant: String,
+    /// The index of the party whose time this is.
     party: usize,
     /// 1-based for real runs; 0 for simulated ones, which are deterministic and run once.
     repetition: usize,
+    /// The party's protocol span, connection setup excluded: wall-clock time around
+    /// `Protocol::execute` for a real run, and the virtual time between its `Start` and `Stop`
+    /// events for a simulated one.
     elapsed: Duration,
     /// The window the row was produced under. For a real run this is the scenario's nominal value
     /// (what the simulator *would* assume), not a measured one.

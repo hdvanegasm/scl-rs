@@ -1116,7 +1116,8 @@ trait DeltaEnv: Environment {
     fn delta(&self) -> u64;
 }
 
-/// Concrete capability-carrying environment: like [`GeneralEnv`], but it also holds a `delta`.
+/// Concrete capability-carrying environment: like [`GeneralEnvironment`], but it also holds a
+/// `delta`.
 struct GeneralDeltaEnv<N: Network> {
     network: N,
     delta: u64,

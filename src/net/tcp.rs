@@ -27,8 +27,17 @@ use tokio_rustls::TlsStream;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
+/// Size of the length prefix of a frame: the body's length as a little-endian `u64`.
+///
+/// The reader's `LengthDelimitedCodec` is built with this same length (see
+/// [`TcpNetwork::create`]), so the two must change together.
 const LENGTH_PREFIX_BYTES: usize = 8;
 
+/// Encodes `packet`, sent in `session`, as one frame on the wire: the length prefix, then the
+/// body, which is `(session path, packet)` serialized with `postcard`.
+///
+/// Only the session's path is sent, not its root tag: both ends were created with the same root
+/// tag, and [`decode_frame`] adds it back.
 fn encode_frame(session: &SessionId, packet: &Packet) -> Result<Vec<u8>> {
     let body = postcard::to_allocvec(&(session.path(), &packet))?;
     let mut frame = Vec::with_capacity(LENGTH_PREFIX_BYTES + body.len());
@@ -37,41 +46,69 @@ fn encode_frame(session: &SessionId, packet: &Packet) -> Result<Vec<u8>> {
     Ok(frame)
 }
 
+/// Decodes the body of a frame, whose length prefix the codec has already removed, into the
+/// session it was sent in and its packet.
+///
+/// The session is rebuilt from the path in the frame and this node's `root_tag`.
 fn decode_frame(root_tag: [u8; 32], body: &[u8]) -> Result<(SessionId, Packet)> {
     let (path, elements) = postcard::from_bytes(body)?;
     let sid = SessionId::new(root_tag, path);
     Ok((sid, Packet::new(elements)))
 }
 
+/// A connection to one peer: TLS over TCP, on either the client or the server side.
 type Socket = TlsStream<TcpStream>;
 
+/// A command to the writer task of one peer.
 #[derive(Debug)]
 enum WriterCmd {
+    /// Writes this frame, already encoded, to the peer.
     Frame(Vec<u8>),
+    /// Shuts the connection down, after the frames queued before it, and sends the result back.
     Close(oneshot::Sender<Result<()>>),
 }
 
+/// The state of the connection to one peer.
 #[derive(Debug)]
 enum PeerState {
+    /// The connection is up.
     Open,
+    /// The connection was closed: the peer ended its stream, or this node closed it.
     Closed,
+    /// The connection failed: a read, a write or the decoding of a frame returned this error.
     Failed(String),
 }
 
+/// The packets received in one session that no receive has taken yet.
 #[derive(Debug, Default)]
 struct SessionMailbox {
+    /// The queued packets of each sender, oldest first. A `BTreeMap`, so that a receive from any
+    /// party looks at the senders in ascending order of their ids.
     queue: BTreeMap<PartyId, VecDeque<Packet>>,
+    /// The waker of the receive waiting in this session, if there is one. There is at most one: a
+    /// session has one handle, and a receive takes it by `&mut`.
     waiter: Option<Waker>,
 }
 
+/// The state shared by a node's handles and its reader and writer tasks: the received packets of
+/// every session, and the state of every peer's connection.
 #[derive(Default, Debug)]
 struct Mailboxes {
+    /// The mailbox of each session, created by the first packet that arrives in it or the first
+    /// receive that waits in it, whichever comes first.
     sessions: HashMap<SessionId, SessionMailbox>,
+    /// The state of the connection to each peer. This node itself is not in it.
     peers: HashMap<PartyId, PeerState>,
+    /// The sessions whose handle was dropped, or closed if it was a forked handle. Packets that
+    /// arrive for them are discarded.
     retired: HashSet<SessionId>,
 }
 
 impl Mailboxes {
+    /// Files `packet` from `sender` under `session`, and returns the waker of the receive waiting
+    /// in that session, if there is one, for the caller to wake once the lock is released.
+    ///
+    /// A packet for a retired session is discarded.
     fn deliver(&mut self, sender: PartyId, session: SessionId, packet: Packet) -> Option<Waker> {
         if self.retired.contains(&session) {
             None
@@ -82,6 +119,11 @@ impl Mailboxes {
         }
     }
 
+    /// Records that the connection to `peer` ended in state `end`, and returns the waker of every
+    /// receive waiting in any session, so that each can see the end.
+    ///
+    /// Only the first end is kept: a connection that is no longer open keeps the state it ended
+    /// in.
     fn end_peer(&mut self, peer: PartyId, end: PeerState) -> Vec<Waker> {
         if let Some(state @ PeerState::Open) = self.peers.get_mut(&peer) {
             *state = end;
@@ -92,6 +134,8 @@ impl Mailboxes {
             .collect()
     }
 
+    /// The error that an operation on the connection to `peer` reports: `None` while it is open,
+    /// and for a party with no connection (this node itself).
     fn peer_error(&self, peer: PartyId) -> Option<NetworkError> {
         match self.peers.get(&peer)? {
             PeerState::Open => None,
@@ -103,6 +147,11 @@ impl Mailboxes {
         }
     }
 
+    /// Takes the oldest packet from `sender` queued in `session`.
+    ///
+    /// With none queued, it returns the connection's error if the connection to `sender` has
+    /// ended, and otherwise registers `cx`'s waker as the session's waiter and returns
+    /// `Pending`. Packets that arrived before the connection ended are still returned first.
     fn poll_recv_from(
         &mut self,
         session: &SessionId,
@@ -126,6 +175,12 @@ impl Mailboxes {
         Poll::Pending
     }
 
+    /// Takes the oldest packet queued in `session` from the sender with the lowest id that has
+    /// one, together with that sender.
+    ///
+    /// With none queued, it returns [`NetworkError::ConnectionClosed`] if no peer's connection is
+    /// open any more, and otherwise registers `cx`'s waker as the session's waiter and returns
+    /// `Pending`.
     fn poll_recv_any(
         &mut self,
         session: &SessionId,
@@ -151,12 +206,19 @@ impl Mailboxes {
         Poll::Pending
     }
 
+    /// Retires session `sid`: drops the packets queued in it, and discards those that arrive for
+    /// it later.
     fn retire(&mut self, sid: &SessionId) {
         self.sessions.remove(sid);
         self.retired.insert(sid.clone());
     }
 }
 
+/// The reader task of the connection to `peer`.
+///
+/// It decodes each frame that arrives, files its packet under the frame's session, and wakes the
+/// receive waiting there. When the stream ends, or a frame fails to arrive or to decode, it
+/// records how the connection ended and wakes every waiting receive, then exits.
 async fn read_loop(
     peer: PartyId,
     mut frames: FramedRead<ReadHalf<Socket>, LengthDelimitedCodec>,
@@ -195,6 +257,14 @@ async fn read_loop(
     wakers.into_iter().for_each(Waker::wake);
 }
 
+/// The writer task of the connection to `peer`.
+///
+/// It writes the frames it is sent, in order, each flushed before the next. It exits when:
+///
+/// - a write fails: it records the failure and wakes every waiting receive;
+/// - it is sent [`WriterCmd::Close`]: it shuts the connection down and sends back the result;
+/// - every sender of `commands_receiver` is dropped, because the last handle was: it shuts the
+///   connection down, so the peer sees it close.
 async fn write_loop(
     peer: PartyId,
     mut socket: WriteHalf<Socket>,
@@ -228,11 +298,18 @@ async fn write_loop(
     let _ = socket.shutdown().await;
 }
 
+/// What every handle forked from one [`TcpNetwork::create`] call shares: the connections and the
+/// received packets. Dropping it, with the last handle, aborts the reader tasks.
 #[derive(Debug, Default)]
 struct TcpCore {
+    /// Every party of the network, this node included.
     parties: Vec<PartyId>,
+    /// The command queue of each peer's writer task.
     writers: HashMap<PartyId, UnboundedSender<WriterCmd>>,
+    /// The received packets and the state of each connection, shared with the reader and writer
+    /// tasks.
     mailboxes: Arc<Mutex<Mailboxes>>,
+    /// Handles to abort the reader tasks with, on [`close`](Network::close) or on drop.
     readers: Vec<AbortHandle>,
 }
 
@@ -246,15 +323,39 @@ impl Drop for TcpCore {
 
 /// A real-network backend connecting this node to every party over mutually authenticated TLS.
 ///
-/// Each peer connection is split into a `PeerWriter` and a `PacketStream`, both keyed by the peer's
-/// [`PartyId`]. The party's connection to itself is an in-process loop-back channel rather than a
-/// socket. Receiving from a single peer polls that peer's stream; [`Network::recv_any`] polls all of
-/// them at once through the underlying `StreamMap`.
+/// A `TcpNetwork` is a handle on one session (see [`SessionId`]) over connections that every
+/// handle forked from the same [`create`](TcpNetwork::create) call shares. `create` returns the
+/// handle on the root session, and [`fork`](ForkNetwork::fork) returns a handle on a child
+/// session, so independent sub-protocols can run at the same time over the same connections
+/// without mixing their messages.
+///
+/// Each peer connection is served by two tasks on the tokio runtime:
+///
+/// - a reader task, which decodes each incoming frame, files its packet under the frame's session
+///   and the sending peer, and wakes the receive waiting in that session, if there is one;
+/// - a writer task, which writes the frames queued for that peer, in the order they were queued.
+///
+/// A receive takes only packets filed under its own handle's session. A packet that arrives in a
+/// session this node has not forked yet is kept until it does. The node's connection to itself is
+/// not a socket: a send to itself files the packet directly under the sending handle's session.
+///
+/// # Lifecycle
+///
+/// Dropping or closing a forked handle retires its session: the packets queued in it are dropped,
+/// and frames that arrive for it later are discarded. [`close`](Network::close) on the root handle
+/// closes every connection, after the frames already queued are written. When the last handle is
+/// dropped without `close`, the reader tasks are aborted, and each writer task writes what is
+/// queued, shuts its connection down and exits, so the peers see the connections close.
 pub struct TcpNetwork {
     /// ID of the party running this node.
     local_pid: PartyId,
+    /// The session this handle sends, receives and is retired in.
     session: SessionId,
+    /// The connections and received packets, shared with every handle forked from the same
+    /// [`create`](TcpNetwork::create) call.
     core: Arc<TcpCore>,
+    /// The fork index of the next session forked from this handle; see
+    /// [`fork`](ForkNetwork::fork).
     next_child: u32,
 }
 
@@ -420,8 +521,8 @@ impl TcpNetwork {
         Ok(size)
     }
 
-    /// Receives one packet from each party in the network, including this node's own loop-back
-    /// channel, ordered by ascending party ID.
+    /// Receives one packet from each party in the network, including this node itself, in this
+    /// handle's session, ordered by ascending party ID.
     pub async fn recv(&mut self) -> Result<Vec<Packet>> {
         let mut packets = Vec::new();
         for party in self.core.parties.clone() {
@@ -570,8 +671,21 @@ impl Network for TcpNetwork {
         .await
     }
 
-    /// Closes the network by closing each channel.
-    /// Closes the network.
+    /// Closes this handle.
+    ///
+    /// On a forked handle, this retires the handle's session only (see
+    /// [*Lifecycle*](TcpNetwork#lifecycle)); the connections stay open for the other sessions.
+    ///
+    /// On the root handle, this closes every connection: each writer task writes the frames
+    /// already queued, shuts its connection down and exits, and then the reader tasks are stopped.
+    /// Afterwards, in every session, a receive from a peer first takes the packets already filed
+    /// and then returns [`NetworkError::ConnectionClosed`], and a send to a peer returns
+    /// `ConnectionClosed(Some(peer))`.
+    ///
+    /// # Error
+    ///
+    /// Returns the error of a writer task that failed to shut its connection down; if several
+    /// failed, one of their errors.
     async fn close(&mut self) -> Result<()> {
         if self.session.depth() > 0 {
             // A forked handle only gives up its own session.
@@ -903,8 +1017,8 @@ mod tests {
     async fn recv_any_collects_from_multiple_peers_over_tls() {
         // Three parties over real mTLS: party 0 is the collector, parties 1 and 2 each send their
         // own id to it. The collector gathers both with `recv_any`, never naming a sender. Unlike
-        // the two-party `tls_public_api_correctness` test, this drives `recv_any`'s `StreamMap`
-        // over more than two live sockets, which is where fairness across peers actually matters.
+        // the two-party `tls_public_api_correctness` test, this has `recv_any` take packets that
+        // more than one peer's reader task filed, over more than one live socket.
         const N_PARTIES: usize = 3;
         let temp_dir = tempfile::tempdir().unwrap();
         write_party_certs(&temp_dir, N_PARTIES);
@@ -1017,7 +1131,7 @@ mod tests {
         PartyId::from(id)
     }
 
-    /// T3: on one link, session B's frame is written before session A's, while the receiver
+    /// On one link, session B's frame is written before session A's, while the receiver
     /// already waits in A. Each session receives its own packet.
     #[tokio::test]
     async fn sessions_on_one_tls_link_receive_only_their_own_packets() {
@@ -1039,7 +1153,7 @@ mod tests {
         .await;
     }
 
-    /// T5: a frame for session 0.3 arrives before the receiver has forked that session. It waits,
+    /// A frame for session 0.3 arrives before the receiver has forked that session. It waits,
     /// and the receiver gets it once it forks down to 0.3.
     #[tokio::test]
     async fn a_frame_for_a_session_not_yet_forked_waits_for_the_fork() {

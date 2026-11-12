@@ -11,8 +11,11 @@ use crate::{
 
 /// A multiplication triple: sharings of `a`, `b` and `a · b`, all of degree `t`.
 pub struct ShamirTriple<const LIMBS: usize, F> {
+    /// The sharing of `a`.
     a: ShamirSS<LIMBS, F>,
+    /// The sharing of `b`.
     b: ShamirSS<LIMBS, F>,
+    /// The sharing of the product `a · b`.
     mult: ShamirSS<LIMBS, F>,
 }
 
@@ -55,10 +58,16 @@ impl<const LIMBS: usize, F> ShamirTriple<LIMBS, F> {
 /// [`super::open_king::BatchedPassiveOpenToKing`]), which is what keeps
 /// the round count independent of how many triples are produced.
 pub struct PassiveTriple<const LIMBS: usize, F> {
+    /// This party's share of the random `a` of each triple.
     a_shares: Vec<ShamirSS<LIMBS, F>>,
+    /// This party's share of the random `b` of each triple.
     b_shares: Vec<ShamirSS<LIMBS, F>>,
+    /// This party's share of one double sharing per triple, consumed: the `i`-th masks the `i`-th
+    /// product and brings it back to degree `t`.
     double_shares: Vec<DoubleShare<LIMBS, F>>,
+    /// The parties of the run, sorted.
     parties: Vec<PartyId>,
+    /// The party that collects the masked products, reconstructs them and sends them back.
     king: PartyId,
 }
 

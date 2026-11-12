@@ -45,6 +45,8 @@ pub trait EllipticCurve<const LIMBS: usize>:
     fn is_on_curve(&self) -> bool;
 }
 
+/// Implements [`Abbreviate`] for each of the given curve-point types, with the trace label
+/// `EC elem.`.
 macro_rules! impl_ec_abbreviation {
     ($($t:ty),+ $(,)?) => {
         $(impl Abbreviate for $t {

@@ -298,7 +298,9 @@ where
 /// multiplications would mask both products with the same value and leak them, so it is consumed by
 /// [`into_parts`](DoubleShare::into_parts).
 pub struct DoubleShare<const LIMBS: usize, F> {
+    /// The degree-`t` half.
     share_t: ShamirSS<LIMBS, F>,
+    /// The degree-`2t` half, of the same secret as `share_t`.
     share_2t: ShamirSS<LIMBS, F>,
 }
 

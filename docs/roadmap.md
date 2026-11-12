@@ -104,8 +104,9 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   a `TriggeredHook` extension point (`net::simulation::hook`) for observing or steering a run.
 - **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output`; protocols compose by
   calling one another through `Protocol::execute` (which brackets each call with trace markers).
-  `Environment` is the ambient-context seam (`GeneralEnv` is the default), and `simulate<P, E>` runs
-  protocols deterministically and returns typed outputs + nesting-aware event traces.
+  `Environment` is the ambient-context seam (`GeneralEnvironment` is the default; it was
+  `GeneralEnv` until the unreleased 0.15.0), and `simulate<P, E>` runs protocols
+  deterministically and returns typed outputs + nesting-aware event traces.
 
 **Published and iterating** (see §4): releases `0.2.0`–`0.10.0` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
@@ -343,7 +344,17 @@ release rather than dribbling breaks out continuously.
         stays buffered across polls, so a dropped `recv_any` branch no longer desyncs the stream. The
         loop-back peer is an in-process `mpsc` channel; `recv_from(p)` polls a single entry. (The
         task-per-peer + shared-mpsc design originally sketched here was unnecessary — `StreamMap`
-        provides the multiplexing directly.)
+        provides the multiplexing directly. That held while each peer stream had one consumer; see
+        the next item for why 0.15.0 moves to a task per peer after all.)
+  - [x] **`TcpNetwork` sessions: one reader and one writer task per peer (unreleased, 0.15.0).**
+        Concurrent composition (`docs/concurrent-composition-plan.md`, decision C-4) makes several
+        sessions consume one peer stream, which the `StreamMap` design above did not have to
+        handle. Readers: tokio I/O keeps only the last waker registered per direction, so two
+        sessions polling the same stream in turn would lose a wake-up; one reader task per peer
+        files each frame under its session in a shared mailbox instead. Writers: dropping a send
+        mid-`write_all`, as a fail-fast `Join` does to a sibling, would leave a partial frame on a
+        stream other sessions share; a send now enqueues one whole frame for the peer's writer task.
+        The loop-back peer files straight into the mailbox. Plan §5.3; `src/net/tcp.rs`.
   - [x] **Straggler / virtual-time regression test (sim).** Pins the property that a message from a
         slow party delivered *after* the receiver already passed its quorum does not distort the
         receiver's virtual time (delivery bumps `clock` in `deliver_next`, but it is inert once the

@@ -70,7 +70,10 @@ pub trait TriggeredHook: Send + Sync {
 /// assert_eq!(metrics.total_data(), 0);
 /// ```
 pub struct MetricHook {
+    /// The bytes sent by all parties together, self-sends excluded.
     total_data: Arc<Mutex<usize>>,
+    /// The bytes sent by each party, self-sends excluded. A party that never sent to another has
+    /// no entry.
     total_data_per_party: Arc<Mutex<HashMap<PartyId, usize>>>,
 }
 

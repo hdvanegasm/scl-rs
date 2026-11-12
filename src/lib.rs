@@ -24,8 +24,9 @@
 //! - **Networking** — point-to-point channels over TCP, secured with **mutual TLS** (mTLS, via
 //!   `tokio-rustls`): each party authenticates the other's certificate, not just the server's.
 //! - **A typed protocol framework** — write a protocol once as an `async` state machine; protocols
-//!   compose by calling one another and using each other's *typed* return values. Ships with
-//!   generic protocols for dealing and opening shares that work over any `LinearShare` scheme.
+//!   compose by calling one another and using each other's *typed* return values, either one after
+//!   another or concurrently with the `Join` and `JoinAll` combinators. Ships with generic
+//!   protocols for dealing and opening shares that work over any `LinearShare` scheme.
 //! - **A deterministic, discrete-event simulator** — run protocols on a virtual clock with configurable
 //!   latency and bandwidth, get reproducible results and per-party event traces, with no sockets or
 //!   threads. The simulator and a real deployment share one `Network` trait, so a protocol written for
@@ -109,6 +110,93 @@
 //! let their_id: usize = SendRecvProtocol.execute(&mut env).await?;
 //! ```
 //!
+//! ### Running sub-protocols concurrently
+//!
+//! Sub-protocols called with `execute` run one after another, so a party waits for the sum of their
+//! running times even when they are independent. The [`Join`](protocol::concurrent::Join) and
+//! [`JoinAll`](protocol::concurrent::JoinAll) combinators run them concurrently instead, so their
+//! round trips overlap rather than add up:
+//!
+//! - `Join((p0, p1, …))` runs a tuple of 2 to 6 protocols, of possibly different types, and outputs
+//!   the tuple of their outputs.
+//! - `JoinAll(vec![p0, p1, …])` runs any number of protocols of one type, and outputs a `Vec` of
+//!   their outputs in input order. Protocols of different types fit in one `JoinAll` once boxed
+//!   to a common output type with [`Protocol::boxed`](protocol::Protocol::boxed).
+//!
+//! Both are protocols themselves: they are called with `execute` like any other, and they nest.
+//! They need an environment that implements [`ForkEnvironment`](protocol::ForkEnvironment), as
+//! `GeneralEnvironment` does on both the simulator and a real TLS network. Each sub-protocol runs
+//! on a forked child environment, in its own session, so the messages of different sub-protocols
+//! never mix, even over the same link:
+//!
+//! ```rust
+//! # use scl_rs::net::{Network, Packet};
+//! # use scl_rs::protocol::Environment;
+//! # pub struct SendRecvProtocol;
+//! #
+//! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
+//! #     type Output = usize;
+//! #     async fn run(self, env: &mut E) -> Result<usize, Error> {
+//! #         let mut packet = Packet::empty();
+//! #         packet.write(&env.network().local_party().as_usize())?;
+//! #
+//! #         let other = env.network().other()?;
+//! #         env.network_mut().send_to(other, &packet).await?;
+//! #
+//! #         let received = env.network_mut().recv_from(other).await?;
+//! #         env.network_mut().close().await?;
+//! #
+//! #         Ok(received.read(0)?)
+//! #     }
+//! #     fn id(&self) -> ProtocolId { ProtocolId::from("SendRecvProtocol") }
+//! # }
+//! #
+//! use scl_rs::protocol::concurrent::{Join, JoinAll};
+//! use scl_rs::protocol::{Error, ForkEnvironment, Protocol, ProtocolId};
+//!
+//! pub struct ConcurrentExchanges;
+//!
+//! impl<E: ForkEnvironment> Protocol<E> for ConcurrentExchanges {
+//!     type Output = ((usize, usize), Vec<usize>);
+//!
+//!     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+//!         // Two exchanges at once; the outputs come back as a tuple.
+//!         let pair = Join((SendRecvProtocol, SendRecvProtocol)).execute(env).await?;
+//!         // Three more at once; the outputs come back as a `Vec`, in input order.
+//!         let all = JoinAll(vec![SendRecvProtocol, SendRecvProtocol, SendRecvProtocol])
+//!             .execute(env)
+//!             .await?;
+//!         Ok((pair, all))
+//!     }
+//!
+//!     fn id(&self) -> ProtocolId {
+//!         ProtocolId::from("ConcurrentExchanges")
+//!     }
+//! }
+//! #
+//! # use scl_rs::net::{simulation::{channel::SimpleNetworkConfig, simulator::simulate}, PartyId};
+//! # use scl_rs::protocol::GeneralEnvironment;
+//! # use rand::{rngs::StdRng, SeedableRng};
+//! # let (p0, p1) = (PartyId::from(0_usize), PartyId::from(1_usize));
+//! # let outcome = simulate(
+//! #     SimpleNetworkConfig::default(),
+//! #     vec![p0, p1],
+//! #     |_| ConcurrentExchanges,
+//! #     |party, net| GeneralEnvironment::new(net, StdRng::seed_from_u64(party.as_usize() as u64)),
+//! #     vec![],
+//! # );
+//! # assert_eq!(outcome.outputs[&p0], ((1, 1), vec![1, 1, 1]));
+//! # assert_eq!(outcome.outputs[&p1], ((0, 0), vec![0, 0, 0]));
+//! ```
+//!
+//! **Every party must run every `Join` and `JoinAll`, with the same number of sub-protocols**,
+//! including a party that takes no part in some of them: child sessions are numbered by the order
+//! of the forks, so parties that fork differently stop agreeing on them. The concurrency stays in
+//! the party's own task, with no thread spawned, so it saves waiting rather than CPU time, and it
+//! runs deterministically on the simulator. Messages sent at the same time over one link still
+//! share its bandwidth, on the simulator as on a real network. See [`protocol::concurrent`] for
+//! these rules, error handling, and when to batch a protocol instead of joining instances of it.
+//!
 //! ### Running on the simulator
 //!
 //! Pair each party with an instance of the protocol and hand them to `simulate`, along with a network
@@ -117,7 +205,7 @@
 //!
 //! ```rust
 //! # use scl_rs::net::{Network, Packet};
-//! # use scl_rs::protocol::{Environment, GeneralEnv, Error, Protocol, ProtocolId};
+//! # use scl_rs::protocol::{Environment, GeneralEnvironment, Error, Protocol, ProtocolId};
 //! # pub struct SendRecvProtocol;
 //! #
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
@@ -149,7 +237,7 @@
 //!     SimpleNetworkConfig::default(),
 //!     vec![p0, p1],
 //!     |_| SendRecvProtocol,
-//!     |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
+//!     |_, net| GeneralEnvironment::new(net, StdRng::from_rng(&mut rand::rng())),
 //!     vec![],
 //! );
 //!
@@ -226,7 +314,7 @@
 //!
 //! ```ignore
 //! use scl_rs::net::{session::derive_root_tag, NetworkConfig, TcpNetwork};
-//! use scl_rs::protocol::{GeneralEnv, Environment, Protocol};
+//! use scl_rs::protocol::{GeneralEnvironment, Environment, Protocol};
 //! use rand::{rngs::StdRng, SeedableRng};
 //! use std::path::Path;
 //!
@@ -244,7 +332,7 @@
 //!
 //!     // `create` performs the TLS handshake with every peer, so it is async.
 //!     let network = TcpNetwork::create(my_id, config, root_tag).await?;
-//!     let mut env = GeneralEnv::new(network, StdRng::from_rng(&mut rand::rng()));
+//!     let mut env = GeneralEnvironment::new(network, StdRng::from_rng(&mut rand::rng()));
 //!
 //!     // The very same protocol that ran on the simulator now runs over real TLS.
 //!     let output = SendRecvProtocol.execute(&mut env).await?;
@@ -390,7 +478,7 @@
 /// The crate's common imports, gathered for a single glob import.
 ///
 /// Most protocol code needs the same handful of items — the [`Protocol`] trait
-/// with its [`Environment`] (and the default [`GeneralEnv`]) and [`Error`], the
+/// with its [`Environment`] (and the default [`GeneralEnvironment`]) and [`Error`], the
 /// [`Network`] abstraction with [`Packet`] and [`PartyId`], the [`simulate`]
 /// entry point, the [`Join`] and [`JoinAll`] combinators with their
 /// [`ForkEnvironment`], and the core `math` traits. Instead of importing each from its
@@ -407,7 +495,7 @@
 /// [`Packet`]: crate::net::Packet
 /// [`PartyId`]: crate::net::PartyId
 /// [`simulate`]: crate::net::simulation::simulator::simulate
-/// [`GeneralEnv`]: crate::protocol::GeneralEnv
+/// [`GeneralEnvironment`]: crate::protocol::GeneralEnvironment
 /// [`Join`]: crate::protocol::concurrent::Join
 /// [`JoinAll`]: crate::protocol::concurrent::JoinAll
 /// [`ForkEnvironment`]: crate::protocol::ForkEnvironment

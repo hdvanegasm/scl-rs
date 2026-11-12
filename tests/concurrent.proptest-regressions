@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4f2f804ddb29e9113057229d96d91368a2e933bc9c0f46c7b567eccdfc9209ec # shrinks to tree = Par([Leaf(1), Leaf(1)])

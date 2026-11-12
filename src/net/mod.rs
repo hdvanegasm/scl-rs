@@ -484,11 +484,15 @@ pub trait Network: Send {
     /// This is the *scatter* primitive: a party fanning a (typically distinct) message out to many
     /// peers in one round. The default implementation sends sequentially; a backend where concurrent
     /// sends matter — a real network with an independent socket per peer — may override it to
-    /// dispatch them concurrently. Any such concurrency must stay **within the calling task** (e.g.
-    /// `futures::future::join_all`), never `tokio::spawn` or a background thread, so the method stays
-    /// drivable by the deterministic simulator. The simulator stamps every send at the sender's
-    /// current virtual instant regardless of dispatch order, so sequential and concurrent dispatch
-    /// are equivalent there; an override only changes a real deployment.
+    /// dispatch them concurrently. In code that runs on the simulator, such as this default, any
+    /// such concurrency must stay **within the calling task** (e.g. `futures::future::join_all`),
+    /// never `tokio::spawn` or a background thread: the deterministic executor drives only the
+    /// parties' own tasks, so nothing would drive a spawned one. A backend that already requires a
+    /// tokio runtime may do its I/O in tasks of its own: [`TcpNetwork`] has a writer task per peer,
+    /// so its sends already proceed concurrently and its `send_many` needs no joining. The
+    /// simulator stamps every send at the sender's current virtual instant regardless of dispatch
+    /// order, so sequential and concurrent dispatch are equivalent there; an override only changes
+    /// a real deployment.
     ///
     /// Each peer should appear at most once in `messages`; to send several packets to the same peer,
     /// call [`send_to`](Network::send_to) in sequence.

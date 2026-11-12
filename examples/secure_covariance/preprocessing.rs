@@ -21,7 +21,9 @@ use crate::{Triple, THRESHOLD, VECTOR_LEN};
 /// one `PassiveTriple` turns all `VECTOR_LEN` triples in one round and one message per link, so it
 /// runs once over everything rather than once per batch of randomness.
 pub struct Preprocessing {
+    /// The parties of the computation.
     pub parties: Vec<PartyId>,
+    /// The party that reconstructs the masked products in triple generation.
     pub king: PartyId,
 }
 

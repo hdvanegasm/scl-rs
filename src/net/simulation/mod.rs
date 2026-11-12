@@ -59,7 +59,7 @@
 //! use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 //! use scl_rs::net::simulation::simulator::simulate;
 //! use scl_rs::net::PartyId;
-//! use scl_rs::protocol::GeneralEnv;
+//! use scl_rs::protocol::GeneralEnvironment;
 //! use rand::{rngs::StdRng, SeedableRng};
 //!
 //! let parties = vec![PartyId::from(0), PartyId::from(1)];
@@ -67,12 +67,13 @@
 //!     SimpleNetworkConfig::default(),
 //!     parties,
 //!     |_| SendRecvProtocol,
-//!     |_, net| GeneralEnv::new(net, StdRng::from_rng(&mut rand::rng())),
+//!     |_, net| GeneralEnvironment::new(net, StdRng::from_rng(&mut rand::rng())),
 //!     vec![],
 //! );
 //! let output_p0 = &outcome.outputs[&PartyId::from(0)];
 //! ```
 
+use crate::net::session::SessionId;
 use crate::net::simulation::channel::{ChannelConfigBuilder, Link};
 use crate::net::simulation::event::{Event, EventType};
 use crate::net::{NetworkError, PartyId};
@@ -100,6 +101,8 @@ pub mod event;
 
 /// Implement the network simulation.
 pub mod network;
+
+pub(crate) mod tree;
 
 /// Errors for protocol simulations.
 #[derive(Error, Debug)]
@@ -134,6 +137,19 @@ pub enum SimulationError {
     /// Invalid parameters for a channel configuration.
     #[error("invalid configuration parameters for the channel: {0:?}")]
     InvalidConfig(ChannelConfigBuilder),
+    /// The trace's protocol scopes do not nest: a scope ends that is not the one open in its
+    /// session, or ends in a session where no scope is open.
+    ///
+    /// Returned by [`bandwidth_tree_for`](simulator::SimulationOutcome::bandwidth_tree_for). A
+    /// trace's `Display` does not fail on such a trace: it prints the offending end as a plain
+    /// event line and carries on.
+    #[error("malformed trace at event {event_idx}: {reason}")]
+    MalformedTrace {
+        /// Index of the offending event in the trace.
+        event_idx: usize,
+        /// What is wrong with it.
+        reason: String,
+    },
 }
 
 /// Specific result type for the [`SimulationError`].
@@ -182,6 +198,21 @@ impl SimulationTrace {
         }
         event_types
     }
+
+    /// Returns the events of one branch: those recorded in `session` or in a session below it.
+    pub fn session(&self, session: &SessionId) -> SimulationTrace {
+        let in_branch = |other: &SessionId| {
+            other.root_tag() == session.root_tag() && other.path().starts_with(session.path())
+        };
+        let events = self.0.iter().filter(|event| match event {
+            Event::SendData { session, .. }
+            | Event::ReceiveData { session, .. }
+            | Event::ProtocolBegin { session, .. }
+            | Event::ProtocolEnd { session, .. } => in_branch(session),
+            _ => false,
+        });
+        SimulationTrace(events.cloned().collect())
+    }
 }
 
 /// Renders the whole trace as an indented tree, in the order in which the events occurred.
@@ -210,30 +241,6 @@ impl SimulationTrace {
 /// `println!("{trace}")` or written to a file with `write!(file, "{trace}")`.
 impl std::fmt::Display for SimulationTrace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const INDENT: &str = "    ";
-        let mut depth: usize = 0;
-        for (idx, event) in self.0.iter().enumerate() {
-            if idx > 0 {
-                writeln!(f)?;
-            }
-            // A closing brace dedents *before* it is printed, so it aligns with the line that
-            // opened the block. `saturating_sub` keeps rendering robust if a trace is unbalanced.
-            if let Event::ProtocolEnd { .. } = event {
-                depth = depth.saturating_sub(1);
-            }
-            for _ in 0..depth {
-                f.write_str(INDENT)?;
-            }
-            match event {
-                Event::ProtocolBegin { protocol_name, .. } => {
-                    write!(f, "{protocol_name} {{")?;
-                    // Everything up to the matching closing brace is nested one level deeper.
-                    depth += 1;
-                }
-                Event::ProtocolEnd { .. } => write!(f, "}}")?,
-                other => write!(f, "{other}")?,
-            }
-        }
-        Ok(())
+        tree::TraceTree::build(&self.0).render(&self.0, f)
     }
 }

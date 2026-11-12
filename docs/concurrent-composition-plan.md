@@ -2,11 +2,17 @@
 
 **Date:** 2026-10-07
 **Against:** `main` at v0.14.2 (`6b898c5`).
-**Status:** in progress (2026-11-09). Phase 0 is done (`38cc6e6`). Phases 1 and 2 are done
-(`e7cea51`, `34c2856`, and the follow-up fixes of 2026-11-09): the session-keyed switchboard,
-`SimNetwork` sessions, `session` on the four trace events, the deadlock report, forking, and
-`Join`, `JoinAll` and `boxed`, with tests T1–T5, T7 and T10 passing on the simulator
-(`tests/concurrent.rs`). Phases 3–6 have not started.
+**Status:** in progress (2026-11-11). Phase 0 is done (`38cc6e6`). Phases 1 and 2 are done
+(`e7cea51`, `34c2856`, and the follow-up fixes of 2026-11-09, committed in `eb8ac5f`): the
+session-keyed switchboard, `SimNetwork` sessions, `session` on the four trace events, the deadlock
+report, forking, and `Join`, `JoinAll` and `boxed`, with tests T1–T5, T7 and T10 passing on the
+simulator (`tests/concurrent.rs`). Phase 3 is done (`eb8ac5f`): `TcpNetwork` sessions as in §5.3,
+with T3, T5 and T8 passing over mTLS loopback (the inline tests in `src/net/tcp.rs`). Where the
+code departs from §5.3, the section says so. Decisions 2–7 of `docs/phases-3-4.md` §2.2 are
+implemented as the guide's prototype made them, and are not yet confirmed. `eb8ac5f` also renames
+`GeneralEnv` to `GeneralEnvironment` (§9), and begins Phase 6 by porting `bandwidth_flamegraph`,
+`secure_stats_flamegraph` and `secure_covariance` to `Join`/`JoinAll`. Phases 4 and 5 have not
+started.
 **How this was checked:** the timing figures in §1 come from a throwaway simulator probe run against
 v0.14.2. The trait and combinator signatures in §5.4–§5.5 were compiled against the v0.14.2 crate,
 including the `Send` bound on the combined future, nested `Join`s and the type-erased variant.
@@ -388,6 +394,20 @@ The core is dropped together with the last handle, root or forked (see _Lifecycl
   `JoinHandle` is not enough for this: dropping it detaches the task instead of aborting it. And
   `tokio::io::split` keeps the stream open while either half is alive.
 
+**As implemented (`eb8ac5f`, 2026-11-11).** The design above holds; the code departs from the
+sketch in three places (`src/net/tcp.rs`):
+
+- `Mailboxes` keeps one mailbox per session, `sessions: HashMap<SessionId, SessionMailbox>`, where
+  a `SessionMailbox` holds the session's queues, `BTreeMap<PartyId, VecDeque<Packet>>`, and its
+  one waiter. The `BTreeMap` is what makes `recv_any` take the lowest ready sender: it walks the
+  senders in ascending order. `peer_state` is named `peers`, and `PeerState::Failed` holds the
+  error's message as a `String`, which `NetworkError::PeerFailed` returns as its `reason` (*Peer
+  failure* above).
+- `TcpCore` also holds the party list, so `party_ids()` is in ascending order.
+- `close()` on the root handle, after aborting the readers, marks every peer `Closed` and wakes
+  every waiter, so a receive still waiting in a forked session ends with `ConnectionClosed`
+  instead of hanging (`docs/phases-3-4.md` §2.2, decision 6).
+
 **Why I/O tasks rather than demultiplexing inside the receiving task** (decision C-4):
 
 - _Readers._ Tokio I/O keeps only the _last_ registered waker per direction. If two sessions take
@@ -397,11 +417,13 @@ The core is dropped together with the last handle, root or forked (see _Lifecycl
 
 This reverses the roadmap §7 note that a task-per-peer design "was unnecessary — `StreamMap`
 provides the multiplexing". That note was right for one consumer per stream. With several sessions
-consuming one peer stream, it no longer holds, and the roadmap text is updated in Phase 6.
+consuming one peer stream, it no longer holds. The roadmap §7 note now says so and points here
+(updated 2026-11-11, ahead of Phase 6).
 
 The "never `tokio::spawn`" rule in the `send_many` docs is about keeping the trait's _default_
 methods drivable by the simulator. `TcpNetwork` already requires a tokio runtime, so spawning
-inside it does not violate that rule. The doc comment should say this explicitly.
+inside it does not violate that rule. `Network::send_many`'s doc comment says this explicitly
+(2026-11-11).
 
 ### 5.4 Forking API (compile-checked)
 
@@ -418,9 +440,11 @@ pub trait ForkEnvironment: Environment + Sized {
     fn fork(&mut self) -> Self;
 }
 
-impl<N: ForkNetwork, R: CryptoRng + SeedableRng + Send> ForkEnvironment for GeneralEnv<N, R> {
+impl<N: ForkNetwork, R: CryptoRng + SeedableRng + Send> ForkEnvironment
+    for GeneralEnvironment<N, R>
+{
     fn fork(&mut self) -> Self {
-        GeneralEnv { network: self.network.fork(), rng: R::from_rng(&mut self.rng) }
+        GeneralEnvironment { network: self.network.fork(), rng: R::from_rng(&mut self.rng) }
     }
 }
 ```
@@ -691,7 +715,7 @@ running; it still has to compile, so a test cannot exist before the types it nam
 
 - **Skeleton:**
   - `ForkNetwork` and `ForkEnvironment`, with `todo!()` in `SimNetwork::fork`/`session`.
-  - The `ForkEnvironment` impl for `GeneralEnv`; it is one line, so write it in full.
+  - The `ForkEnvironment` impl for `GeneralEnvironment`; it is one line, so write it in full.
   - `Join`, `JoinAll` and `BoxedProtocol`/`boxed`. Their `run` bodies are a few lines, so write
     them in full; the `todo!()` sits in `fork` underneath.
 
@@ -699,7 +723,8 @@ running; it still has to compile, so a test cannot exist before the types it nam
   2026-11-09:** nested `Join` futures are `Send`; boxing needs the protocol and the map to be
   `'static`, not `E` (§5.5).
 - **Tests:** T1, T2, T7 and T10, plus T3, T4 and T5 end to end through `Join` on the simulator.
-- `ForkNetwork` and its impl for `SimNetwork`; `ForkEnvironment` and its impl for `GeneralEnv`.
+- `ForkNetwork` and its impl for `SimNetwork`; `ForkEnvironment` and its impl for
+  `GeneralEnvironment` (named `GeneralEnv` until `eb8ac5f`).
 - `protocol::concurrent`: `Join` for arities 2..=6 (macro), `JoinAll`, `BoxedProtocol`/`boxed`.
 - Prelude: `ForkEnvironment`, `Join`, `JoinAll`.
 - **Exit:** T1, T2, T3, T4, T5, T7 and T10 pass on the simulator.
@@ -743,10 +768,13 @@ running; it still has to compile, so a test cannot exist before the types it nam
 - `examples/concurrent_preprocessing.rs` prints `metrics()` for the sequential and concurrent forms
   side by side (the §1 table, reproduced).
 - Port `secure_covariance` preprocessing and `MulRandomPairs` to `Join` where the steps are
-  independent.
+  independent. **In part (`eb8ac5f`):** `secure_covariance`, `bandwidth_flamegraph` and
+  `secure_stats_flamegraph` use `Join`/`JoinAll`; `MulRandomPairs` (`tests/passive_shamir.rs`) is
+  not ported yet.
 - Module docs for `protocol::concurrent` covering I1, I2, batch-vs-join guidance and fail-fast.
+  **Done** (2026-11-06; I2 is in `ForkNetwork`'s *For implementors*).
 - Roadmap: add a §7 entry and the §12 release rows (Appendix A). Update the §7 `StreamMap` note
-  to point at C-4.
+  to point at C-4. **The note is updated (2026-11-11)**; the §7 entry and the §12 rows are not.
 - README / crate docs: update the "untested axis is concurrency" paragraph (`lib.rs:366-369`) with
   the Phase 5 result.
 - Size: S.
@@ -782,7 +810,7 @@ written once per phase, against that phase's API:
 
 | Version    | Contents                                                                                                               | Breaking?                                                                                                                                                                                 |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0.15.0** | Phases 1–4 (+ 6 docs/examples): sessions on both backends, fork traits, `Join`/`JoinAll`/`Boxed`, session-aware traces | Yes: new `Event` fields; TCP wire format; TCP `recv_any` order and `send_to` completion point (G6); the default `Display` of a trace changes for concurrent runs only; MSRV 1.85.1 → 1.88 (`sha2` 0.11.1); `TcpNetwork::create` gains a required `root_tag` (C-8). Minor bump per §2. |
+| **0.15.0** | Phases 1–4 (+ 6 docs/examples): sessions on both backends, fork traits, `Join`/`JoinAll`/`Boxed`, session-aware traces | Yes: new `Event` fields; TCP wire format; TCP `recv_any` order and `send_to` completion point (G6); the default `Display` of a trace changes for concurrent runs only; MSRV 1.85.1 → 1.88 (`sha2` 0.11.1); `TcpNetwork::create` gains a required `root_tag` (C-8); `GeneralEnv` renamed `GeneralEnvironment` (`eb8ac5f`). Minor bump per §2. |
 | **0.15.1** | Phase 5 link occupancy                                                                                                 | No API break (default trait method); timings for same-link back-to-back sends change. Patch, following the 0.11.2 precedent.                                                              |
 
 Phases 1–4 ship **together**. Releasing combinators that work on the simulator but not on
@@ -806,6 +834,8 @@ Phases 1–4 ship **together**. Releasing combinators that work on the simulator
   `SerializationError`. The enum is `#[non_exhaustive]`, so no `match` breaks.
 - Run every `Join`/`JoinAll` on every party (I1, §5.1). A protocol that let bystanders skip a
   sub-protocol must give them a branch that returns immediately instead.
+- `protocol::GeneralEnv` is renamed `GeneralEnvironment`, in `protocol` and in the prelude; its
+  type parameters, fields and `new` are unchanged.
 - Custom environments: implement `ForkEnvironment` only if you want to use the combinators.
 - Custom `Network` implementations: unaffected unless they want to support forking (`ForkNetwork`).
 

@@ -22,8 +22,12 @@ use crate::{
 /// whole sharing polynomial, not just the secret; the callers here only ever open values that are
 /// masked or otherwise safe to reveal.
 pub struct PassiveOpenToKing<const LIMBS: usize, F> {
+    /// The party that collects the shares, reconstructs the secret and sends it back.
     king: PartyId,
+    /// The parties of the run. The king takes one share from each, in this order, and
+    /// interpolates at their points.
     parties: Vec<PartyId>,
+    /// This party's share of the secret.
     own_share: ShamirSS<LIMBS, F>,
 }
 
@@ -93,8 +97,12 @@ where
 /// batch size, which is what keeps protocols built on it — triple generation above all — from
 /// paying a round trip per value.
 pub struct BatchedPassiveOpenToKing<const LIMBS: usize, F> {
+    /// The party that collects the shares, reconstructs every secret and sends them all back.
     king: PartyId,
+    /// The parties of the run. The king takes one packet of shares from each, in this order, and
+    /// interpolates at their points.
     parties: Vec<PartyId>,
+    /// This party's share of each secret, in the order the secrets are opened.
     own_shares: Vec<ShamirSS<LIMBS, F>>,
 }
 

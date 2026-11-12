@@ -39,10 +39,11 @@ use scl_rs::{
     ss::additive::AdditiveSS,
 };
 
-// First sub-protocol: distribute an additive sharing of this party's secret and gather, in return,
-// one share of every other party's secret. Its output is the vector of shares this party ends up
-// holding — one per party in the computation.
+/// First sub-protocol: distribute an additive sharing of this party's secret and gather, in
+/// return, one share of every other party's secret. Its output is the vector of shares this party
+/// ends up holding — one per party in the computation.
 struct DistrAdditiveShr<F> {
+    /// This party's secret input, which it shares among all parties.
     secret: F,
 }
 
@@ -95,10 +96,11 @@ where
     }
 }
 
-// Second sub-protocol: reveal a sharing and reconstruct the underlying value. Each party contributes
-// its own share (here, the share of the *sum* computed by `SecureAddition`) and learns the
-// reconstructed secret.
+/// Second sub-protocol: reveal a sharing and reconstruct the underlying value. Each party
+/// contributes its own share (here, the share of the *sum* computed by `SecureAddition`) and learns
+/// the reconstructed secret.
 struct ReconstrAdditiveShr<R> {
+    /// This party's share of the value to reveal.
     share: AdditiveSS<R>,
 }
 
@@ -143,9 +145,11 @@ where
     }
 }
 
-// Top-level protocol: secure summation. It composes the two sub-protocols above by calling them
-// inline and passing their *typed* outputs directly from one to the next — no manual serialization.
+/// Top-level protocol: secure summation. It composes the two sub-protocols above by calling them
+/// inline and passing their *typed* outputs directly from one to the next — no manual
+/// serialization.
 struct SecureAddition<R> {
+    /// This party's private input to the sum.
     input: R,
 }
 

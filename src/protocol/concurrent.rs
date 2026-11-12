@@ -56,8 +56,8 @@
 //!
 //! # Randomness
 //!
-//! With [`GeneralEnv`], each child's RNG is seeded from the parent's
-//! RNG when the child is forked, so a run with seeded RNGs stays reproducible. Forking draws from
+//! With [`GeneralEnvironment`], each child's RNG is seeded from the parent's RNG when the child is
+//! forked, so a run with seeded RNGs stays reproducible. Forking draws from
 //! the parent's RNG, though, so running sub-protocols under a combinator instead of one after
 //! another changes the random values they sample. A test that compares the two forms should
 //! compare what the outputs open to (for example, that a product opens to the product of its
@@ -132,10 +132,10 @@ use crate::protocol::{Environment, Error, ForkEnvironment, Protocol, ProtocolId}
 /// [Errors](self#errors).
 pub struct Join<T>(pub T);
 
-// Implements `Protocol` for `Join` over a tuple of one arity. Each argument describes one position
-// of the tuple: the protocol's type parameter, the binding that takes the protocol out of the
-// tuple, and the binding of its forked environment, for example `P0 p0 e0`. The bindings are passed
-// in because `macro_rules!` cannot build a distinct identifier per repetition.
+/// Implements `Protocol` for `Join` over a tuple of one arity. Each argument describes one position
+/// of the tuple: the protocol's type parameter, the binding that takes the protocol out of the
+/// tuple, and the binding of its forked environment, for example `P0 p0 e0`. The bindings are
+/// passed in because `macro_rules!` cannot build a distinct identifier per repetition.
 macro_rules! impl_protocol_for_join {
     ($($P:ident $p:ident $e:ident), +) => {
         impl<E: ForkEnvironment, $($P: Protocol<E>),+> Protocol<E> for Join<($($P,)+)>
@@ -226,7 +226,9 @@ trait DynProtocol<E: Environment, O>: Send + Sync {
 /// A protocol together with the map applied to its output: the type that [`Protocol::boxed`]
 /// boxes.
 struct MappedProtocol<P, F> {
+    /// The protocol that is run.
     protocol: P,
+    /// The map applied to the protocol's output when it succeeds.
     map: F,
 }
 

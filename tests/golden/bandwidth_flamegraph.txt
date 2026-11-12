@@ -27,7 +27,7 @@ SecSumShamirShr {
     PassiveOpenLinearShr {
         [     0.151s] SEND           0 -> 1 (10 bytes: 1 Shamir shr.)
         [     0.151s] SEND           0 -> 2 (10 bytes: 1 Shamir shr.)
-        [     0.151s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.152s] RECV           0 <- 2 (10 bytes: 1 Shamir shr.)
         [     0.202s] RECV           0 <- 1 (10 bytes: 1 Shamir shr.)
     }
 }
@@ -53,7 +53,7 @@ SecSumShamirShr {
   16 ProtocolBegin  151200000
   17 SendData       151200000
   18 SendData       151200000
-  19 ReceiveData    151200000
+  19 ReceiveData    151600000
   20 ReceiveData    201600000
   21 ProtocolEnd    201600000
   22 ProtocolEnd    201600000
@@ -84,7 +84,7 @@ SecSumShamirShr {
     PassiveOpenLinearShr {
         [     0.151s] SEND           1 -> 0 (10 bytes: 1 Shamir shr.)
         [     0.151s] SEND           1 -> 2 (10 bytes: 1 Shamir shr.)
-        [     0.151s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
+        [     0.152s] RECV           1 <- 2 (10 bytes: 1 Shamir shr.)
         [     0.202s] RECV           1 <- 0 (10 bytes: 1 Shamir shr.)
     }
 }
@@ -110,7 +110,7 @@ SecSumShamirShr {
   16 ProtocolBegin  151200000
   17 SendData       151200000
   18 SendData       151200000
-  19 ReceiveData    151200000
+  19 ReceiveData    151600000
   20 ReceiveData    201600000
   21 ProtocolEnd    201600000
   22 ProtocolEnd    201600000

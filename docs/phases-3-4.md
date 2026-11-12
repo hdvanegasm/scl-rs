@@ -7,6 +7,13 @@ Written by Claude (AI) on 2026-11-09, on request, against `34c2856` plus the unc
 fixes of that day. It is a guide for implementing the three phases by hand: for each phase, the
 decisions left to you, the skeleton, the tests, the code, and what changes for users.
 
+**Status (2026-11-11).** Phase 3 (§2) is implemented in `eb8ac5f`, following this guide. Where the
+code in `src/net/tcp.rs` and §2 differ, the code is what ships: for example, its tests drop the
+`t3_`/`t8_` prefixes and use a 30-second `within(TEST_TIMEOUT, …)` guard. Phases 4 and 5 (§3,
+§4) are not implemented yet. `eb8ac5f` also renamed `GeneralEnv` to `GeneralEnvironment`; the code
+blocks below use the new name and were re-wrapped with `rustfmt` where that made a line too long,
+which is the only change made to them since the prototype ran.
+
 Everything here is a proposal. Each claim says where to re-derive it from. Where the guide departs
 from the plan it says *(departs from the plan)*, and where it adds something the plan does not have
 it says *(addition)*.
@@ -212,8 +219,9 @@ back-pressure as a risk (§10).
 ### 2.2 Decisions that are yours
 
 Each has a compatibility or security consequence, so the guide does not settle it. The prototype's
-choice is stated so that the code below can be read. Decision 1 has since been made (2026-11-10);
-the others are still open.
+choice is stated so that the code below can be read. Decision 1 has since been made (2026-11-10).
+Decisions 2–7 are implemented in `eb8ac5f` as the prototype made them, but none is recorded as
+decided yet.
 
 1. **How one peer's failure reaches several sessions. Decided by Hernán, 2026-11-10: the
    `PeerFailed` variant.** `NetworkError` is not `Clone`, and a failure has to be reported to
@@ -235,9 +243,10 @@ the others are still open.
    `ConnectionClosed(Some(peer))`. **Why the variant:** every session then learns the same thing,
    whichever asks first.
 
-   **The field type is still to be made consistent.** In the working tree (2026-11-10) the variant
-   has `reason: &'static str` (`src/net/mod.rs:134`), while `PeerState::Failed` holds a `String`
-   (`src/net/tcp.rs:99`), as in this guide's code. The two have to match:
+   **The field type is `String`.** For a while on 2026-11-10 the working tree had
+   `reason: &'static str` on the variant, while `PeerState::Failed` held a `String`, as in this
+   guide's code. It was changed to `String` the same day, and `eb8ac5f` has `String` in both
+   (`src/net/mod.rs`, `PeerFailed`; `src/net/tcp.rs`, `PeerState`). The two had to match:
 
    - With `String`, `peer_error` clones the stored text, and the underlying error's message is
      kept, for example rustls's `close_notify` text (§2.7).
@@ -299,7 +308,7 @@ use crate::protocol::passive_shamir::{
     double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr,
 };
 use crate::protocol::{
-    Environment, Error, ForkEnvironment, GeneralEnv, Protocol, ProtocolId, RandEnvironment,
+    Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId, RandEnvironment,
 };
 use crate::ss::shamir::{DoubleShare, ShamirSS};
 use crate::ss::LinearShare;
@@ -468,17 +477,16 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for RandomAndDoubles {
 #[tokio::test]
 async fn t8_join_of_two_protocols_over_tls() {
     let parties: Vec<PartyId> = (0..T8_PARTIES).map(PartyId::from).collect();
-    let runs =
-        connected(T8_PARTIES)
-            .await
-            .into_iter()
-            .enumerate()
-            .map(|(i, network)| async move {
-                let mut env = GeneralEnv::new(network, ChaCha20Rng::seed_from_u64(i as u64));
-                let output = RandomAndDoubles.execute(&mut env).await?;
-                env.network.close().await?;
-                Ok::<_, Error>(output)
-            });
+    let runs = connected(T8_PARTIES)
+        .await
+        .into_iter()
+        .enumerate()
+        .map(|(i, network)| async move {
+            let mut env = GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(i as u64));
+            let output = RandomAndDoubles.execute(&mut env).await?;
+            env.network.close().await?;
+            Ok::<_, Error>(output)
+        });
     let outputs = try_join_all(runs).await.unwrap();
 
     let open = |get: &dyn Fn(&RandomAndDoublesOutput) -> Share| {
@@ -576,7 +584,7 @@ async fn t8_a_join_that_fails_fast_leaves_the_stream_usable() {
     let mut big = Packet::empty();
     big.write(&vec![0xABu8; 1024 * 1024]).unwrap();
 
-    let mut env0 = GeneralEnv::new(net0, ChaCha20Rng::seed_from_u64(0));
+    let mut env0 = GeneralEnvironment::new(net0, ChaCha20Rng::seed_from_u64(0));
     // `SendThenWait` is polled first: it queues its frame and waits. `Fail` then fails, and
     // the `Join` drops `SendThenWait` where it is.
     let joined = Join((SendThenWait(big.clone()), Fail))
@@ -1402,6 +1410,10 @@ Docs to touch: the `tcp.rs` module and struct docs, the `#[allow(dead_code)]` on
 (`:96-98`, the field goes away), `Network::send_many`'s doc, and `docs/roadmap.md` §7, whose note
 that a task per peer "was unnecessary" now contradicts C-4 (To-do amendment).
 
+*Done 2026-11-11, after `eb8ac5f`:* the `TcpNetwork` struct doc, `close()`'s doc,
+`Network::send_many`'s doc, and roadmap §7. The module doc needed no change, and the `root_tag`
+field with its `#[allow(dead_code)]` is gone. The CHANGELOG has the entries above.
+
 ### 2.11 To-do bullets
 
 | To-do bullet | Section |
@@ -1795,7 +1807,9 @@ fn t6_a_join_renders_one_labelled_block_per_branch() {
         SimpleNetworkConfig::from_channel_config(instant),
         vec![party(0), party(1)],
         |_| JoinThenAfter,
-        |p, network| GeneralEnv::new(network, ChaCha20Rng::seed_from_u64(p.as_usize() as u64)),
+        |p, network| {
+            GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(p.as_usize() as u64))
+        },
         vec![],
     );
     let trace = &outcome.traces[&party(0)];
@@ -2308,8 +2322,8 @@ fn party(index: usize) -> PartyId {
     PartyId::from(index)
 }
 
-fn env(party: PartyId, network: SimNetwork) -> GeneralEnv<SimNetwork, ChaCha20Rng> {
-    GeneralEnv::new(network, ChaCha20Rng::seed_from_u64(party.as_usize() as u64))
+fn env(party: PartyId, network: SimNetwork) -> GeneralEnvironment<SimNetwork, ChaCha20Rng> {
+    GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(party.as_usize() as u64))
 }
 
 fn mib_packet() -> Packet {

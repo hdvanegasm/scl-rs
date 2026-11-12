@@ -55,11 +55,12 @@ use scl_rs::{
 /// Shamir secret sharing over the Mersenne-61 field (one limb).
 type Share = ShamirSS<1, Mersenne61>;
 
-// Middle layer: every party deals a Shamir sharing of its private input, all dealings at once.
-// Afterwards each party holds one share of every party's input. This exists as its own protocol
-// (rather than inlined in the top level) so the "input distribution" cost shows up as a distinct
-// frame in the flamegraph, with the individual deals nested under it.
+/// Middle layer: every party deals a Shamir sharing of its private input, all dealings at once.
+/// Afterwards each party holds one share of every party's input. This exists as its own protocol
+/// (rather than inlined in the top level) so the "input distribution" cost shows up as a distinct
+/// frame in the flamegraph, with the individual deals nested under it.
 struct InputPhase {
+    /// This party's private input, which it deals.
     input: Mersenne61,
 }
 
@@ -94,10 +95,11 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
     }
 }
 
-// Top level: secure summation over Shamir shares. Sharing the inputs and opening the result are
-// the only steps that communicate; the addition itself is local, because the sum of shares is a
-// valid share of the sum.
+/// Top level: secure summation over Shamir shares. Sharing the inputs and opening the result are
+/// the only steps that communicate; the addition itself is local, because the sum of shares is a
+/// valid share of the sum.
 struct SecSumShamirShr {
+    /// This party's private input to the sum.
     input: Mersenne61,
 }
 
