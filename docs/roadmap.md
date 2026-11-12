@@ -1,8 +1,11 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-09-21
+**Date:** 2026-11-12
 
-**Current version:** 0.14.2 (released 2026-09-21) — `SimulationOutcome::metrics()`, the flat
+**Current version:** 0.15.0 (released 2026-11-12) — concurrent composition: the `Join` and
+`JoinAll` combinators run independent sub-protocols at the same time within one party, over child
+sessions that both backends keep apart, with session-aware traces and link occupancy in the
+simulator's delay model (§7). On top of 0.14.2 (2026-09-21), `SimulationOutcome::metrics()`, the flat
 whole-run summary of a simulation: payload bytes sent and virtual time elapsed, per party and for
 the run as a whole, folded out of the recorded traces and printed as a small table. Plus dependency
 hygiene — every requirement now names the full patch version it is tested against. On top of 0.14.1
@@ -103,9 +106,11 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   clock), both behind one `Network` trait. The simulator records a per-party event trace and exposes
   a `TriggeredHook` extension point (`net::simulation::hook`) for observing or steering a run.
 - **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output`; protocols compose by
-  calling one another through `Protocol::execute` (which brackets each call with trace markers).
+  calling one another through `Protocol::execute` (which brackets each call with trace markers),
+  or concurrently through the `Join` and `JoinAll` combinators of `protocol::concurrent`, each
+  sub-protocol in a child session of its own (0.15.0).
   `Environment` is the ambient-context seam (`GeneralEnvironment` is the default; it was
-  `GeneralEnv` until the unreleased 0.15.0), and `simulate<P, E>` runs protocols
+  `GeneralEnv` until 0.15.0), and `simulate<P, E>` runs protocols
   deterministically and returns typed outputs + nesting-aware event traces.
 
 **Published and iterating** (see §4): releases `0.2.0`–`0.10.0` have shipped to crates.io. `Cargo.toml`
@@ -346,15 +351,15 @@ release rather than dribbling breaks out continuously.
         task-per-peer + shared-mpsc design originally sketched here was unnecessary — `StreamMap`
         provides the multiplexing directly. That held while each peer stream had one consumer; see
         the next item for why 0.15.0 moves to a task per peer after all.)
-  - [x] **`TcpNetwork` sessions: one reader and one writer task per peer (unreleased, 0.15.0).**
-        Concurrent composition (`docs/concurrent-composition-plan.md`, decision C-4) makes several
-        sessions consume one peer stream, which the `StreamMap` design above did not have to
-        handle. Readers: tokio I/O keeps only the last waker registered per direction, so two
-        sessions polling the same stream in turn would lose a wake-up; one reader task per peer
-        files each frame under its session in a shared mailbox instead. Writers: dropping a send
+  - [x] **`TcpNetwork` sessions: one reader and one writer task per peer (0.15.0).**
+        Concurrent composition makes several sessions consume one peer stream, which the
+        `StreamMap` design above did not have to handle. Readers: tokio I/O keeps only the last
+        waker registered per direction, so two sessions polling the same stream in turn would lose
+        a wake-up; one reader task per peer files each frame under its session in a shared mailbox
+        instead. Writers: dropping a send
         mid-`write_all`, as a fail-fast `Join` does to a sibling, would leave a partial frame on a
         stream other sessions share; a send now enqueues one whole frame for the peer's writer task.
-        The loop-back peer files straight into the mailbox. Plan §5.3; `src/net/tcp.rs`.
+        The loop-back peer files straight into the mailbox. See `src/net/tcp.rs`.
   - [x] **Straggler / virtual-time regression test (sim).** Pins the property that a message from a
         slow party delivered *after* the receiver already passed its quorum does not distort the
         receiver's virtual time (delivery bumps `clock` in `deliver_next`, but it is inert once the
@@ -391,6 +396,19 @@ release rather than dribbling breaks out continuously.
       delay is no longer canonicalized to an unordered pair). The same `Link` now serves routing,
       config, and the `Event` trace, and arrows are rendered from event direction (`sender ->
       recipient` / `recipient <- sender`).
+- [x] **Concurrent (heterogeneous) protocol composition (0.15.0).** Independent
+      sub-protocols used to run one after another, because `Protocol::execute` borrows `&mut E`, so
+      the simulator reported the sum of their latencies instead of the critical path (the
+      `MulRandomPairs` preprocessing: 400 ms instead of 200 ms on the WAN preset). Now:
+      deterministic hierarchical session IDs on every message, routed by `(link, session)` on both
+      backends; `ForkEnvironment::fork` (a child network handle on a child session, and an RNG
+      seeded from the parent's); the `Join`, `JoinAll` and `BoxedProtocol` combinators as ordinary
+      `Protocol`s; session-aware traces and bandwidth trees; and link occupancy in the delay model,
+      so messages sent at once on one link share its bandwidth.
+      `examples/concurrent_preprocessing.rs` shows the 400 ms → 200 ms. _Open:_ occupancy is on by
+      default but not yet validated against real concurrent transfers (a two-transfer
+      `benches/comparison` scenario), and traces assume that sessions are forked only through the
+      combinators.
 
 ## 8. Workstream — Quality gates & CI
 
@@ -763,6 +781,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.14.0**      | _Generic prime field_ ✅ **RELEASED 2026-08-23**    | The §10/§11 **arbitrary prime-`p` field**: `math::field::fp::Fp<M, LIMBS>` carries the modulus in the type as a `crypto-bigint` `ConstMontyParams` implementation, declared with one `const_monty_params!` call, with Montgomery arithmetic. `Mersenne61`, `Secp256k1PrimeField` and `Secp256k1ScalarField` are now aliases for it — 352 lines of hand-written modular arithmetic deleted, multiplication ~4.5× faster on the secp256k1 fields. Also fixed a latent `Mersenne61` `Div` operand swap (untested until now; division is proptested on every field) and a `Debug` impl that printed the Montgomery form as the value. Breaking: elements serialize their Montgomery representation at fixed width, incompatible with 0.13.0 — so a minor bump per §2. See `CHANGELOG.md` `[0.14.0]`. |
 | **0.14.1**      | _Containers over shares_ ✅ **RELEASED 2026-08-24** | Non-breaking feature-and-fix patch per §2: `Vector` and `Matrix` operators are bounded on the element operation itself (`T: for<'a> Add<&'a T, Output = T>` and friends) instead of on `Ring`, so a container may hold ring elements *or* secret shares — over `S: LinearShare` the `+`, `-`, `+=`, `-=` and unary `-` on a whole container are the local, communication-free operations of a linear scheme, and the new `Vector::mul_constant` / `Matrix::mul_constant` scale a container of shares by a public constant. Share × share multiplication is deliberately still absent (it needs an interactive protocol), so the element-wise and matrix products stay ring-only — the local groundwork for the §11.3 shared linear algebra, not that item itself. Also adds `Neg` for `Matrix` and `Vector<T> * &T`, and fixes `Matrix<T> * &T` on non-square matrices, which panicked or left trailing columns unscaled. Non-breaking (`Ring` implies every new bound). See `CHANGELOG.md` `[0.14.1]`. |
 | **0.14.2**      | _Run metrics & dependency floors_ ✅ **RELEASED 2026-09-21** | Non-breaking feature patch per §2: `SimulationOutcome::metrics()` returns a `SimulationMetrics` — payload bytes sent and virtual time elapsed, per party and for the run as a whole, folded out of the recorded traces with no protocol instrumentation and no change to how a run executes. It is the flat counterpart to the per-protocol `bandwidth_tree_for`: same byte accounting (payload sizes, self-sends excluded), plus the virtual-clock span from a party's first event to its last, which measures the modelled network alone. Printed as a table in IEC units by its `Display`, or read per party with `sent_bytes_for` / `elapsed_time_for`; all seven simulator examples now print it. Also dependency hygiene: every `Cargo.toml` requirement names the full patch version it is tested against instead of a bare major, and `rustls` / `chacha20` (transitive via `tokio-rustls` and `rand`) are declared directly to hold those floors. New `bytesize` dependency for the IEC rendering. See `CHANGELOG.md` `[0.14.2]`. |
+| **0.15.0**      | _Concurrent composition_ ✅ **RELEASED 2026-11-12** | Concurrent composition (§7 entry above): `SessionId` and sessions on both backends, `ForkNetwork` / `ForkEnvironment`, the `Join` / `JoinAll` / `BoxedProtocol` combinators, session-aware traces and bandwidth trees, and link occupancy on by default. Breaking: `Event` gains `session`; the `TcpNetwork` wire format and `create` signature change (a required root tag); `GeneralEnv` is renamed `GeneralEnvironment`; MSRV 1.88; simulated timings change where one link carries several messages at once. So a minor bump per §2. See `CHANGELOG.md` `[0.15.0]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |

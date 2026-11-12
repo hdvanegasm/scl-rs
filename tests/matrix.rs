@@ -1,5 +1,9 @@
+//! Integration tests for `math::matrix::Matrix`: construction, indexing, arithmetic and its
+//! dimension errors, and the local linear operations on matrices of secret shares.
+
 use scl_rs::{math::field::secp256k1_scalar::Secp256k1ScalarField, prelude::Matrix};
 
+/// Checks that the zero matrix times a random 10 x 10 `Secp256k1ScalarField` matrix is zero.
 #[test]
 fn multiplication_by_zero_equals_zero() {
     const ROWS: usize = 10;
@@ -11,6 +15,7 @@ fn multiplication_by_zero_equals_zero() {
     assert_eq!(mult, Matrix::zero(ROWS, COLS).unwrap());
 }
 
+/// Checks that the identity times a random 10 x 10 matrix returns that matrix.
 #[test]
 fn multiplication_by_identity() {
     const ROWS: usize = 10;
@@ -24,11 +29,15 @@ fn multiplication_by_identity() {
 
 use scl_rs::math::{field::mersenne61::Mersenne61, matrix::Error as MatrixError, vector::Vector};
 
+/// Builds a `rows x columns` `Mersenne61` matrix from `values` in row-major order; panics if the
+/// number of values does not match.
 fn matrix(rows: usize, columns: usize, values: &[u64]) -> Matrix<Mersenne61> {
     let elems: Vec<Mersenne61> = values.iter().copied().map(Mersenne61::from).collect();
     Matrix::from_vec(rows, columns, elems).unwrap()
 }
 
+/// Checks that `Matrix::from_vec` returns `InvalidDimension` when the element count differs from
+/// `rows * columns` and when a dimension is zero.
 #[test]
 fn from_vec_dimension_mismatch() {
     // 2 * 3 = 6 elements expected, only 5 provided.
@@ -45,6 +54,8 @@ fn from_vec_dimension_mismatch() {
     ));
 }
 
+/// Checks the dimensions produced by `identity`, `zero` and `random`, and `is_square` on a square
+/// and a non-square matrix.
 #[test]
 fn constructor_shapes() {
     let id: Matrix<Mersenne61> = Matrix::identity(4).unwrap();
@@ -59,6 +70,7 @@ fn constructor_shapes() {
     assert_eq!((r.rows, r.columns), (3, 7));
 }
 
+/// Checks that `get` returns `None` when the row or column index is out of range.
 #[test]
 fn get_out_of_bounds_is_none() {
     let m: Matrix<Mersenne61> = Matrix::zero(2, 3).unwrap();
@@ -67,6 +79,7 @@ fn get_out_of_bounds_is_none() {
     assert!(m.get(100, 100).is_none());
 }
 
+/// Checks that `get(i, j)` reads the elements given to `from_vec` in row-major order.
 #[test]
 fn get_returns_row_major_element() {
     // Row-major layout: row 0 = [1, 2, 3], row 1 = [4, 5, 6].
@@ -78,6 +91,7 @@ fn get_returns_row_major_element() {
     assert_eq!(m.get(1, 2), Some(&Mersenne61::from(6)));
 }
 
+/// Checks that a write through `get_mut` is visible to a later `get`.
 #[test]
 fn get_mut_writes_through() {
     let mut m: Matrix<Mersenne61> = Matrix::zero(2, 3).unwrap();
@@ -85,6 +99,8 @@ fn get_mut_writes_through() {
     assert_eq!(m.get(1, 2), Some(&Mersenne61::from(42)));
 }
 
+/// Checks that `scalar_mult` leaves its receiver unchanged despite taking `&mut self`, and that its
+/// result equals what `scalar_mut_in_place` writes in place.
 #[test]
 fn scalar_mult_does_not_mutate_but_in_place_does() {
     let mut rng = rand::rng();
@@ -104,6 +120,7 @@ fn scalar_mult_does_not_mutate_but_in_place_does() {
     assert_eq!(scaled, b);
 }
 
+/// Checks that adding or subtracting a 2 x 3 and a 3 x 2 matrix returns `NotCompatible`.
 #[test]
 fn add_sub_incompatible_dimensions() {
     let a: Matrix<Mersenne61> = Matrix::zero(2, 3).unwrap();
@@ -112,6 +129,8 @@ fn add_sub_incompatible_dimensions() {
     assert!(matches!(a - &b, Err(MatrixError::NotCompatible)));
 }
 
+/// Checks that multiplying two 2 x 3 matrices, whose inner dimensions differ, returns
+/// `NotCompatible`.
 #[test]
 fn mul_incompatible_dimensions() {
     let a: Matrix<Mersenne61> = Matrix::zero(2, 3).unwrap();
@@ -119,6 +138,7 @@ fn mul_incompatible_dimensions() {
     assert!(matches!(a * &b, Err(MatrixError::NotCompatible)));
 }
 
+/// Checks a 2 x 3 by 3 x 2 matrix product against a hand-computed result.
 #[test]
 fn mul_nonsquare_matrices() {
     let a = matrix(2, 3, &[1, 2, 3, 4, 5, 6]);
@@ -127,6 +147,7 @@ fn mul_nonsquare_matrices() {
     assert_eq!((a * &b).unwrap(), expected);
 }
 
+/// Checks a 2 x 3 matrix times a length-3 vector against a hand-computed result.
 #[test]
 fn mul_nonsquare_matrix_by_vector() {
     let a = matrix(2, 3, &[1, 2, 3, 4, 5, 6]);
@@ -188,6 +209,8 @@ fn open_cell<S: LinearShare>(
     S::secret_from_shares(&shares, parties).unwrap()
 }
 
+/// Checks that each party adding its two matrices of additive shares locally yields shares of the
+/// entry-wise sum.
 #[test]
 fn additive_share_matrix_add() {
     const N_PARTIES: usize = 5;
@@ -227,6 +250,8 @@ fn additive_share_matrix_add() {
     }
 }
 
+/// Checks that, on matrices of degree-3 Shamir shares held by 7 parties, local `-=`, owned `-` and
+/// unary negation yield shares of `a - b` and `-a` entry-wise.
 #[test]
 fn shamir_share_matrix_sub_and_neg() {
     const N_PARTIES: usize = 7;
@@ -279,6 +304,8 @@ fn shamir_share_matrix_sub_and_neg() {
     }
 }
 
+/// Checks that `mul_constant` on each party's matrix of additive shares yields shares of every
+/// entry times the public constant.
 #[test]
 fn scalar_mul_shares() {
     const N_PARTIES: usize = 5;

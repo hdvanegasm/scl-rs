@@ -9,7 +9,9 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Error, GeneralEnvironment, Protocol, RandEnvironment},
+    prelude::{
+        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, Protocol, RandEnvironment,
+    },
     protocol::{
         passive_shamir::{
             double_rand_share::PassiveRandDoubleShr,
@@ -22,12 +24,17 @@ use scl_rs::{
     ss::{shamir::ShamirSS, LinearShare},
 };
 
+/// The field of every sharing: integers modulo the prime `2^61 - 1`.
 type F = Mersenne61;
+/// A Shamir share over `F`, whose elements take one limb.
 type Share = ShamirSS<1, F>;
 
+/// The number of parties `n`.
 const N: usize = 5;
+/// The corruption threshold `t`, given to every sharing protocol as its `t`.
 const T: usize = 2;
 
+/// The ids of the `N` parties.
 fn parties() -> Vec<PartyId> {
     (0..N).map(PartyId::from).collect()
 }
@@ -48,6 +55,7 @@ where
 /// Generates `n - t` triples: two runs of `Random` for `[a]` and `[b]`, one of `Double-Random` for
 /// the masking randomness, then triple generation.
 struct GenTriples {
+    /// The party that reconstructs the masked products in triple generation.
     king: PartyId,
 }
 
@@ -173,24 +181,33 @@ fn random_rejects_degree_at_or_above_party_count() {
 
 /// Multiplies two vectors of random sharings with Beaver, returning `[x]`, `[y]` and `[x · y]` so
 /// the caller can check the product against the factors.
+///
+/// The five sharing protocols it starts with are independent, so it runs them in one [`Join`]:
+/// the party waits for the slowest of them, not for all five in turn.
 struct MulRandomPairs {
+    /// The party that reconstructs the masked values in triple generation and in the
+    /// multiplication.
     king: PartyId,
 }
 
-impl<E: RandEnvironment> Protocol<E> for MulRandomPairs {
+impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for MulRandomPairs {
     type Output = Vec<(Share, Share, Share)>;
 
     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
-        // The factors: sharings of values nobody knows, so no party could shortcut the product.
-        let x = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
-        let y = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
+        // The factors `x` and `y`: sharings of values nobody knows, so no party could shortcut the
+        // product. Then the inputs of triple generation: `a`, `b` and the double sharings that
+        // mask `a · b`. None of the five depends on another.
+        let (x, y, a, b, doubles) = Join((
+            PassiveRandShr::<1, F>::new(T, parties())?,
+            PassiveRandShr::<1, F>::new(T, parties())?,
+            PassiveRandShr::<1, F>::new(T, parties())?,
+            PassiveRandShr::<1, F>::new(T, parties())?,
+            PassiveRandDoubleShr::<1, F>::new(T, parties())?,
+        ))
+        .run(env)
+        .await?;
 
-        // The triples to spend, from a second, independent preprocessing pass.
-        let a = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
-        let b = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
-        let doubles = PassiveRandDoubleShr::<1, F>::new(T, parties())?
-            .run(env)
-            .await?;
+        // The triples to spend; triple generation needs all three of `a`, `b` and `doubles`.
         let triples = PassiveTriple::new(self.king, parties(), a, b, doubles)?
             .run(env)
             .await?;

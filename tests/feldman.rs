@@ -1,3 +1,6 @@
+//! Integration tests for Feldman verifiable secret sharing (`ss::feldman::FeldmanSS`) over
+//! secp256k1.
+
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use scl_rs::{
@@ -6,10 +9,14 @@ use scl_rs::{
     ss::feldman::FeldmanSS,
 };
 
+/// Returns the evaluation points `1..=n` as `Secp256k1ScalarField` elements, one per party; `0` is
+/// left out because the secret is the sharing polynomial's value there.
 fn party_indexes(n: u64) -> Vec<Secp256k1ScalarField> {
     (1..=n).map(Secp256k1ScalarField::from).collect()
 }
 
+/// Checks that every `(T + 1)`-subset of the `N` shares, in shuffled order, passes verification
+/// against the commitments and reconstructs the secret.
 #[test]
 fn round_trip() {
     const T: usize = 3;

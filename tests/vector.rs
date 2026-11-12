@@ -1,5 +1,9 @@
+//! Integration tests for `math::vector::Vector`: arithmetic and its length errors, indexing, and
+//! the local linear operations on vectors of secret shares.
+
 use scl_rs::math::{field::secp256k1_prime::Secp256k1PrimeField, ring::Ring, vector::Vector};
 
+/// Checks that the dot product of a random vector with the zero vector is zero.
 #[test]
 fn dot_with_zero() {
     let mut rng = rand::rng();
@@ -10,6 +14,7 @@ fn dot_with_zero() {
     assert_eq!(dot_prod.unwrap(), Secp256k1PrimeField::ZERO);
 }
 
+/// Checks that adding the zero vector leaves a random vector unchanged.
 #[test]
 fn add_with_zero() {
     let mut rng = rand::rng();
@@ -20,6 +25,7 @@ fn add_with_zero() {
     assert_eq!(add_vec.unwrap(), vector);
 }
 
+/// Checks that `dot` rejects vectors of different lengths: unwrapping its result panics.
 #[test]
 #[should_panic]
 fn incompatible_dot() {
@@ -30,6 +36,7 @@ fn incompatible_dot() {
     vector.dot(&zero_vec).unwrap();
 }
 
+/// Checks that `+` rejects vectors of different lengths: unwrapping its result panics.
 #[test]
 #[should_panic]
 fn incompatible_add_with_zero() {
@@ -41,6 +48,7 @@ fn incompatible_add_with_zero() {
     add_vec.unwrap();
 }
 
+/// Checks that `-` rejects vectors of different lengths: unwrapping its result panics.
 #[test]
 #[should_panic]
 fn incompatible_sub_with_zero() {
@@ -52,6 +60,7 @@ fn incompatible_sub_with_zero() {
     sub.unwrap();
 }
 
+/// Checks that element-wise `*` rejects vectors of different lengths: unwrapping its result panics.
 #[test]
 #[should_panic]
 fn incompatible_mul_with_zero() {
@@ -65,6 +74,7 @@ fn incompatible_mul_with_zero() {
 
 use scl_rs::math::field::mersenne61::Mersenne61;
 
+/// Checks `len` and `is_empty` on a length-5 vector and on an empty one.
 #[test]
 fn len_and_is_empty() {
     let v: Vector<Mersenne61> = Vector::zero(5);
@@ -75,6 +85,7 @@ fn len_and_is_empty() {
     assert!(empty.is_empty());
 }
 
+/// Checks that indexing reads entries and that a write through `IndexMut` is visible afterwards.
 #[test]
 fn index_read_and_write() {
     let mut v: Vector<Mersenne61> = Vector::from((1..=3).map(Mersenne61::from).collect::<Vec<_>>());
@@ -84,6 +95,7 @@ fn index_read_and_write() {
     assert_eq!(v[1], Mersenne61::from(42));
 }
 
+/// Checks the dot product of `[1, 2, 3]` and `[4, 5, 6]` against the hand-computed `32`.
 #[test]
 fn dot_known_value() {
     let a: Vector<Mersenne61> = Vector::from(
@@ -102,6 +114,7 @@ fn dot_known_value() {
     assert_eq!(a.dot(&b).unwrap(), Mersenne61::from(32));
 }
 
+/// Checks that the all-ones vector of length `n` dotted with itself gives `n`.
 #[test]
 fn ones_dot_is_length() {
     let n = 10;
@@ -109,6 +122,7 @@ fn ones_dot_is_length() {
     assert_eq!(ones.dot(&ones).unwrap(), Mersenne61::from(n as u64));
 }
 
+/// Checks element-wise `*` on `[2, 3]` and `[5, 7]` against the hand-computed `[10, 21]`.
 #[test]
 fn elementwise_mul_known() {
     let a: Vector<Mersenne61> = Vector::from(
@@ -148,6 +162,8 @@ use scl_rs::{
     ss::{additive::AdditiveSS, shamir::ShamirSS},
 };
 
+/// Checks that each party adding its two vectors of additive shares locally yields shares of the
+/// entry-wise sum.
 #[test]
 fn additive_share_vector_add() {
     const N_PARTIES: usize = 5;
@@ -173,6 +189,8 @@ fn additive_share_vector_add() {
     }
 }
 
+/// Checks that, on vectors of degree-3 Shamir shares held by 7 parties, local subtraction and
+/// negation yield shares of `a - b` and `-a` entry-wise.
 #[test]
 fn shamir_share_vector_sub_and_neg() {
     const N_PARTIES: usize = 7;
@@ -201,6 +219,8 @@ fn shamir_share_vector_sub_and_neg() {
     }
 }
 
+/// Checks that scaling a field vector gives the same result through the owned and borrowed `*`
+/// operators, and that every entry is multiplied by the scalar.
 #[test]
 fn scalar_mul_ring() {
     let mut rng = rand::rng();
@@ -216,6 +236,8 @@ fn scalar_mul_ring() {
     }
 }
 
+/// Checks that `mul_constant` on each party's vector of additive shares yields shares of every
+/// entry times the public constant.
 #[test]
 fn scalar_mul_shares() {
     const N_PARTIES: usize = 5;

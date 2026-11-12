@@ -1,3 +1,6 @@
+//! Integration test for Lagrange interpolation (`math::poly::interpolate_polynomial_at`) over
+//! `Mersenne61`.
+
 use rand::seq::SliceRandom;
 use rand::Rng;
 use scl_rs::math::{
@@ -6,6 +9,8 @@ use scl_rs::math::{
     ring::Ring,
 };
 
+/// Checks that interpolating `degree + 1` evaluations of a random polynomial gives its value at a
+/// random point, over 100 trials with degrees below 100 and distinct nodes drawn from `0..1000`.
 #[test]
 fn interpolation() {
     const MAX_DEGREE: u64 = 100;

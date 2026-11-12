@@ -15,6 +15,9 @@ use scl_rs::{
     ss::additive::AdditiveSS,
 };
 
+/// Two-party protocol: each party sends one packet holding a random scalar, the generator
+/// multiplied by that scalar, and two additive shares of the scalar, then returns the scalar, point
+/// and shares it receives.
 pub struct SendRecvProtocol;
 
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
@@ -62,6 +65,7 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
     }
 }
 
+/// Simulates `SendRecvProtocol` between parties 0 and 1, then prints both traces and the metrics.
 fn main() {
     let p0 = PartyId::from(0);
     let p1 = PartyId::from(1);

@@ -1,3 +1,6 @@
+//! Integration tests for Shamir secret sharing (`ss::shamir::ShamirSS`) over `Mersenne61`:
+//! reconstruction thresholds, dealing through `LinearShare`, and share serialization.
+
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use scl_rs::{
@@ -7,10 +10,15 @@ use scl_rs::{
     ss::{shamir::ShamirSS, LinearShare, ShareError},
 };
 
+/// Returns the evaluation points `1..=n` as `Mersenne61` elements, one per party; `0` is left out
+/// because the secret is the sharing polynomial's value there.
 fn party_indexes(n: u64) -> Vec<Mersenne61> {
     (1..=n).map(Mersenne61::from).collect()
 }
 
+/// Checks that reconstruction rejects too few shares: every subset of 1 to `T` shares of a
+/// degree-`T` sharing, drawn from the first `N - 1` parties, fails with `NotEnoughShares`. This
+/// exercises the count check against the degree stored in each share.
 #[test]
 fn too_few_shares_is_not_enough() {
     const T: usize = 3;

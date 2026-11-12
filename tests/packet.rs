@@ -1,3 +1,7 @@
+//! Tests of `Packet`: values written into a packet read back unchanged, and `pop` and `read` fail
+//! with the expected `NetworkError` on an empty packet, an out-of-range index, or a type that does
+//! not match the stored bytes.
+
 use scl_rs::math::ec::secp256k1::Secp256k1;
 use scl_rs::math::ec::EllipticCurve;
 use scl_rs::math::field::secp256k1_scalar::Secp256k1ScalarField;
@@ -7,6 +11,7 @@ use scl_rs::{
     net::{NetworkError, Packet},
 };
 
+/// A field element written into a packet pops back equal.
 #[test]
 fn serialize_deserialize_one_object() {
     let element = Mersenne61::from(3);
@@ -16,6 +21,7 @@ fn serialize_deserialize_one_object() {
     assert_eq!(element, element_unpacked);
 }
 
+/// A scalar and a curve point written into one packet pop back equal, the last written first.
 #[test]
 fn serialize_deserialize_multiple_different_objects() {
     let mut rng = rand::rng();
@@ -34,6 +40,7 @@ fn serialize_deserialize_multiple_different_objects() {
     assert_eq!(ec_element, ec_unpacked);
 }
 
+/// `pop` on an empty packet fails with `NetworkError::EmptyPacket`.
 #[test]
 fn pop_on_empty_packet_is_rejected() {
     let mut packet = Packet::empty();
@@ -41,6 +48,8 @@ fn pop_on_empty_packet_is_rejected() {
     assert!(matches!(result, Err(NetworkError::EmptyPacket)));
 }
 
+/// `read` at an index past the last element fails with `NetworkError::WrongPacketIdx`, carrying
+/// that index.
 #[test]
 fn read_out_of_range_index_is_rejected() {
     let mut packet = Packet::empty();
@@ -53,6 +62,8 @@ fn read_out_of_range_index_is_rejected() {
     ));
 }
 
+/// `read` as a type that needs more bytes than the stored element holds fails with
+/// `NetworkError::SerializationError`.
 #[test]
 fn read_wrong_type_is_a_serialization_error() {
     let mut packet = Packet::empty();
@@ -63,6 +74,8 @@ fn read_wrong_type_is_a_serialization_error() {
     assert!(matches!(result, Err(NetworkError::SerializationError(_))));
 }
 
+/// `pop` as a type that needs more bytes than the stored element holds fails with
+/// `NetworkError::SerializationError`.
 #[test]
 fn pop_wrong_type_is_a_serialization_error() {
     let mut packet = Packet::empty();

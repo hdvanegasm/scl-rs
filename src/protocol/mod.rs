@@ -91,6 +91,30 @@ impl fmt::Display for ProtocolId {
 }
 
 /// Represents a protocol.
+///
+/// # Cancel safety
+///
+/// The future of a protocol, from [`run`](Protocol::run) or [`execute`](Protocol::execute), is in
+/// general **not** cancel safe, even when every network call it makes is (see [Cancel
+/// safety](Network#cancel-safety) on `Network`). A protocol is a sequence of rounds that the
+/// parties run in step. If a party drops the future part-way:
+///
+/// - the protocol cannot be resumed, since `run` and `execute` consume it;
+/// - the other parties may wait for messages that never come, until their own timeout or error;
+/// - the messages the other parties already sent to this party stay in the protocol's session,
+///   where the next receive in that session takes them in place of the ones it expects;
+/// - its trace scope stays open, since `execute` never records its end.
+///
+/// To make a protocol safe to drop, for example to bound it in time or to race it against another
+/// future, run it in a session of its own: fork the environment with [`ForkEnvironment::fork`],
+/// execute the protocol on the child, and drop the child together with the protocol's future. The
+/// leftover messages then belong to the child's session, where the caller's receives never look,
+/// and the caller's session is unaffected. Every party must make that fork too, whether or not it
+/// drops the protocol (see [Every party forks
+/// alike](crate::net::ForkNetwork#every-party-forks-alike)). The combinators of [`concurrent`] run
+/// each sub-protocol this way. Like them, run nothing else in the caller's session until the
+/// protocol on the child has returned or been dropped (see [Fork only through the
+/// combinators](concurrent#fork-only-through-the-combinators)).
 pub trait Protocol<E: Environment>: Send + Sync {
     /// The output of the protocol.
     type Output;
@@ -219,6 +243,13 @@ pub trait ForkEnvironment: Environment {
     /// alike](crate::net::ForkNetwork#every-party-forks-alike). The combinators fork for you, so
     /// this means every party must run every `Join` and `JoinAll`, with the same number of
     /// sub-protocols.
+    ///
+    /// Fork through the combinators of [`concurrent`] rather than by calling this method. A
+    /// protocol that does call it must do what they do: run nothing else in this environment's
+    /// session until every protocol on the child has returned or been dropped. Otherwise a
+    /// simulation trace places the child's scope inside the wrong protocol and counts its bytes
+    /// under the wrong one; see [Fork only through the
+    /// combinators](concurrent#fork-only-through-the-combinators).
     ///
     /// For [`GeneralEnvironment`], the child's RNG is seeded from this environment's RNG. A run
     /// with seeded RNGs therefore stays reproducible, but forking draws from this RNG, so it

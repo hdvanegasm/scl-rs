@@ -1,3 +1,6 @@
+//! Integration tests for polynomial interpolation (`math::poly::interpolate_polynomial_at`) over
+//! `Mersenne61`, including its error cases.
+
 mod common;
 
 use proptest::prelude::*;
@@ -11,6 +14,8 @@ use scl_rs::{
 };
 
 proptest! {
+    /// Checks that interpolating a random polynomial of degree below 16 from its evaluations at
+    /// `1..=degree + 1` gives its value at a random `x`, and its constant term at `0`.
     #[test]
     fn interpolation_recovers_polynomial(
         seed in any::<[u8; 32]>(),
@@ -29,6 +34,8 @@ proptest! {
     }
 }
 
+/// Checks that interpolating with no nodes returns `Error::EmptyInterpolation` instead of
+/// panicking.
 #[test]
 fn interpolate_with_empty_input_is_rejected() {
     let empty: [Mersenne61; 0] = [];
@@ -38,6 +45,8 @@ fn interpolate_with_empty_input_is_rejected() {
     assert!(matches!(result, Err(Error::EmptyInterpolation)));
 }
 
+/// Checks that interpolating two evaluations over one node returns `Error::LengthMismatch` with
+/// both counts, instead of panicking.
 #[test]
 fn interpolate_with_length_mismatch_is_rejected() {
     let evaluations = [Mersenne61::from(1), Mersenne61::from(2)];

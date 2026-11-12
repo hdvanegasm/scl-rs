@@ -386,15 +386,11 @@ impl ChannelConfigBuilder {
     /// A configuration is valid when the bandwidth, MSS, and window size are all non-zero and the
     /// package loss is a fraction in `[0, 1]`.
     pub fn is_valid(&self) -> bool {
-        if self.bandwidth.value() == 0
+        !(self.bandwidth.value() == 0
             || self.mss.value() == 0
             || self.package_loss.value() < 0.0
             || self.package_loss.value() > 1.0
-            || self.window_size.value() == 0
-        {
-            return false;
-        }
-        true
+            || self.window_size.value() == 0)
     }
 }
 

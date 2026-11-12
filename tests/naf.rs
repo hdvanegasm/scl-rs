@@ -1,9 +1,14 @@
+//! Integration tests for the non-adjacent form (NAF) encoding (`math::field::naf::NafEncoding`) of
+//! `Secp256k1ScalarField` elements.
+
 use scl_rs::math::{
     field::{naf::NafEncoding, secp256k1_scalar::Secp256k1ScalarField},
     ring::Ring,
 };
 use std::ops::{Add, Sub};
 
+/// Checks `to_naf` against hand-computed encodings of length `BIT_SIZE + 1`: zero has no nonzero
+/// digit, `13 = 2⁴ - 2² + 2⁰`, and `213 = 2⁸ - 2⁶ + 2⁴ + 2² + 2⁰`.
 #[test]
 fn fixed_naf() {
     let naf = Secp256k1ScalarField::ZERO.to_naf();

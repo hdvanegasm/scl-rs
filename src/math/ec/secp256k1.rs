@@ -311,16 +311,20 @@ impl Secp256k1 {
     }
 }
 
+/// Unit tests for the curve-membership checks of [`Secp256k1`] and [`AffinePoint`].
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Checks that the generator is on the curve in both its projective and affine forms.
     #[test]
     fn generator_is_on_curve() {
         assert!(Secp256k1::gen().is_on_curve());
         assert!(Secp256k1::gen().to_affine().is_valid());
     }
 
+    /// Checks that `AffinePoint::is_valid` rejects the affine point `(1, 1)`, which is not on the
+    /// curve.
     #[test]
     fn off_curve_affine_point_is_invalid() {
         // (1, 1) does not satisfy y^2 = x^3 + 7  (1 != 8).
@@ -328,6 +332,8 @@ mod tests {
         assert!(!p.is_valid());
     }
 
+    /// Checks that the point at infinity counts as on the curve and that the check does not
+    /// panic on its `z = 0` coordinate.
     #[test]
     fn point_at_infinity_is_on_curve_without_panicking() {
         // `is_on_curve` must short-circuit infinity rather than route it through `to_affine`,
@@ -335,6 +341,8 @@ mod tests {
         assert!(Secp256k1::POINT_AT_INFINITY.is_on_curve());
     }
 
+    /// Checks that `is_on_curve` rejects the projective point `(1 : 1 : 1)`, which is not on the
+    /// curve.
     #[test]
     fn off_curve_projective_point_is_not_on_curve() {
         // (1 : 1 : 1) in projective coordinates: y^2 z = 1, x^3 + 7 z^3 = 8, so it is off-curve.

@@ -46,7 +46,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.14.2"
+scl-rs = "0.15.0"
 ```
 
 ### Releases vs. `main`
@@ -421,34 +421,36 @@ python3 benches/comparison/plot.py     # one figure per scenario, plus a summary
 
 **The split that runs through every regime is round- versus bandwidth-dominated.** A protocol whose
 running time is a sum of round trips is predicted within a few percent in _every_ regime measured
-here — including under packet loss (the round-dominated `PingPong` came in at −0.7 % at 1 % loss).
-Round trips are priced by the RTT term, which every regime gets right; the throughput terms, where
-the model's uncertainty lives, barely enter. The error lives on the bandwidth-dominated side.
+here — including under packet loss, where the round-dominated `PingPong` came in 2.3 % above the
+real mean at 1 % loss (the mean is what the loss formula predicts; against the median, which sits on
+the loss-less floor, the gap is 10.3 %). Round trips are priced by the RTT term, which every regime
+gets right; the throughput terms, where the model's uncertainty lives, barely enter. The error lives
+on the bandwidth-dominated side.
 
-**Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT,
-1 Mbit/s, loss-less link the simulator under-predicts by 3.4 % for `PingPong` and 10.6 % for
-`BulkTransfer` (real 3.63 s and 4.93 s; simulated 3.51 s and 4.41 s). The simulator prices an
+**Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT, 1
+Mbit/s, loss-less link the simulator under-predicts by 1.8 % for `PingPong` and 10.6 % for
+`BulkTransfer` (real 3.575 s and 4.935 s; simulated 3.512 s and 4.410 s). The simulator prices an
 idealized steady-state throughput; the shaped link's real goodput falls a little short of it — from
 protocol framing and the `tc` rate limiter's own accounting that the model does not reproduce — and
 the shortfall grows with bytes moved, so the bulk transfer's gap exceeds the latency-bound
-ping-pong's. The real distributions are extremely tight (coefficient of variation 0.0–0.1 % over 50
-runs), so this is a genuine bias, not measurement noise. (It is _not_ TCP slow start: at 1 Mbit/s the
-bandwidth-delay product is 12.5 KB, below Linux's initial congestion window, so the connection
+ping-pong's. The real distributions are extremely tight (coefficient of variation 0.0–0.2 % over 50
+runs), so this is a genuine bias, not measurement noise. (It is _not_ TCP slow start: at 1 Mbit/s
+the bandwidth-delay product is 12.5 KB, below Linux's initial congestion window, so the connection
 reaches full rate within the first round trip.)
 
 **Window-limited and loss-less: the model's form holds, and `window_size` must be calibrated.** When
 the bandwidth-delay product exceeds the TCP window, the window alone sets the rate (`window · 8 /
 RTT`) and the configured bandwidth is ignored. Over a 100 ms RTT, 100 Mbit/s link (BDP 1.25 MB, far
-above the 64 KiB default window) the nominal prediction over-predicts by 2.3 % (`PingPong`) and 7.0 %
-(`BulkTransfer`). Recovering the window Linux actually delivered from the real bulk transfers — the
-procedure the `WindowSize` documentation prescribes — yields 70,422 bytes, only 7.5 % above the
-default. Re-simulating with it drives the bulk-transfer error to zero, but that is circular (the
-window was fit to that transfer's own median), and this run has no independent window-bound workload
-to cross-check it: the round-dominated protocol is latency-bound and barely moves — +2.3 % to
-+2.1 % — whatever the window. So the run demonstrates the calibration recipe rather than pinning the
-number down; a real cross-check needs differently-shaped runs, as the `WindowSize` documentation
-describes. The default and delivered windows are close on this host, so the miss is mild; where they
-diverge more, leaving the default in place misprices every message.
+above the 64 KiB default window) the nominal prediction over-predicts by 1.9 % (`PingPong`) and 7.1
+% (`BulkTransfer`). Recovering the window Linux actually delivered from the real bulk transfers —
+the procedure the `WindowSize` documentation prescribes — yields about 70,460 bytes, only 7.5 %
+above the default. Re-simulating with it drives the bulk-transfer error to zero, but that is
+circular (the window was fit to that transfer's own median), and this run has no independent
+window-bound workload to cross-check it: the round-dominated protocol is latency-bound and barely
+moves — +1.9 % to +1.7 % — whatever the window. So the run demonstrates the calibration recipe
+rather than pinning the number down; a real cross-check needs differently-shaped runs, as the
+`WindowSize` documentation describes. The default and delivered windows are close on this host, so
+the miss is mild; where they diverge more, leaving the default in place misprices every message.
 
 **Lossy (`package_loss` above zero): a standard formula, applied outside its validity domain.** The
 `√(3/2p)` square-root formula is the widely-used one from the literature, and it is implemented
@@ -456,18 +458,20 @@ faithfully; what does not carry over is the question we ask of it. It is stated 
 _asymptotic_ result, valid as `p → 0`, for the _almost-sure mean_ throughput of a _long-lived_ TCP
 _Reno_ flow — whereas scl-rs reads a single number off it to price one short message. Two
 consequences show up in the data. First, because the formula enters only through throughput, its
-error is **confined to bandwidth-dominated protocols**: at 1 % loss the round-dominated `PingPong` is
-predicted within 0.7 %, while `BulkTransfer` on the same link is over-predicted by ~400 % against the
-median (~211 % against the mean). Second — more decisively than any error bar — the real runs are not
-reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to 7.11 s, precisely the
-deviation-from-the-mean that the formula makes no claim about. Treat simulated timings for a
-bandwidth-dominated protocol on a lossy channel as order-of-magnitude only; the `PackageLoss`
-documentation gives the conditions and the citation.
+error is **confined to bandwidth-dominated protocols**: at 1 % loss the round-dominated `PingPong`
+is predicted within 2.3 % of the real mean, while `BulkTransfer` on the same link is over-predicted
+by ~379 % against the median (~260 % against the mean). Second — more decisively than any error bar
+— the real runs are not reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to
+6.35 s, precisely the deviation-from-the-mean that the formula makes no claim about. Treat simulated
+timings for a bandwidth-dominated protocol on a lossy channel as order-of-magnitude only; the
+`PackageLoss` documentation gives the conditions and the citation.
 
 Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
-surfaces the gap. The untested axis that matters most is concurrency: every measurement so far keeps
-a single message in flight, so the per-link independent-bandwidth assumption has never been stressed
-by simultaneous transfers.
+surfaces the gap. The axis these runs leave untested is concurrency: every measurement so far keeps
+a single message in flight. Since 0.15.0 the simulator models link occupancy (messages sent at once
+on one link share its bandwidth, one after another, instead of each getting all of it), but no
+shaped run has yet checked that against real concurrent transfers, and messages on different links
+still never share an uplink.
 
 ## Status and roadmap
 
@@ -475,6 +479,25 @@ scl-rs is under active development and stays on `0.x` indefinitely; the public A
 `0.x` releases, and there is no planned `1.0` (the unaudited posture is carried by this disclaimer,
 not the version number). The plan toward a stable, well-baked `0.x` API — API stabilization, security
 hardening, examples, and remaining features — is tracked in [`docs/roadmap.md`](docs/roadmap.md).
+
+## Use of AI
+
+I develop scl-rs with the help of AI. This is how it is used:
+
+- **Questions and explanations.** I ask Claude how to approach a change, what a concept, an error
+  or a library's documented behaviour means, and what the trade-offs between designs are. I make
+  the design decisions.
+- **Plans and reviews.** Claude has drafted and reviewed implementation plans and design notes for
+  larger changes, and reviewed my code for bugs before I committed it.
+- **Code written on request.** Most of the library code is written by me. When I ask for it,
+  Claude writes code too: many of the tests (for example the simulator's golden snapshot and the
+  concurrency tests), examples, documentation comments, `CHANGELOG.md` entries, parts of this
+  README, and some fixes and features.
+- **Checks.** When Claude changes the code, it runs the test suite, Clippy and the documentation
+  build, and reports what it ran and what it did not check.
+
+Every commit is mine, and I am responsible for what it contains. AI assistance is not a security
+review: scl-rs is still not audited (see the status note at the top).
 
 ## Acknowledgements
 

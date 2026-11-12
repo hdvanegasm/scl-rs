@@ -28,6 +28,9 @@ pub fn field_element<F: Ring>() -> impl Strategy<Value = F> {
     any::<[u8; 32]>().prop_map(|seed| F::random(&mut StdRng::from_seed(seed)))
 }
 
+/// A [`proptest`] strategy that samples the curve point `a · C::gen()` for a uniform scalar `a`.
+///
+/// The scalar is drawn as in [`field_element`], from a 32-byte seed that proptest can shrink.
 pub fn curve_element<const LIMBS: usize, C, F>() -> impl Strategy<Value = C>
 where
     C: EllipticCurve<LIMBS, ScalarField = F> + Debug,
@@ -39,6 +42,10 @@ where
     })
 }
 
+/// Serializes `x` with `postcard`, deserializes it back and fails the test case unless the result
+/// equals `x`.
+///
+/// Panics if serialization or deserialization itself fails.
 pub fn roundtrip<T>(x: T) -> Result<(), TestCaseError>
 where
     T: Serialize + DeserializeOwned + PartialEq + Debug,

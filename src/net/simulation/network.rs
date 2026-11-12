@@ -31,6 +31,30 @@ use std::time::Duration;
 /// One `SimNetwork` is created per party by [`simulate`](crate::net::simulation::simulator::simulate);
 /// all parties share the same `Switchboard`. The `Mutex` is uncontended (the core is
 /// single-threaded) and exists only to satisfy the `Send` bound on the [`Network`] trait.
+///
+/// # Cancel safety
+///
+/// Every method is cancel safe (see [Cancel safety](Network#cancel-safety) on `Network` for the
+/// definition). A send and [`close`](Network::close) complete on their first poll. A receive takes
+/// a packet only in the poll that returns it, so a receive dropped before it returns has taken
+/// nothing, and the packet stays for the next receive in the same session. What a dropped receive
+/// leaves behind does no harm. Its waker stays parked until the next delivery to the same mailbox
+/// wakes the party once for nothing. The timer of a dropped `_with_timeout` receive stays
+/// scheduled, and may likewise wake the party once for nothing when it fires.
+///
+/// Two things differ from a tokio runtime when a protocol races futures on the simulator:
+///
+/// - The simulator's executor does not drive tokio's timers. A `tokio::time::timeout` or
+///   `tokio::time::sleep` in a party's code panics when [`simulate`] runs outside a tokio runtime,
+///   and inside one it uses the runtime's wall-clock timer, not the simulation's virtual time. To
+///   bound a receive in time, use the `_with_timeout` receives, which time out in virtual time.
+/// - `tokio::select!` starts polling at a random branch unless it begins with `biased;`, and
+///   `futures::select!` picks a random branch among the ready ones, where `select_biased!` picks
+///   the first. When more than one branch is ready, a random choice can change which one wins,
+///   and with it the trace, from one run to the next. Use the biased forms to keep runs
+///   reproducible.
+///
+/// [`simulate`]: crate::net::simulation::simulator::simulate
 pub struct SimNetwork {
     /// ID of the local party.
     local: PartyId,

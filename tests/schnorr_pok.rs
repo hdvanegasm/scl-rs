@@ -13,9 +13,12 @@ use scl_rs::{
     protocol::{zk::schnorr::SchnorrPok, ProtocolId},
 };
 
+/// The number of parties in the test network, more than the two that take part in a proof.
 const N_PARTIES: usize = 4;
+/// The `LIMBS` parameter of `SchnorrPok` on secp256k1: `Secp256k1` implements `EllipticCurve<4>`.
 const LIMBS: usize = 4;
 
+/// A node of a Schnorr proof of knowledge of a discrete logarithm on secp256k1.
 type Pok = SchnorrPok<LIMBS, Secp256k1>;
 
 /// The party ids of the test network.
@@ -27,6 +30,7 @@ fn parties() -> Vec<PartyId> {
 /// rest take no part. Errors are turned into strings so the simulator, which panics on a protocol
 /// error, reports them as outputs instead.
 struct MaybeProve {
+    /// This party's proof node, or `None` if it takes no part in the proof.
     pok: Option<Pok>,
 }
 

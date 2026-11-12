@@ -1,9 +1,13 @@
+//! Integration tests for additive secret sharing (`ss::additive::AdditiveSS`) over `Mersenne61`.
+
 use scl_rs::{
     math::{field::mersenne61::Mersenne61, ring::Ring},
     net::PartyId,
     ss::{additive::AdditiveSS, LinearShare},
 };
 
+/// Inherent-API dealing: for 100 random secrets dealt to 20 parties, summing all the shares returns
+/// the secret.
 #[test]
 fn construct_shares_and_reconstruct() {
     const REPETITIONS: usize = 100;

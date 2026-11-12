@@ -10,6 +10,7 @@ use scl_rs::{
 };
 
 // A protocol is a struct that implements the `Protocol` trait.
+/// Two-party protocol: each party sends its own id to the other and returns the id it receives.
 pub struct SendRecvProtocol;
 
 // The protocol is written generic over `E: Environment` — and therefore over any `Network` the
@@ -63,6 +64,8 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
     }
 }
 
+/// Simulates `SendRecvProtocol` between parties 0 and 1, then prints both traces, both outputs and
+/// the metrics.
 fn main() {
     let p0 = PartyId::from(0);
     let p1 = PartyId::from(1);

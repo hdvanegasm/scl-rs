@@ -9,6 +9,20 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-12
+
+Adds concurrent composition: independent sub-protocols, of the same or different types, run at the
+same time within one party, so the party waits for the slowest of them instead of for all of them
+in turn. The `Join` and `JoinAll` combinators of `protocol::concurrent` fork the environment into
+child sessions; every message carries its session, both backends keep sessions apart, and traces
+and bandwidth trees follow them. On `TcpNetwork`, each connection now has a reader and a writer
+task. The simulator also models link occupancy, so messages sent at once on one link share its
+bandwidth. Also new: Schnorr's interactive proof of knowledge, in `protocol::zk`. Breaking: `Event`
+gains a `session` field; the `TcpNetwork` wire format changes and `create` takes a required root
+tag; `GeneralEnv` is renamed `GeneralEnvironment`; the MSRV rises to 1.88; and simulated timings
+change where one link carries several messages at once. *Changed* lists each break and, where code
+has to change, how to migrate.
+
 ### Added
 
 - **`protocol::zk`**, a new module for zero-knowledge proofs run as two-party `Protocol`s between
@@ -33,8 +47,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   The `schnorr_pok` example keeps its own self-contained copy of the protocol, restricted to a
   two-party network, and does not use this type.
 
-- **`net::session::SessionId`**, the identifier of a session, for the concurrent composition
-  work (`docs/concurrent-composition-plan.md`). The simulator uses it to keep sessions apart and
+- **`net::session::SessionId`**, the identifier of a session, for concurrent composition. The
+  simulator uses it to keep sessions apart and
   to tag trace events (see *Changed*), and `ForkNetwork::fork` creates handles on child sessions
   (see below). A session is two things: a 32-byte **root tag**, which identifies one execution
   and must be equal at every party of it and distinct across executions; and a **path** of fork
@@ -102,6 +116,12 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   - Combinators fail fast: they return the first error any sub-protocol returns, and drop the
     others unfinished. The messages those already sent are never received, and the matching
     sub-protocols at the other parties may wait until their own timeout or error.
+  - **Fork only through the combinators.** A combinator runs nothing in its own session while its
+    sub-protocols run, and simulation traces rely on that to place each sub-protocol's scope (a
+    trace records no fork). Code that calls `fork` by hand must do the same: run nothing else in
+    its own session until the protocols on the child have returned or been dropped. Otherwise
+    outputs and timings stay correct, but the trace places the child's scope inside the wrong
+    protocol, and `bandwidth_tree_for` may return `MalformedTrace`.
 
 - **`Protocol::boxed(map)`** and **`protocol::concurrent::BoxedProtocol<E, O>`**, to run protocols
   of different types in one `JoinAll`. `boxed` erases the protocol's type and maps its output to
@@ -115,6 +135,34 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `TcpNetwork` returns it from every later send to that peer and receive from it (see *Changed*),
   so every session learns of the failure, whichever asks first. `NetworkError` is
   `#[non_exhaustive]`, so no `match` breaks.
+
+- **`SimulationTrace::session(&session)`** returns the events of one branch: those recorded in
+  `session` or in a session below it. Events that carry no session (`Start`, `Output`, `Stop`, …)
+  are left out.
+
+- **`SimulationError::MalformedTrace { event_idx, reason }`**, returned by
+  `SimulationOutcome::bandwidth_tree_for` when a party's protocol scopes do not nest: a
+  `ProtocolEnd` whose protocol is not the one open in its session, or that ends in a session where
+  no scope is open. `SimulationError` is `#[non_exhaustive]`, so no `match` breaks.
+
+- **`Delay::transmission(link, size_bytes)`**, which splits a message's delay into the time it
+  holds the link and the time it then travels, returned as the new
+  **`net::simulation::switchboard::TransmissionTime`** (`new`, `serialization()`,
+  `propagation()`). It is a provided method, whose default has no serialization time.
+  `ConfigDelay`, the delay model `simulate` uses, overrides it with the new
+  **`ChannelConfig::transmission(n_bytes)`**, whose two parts always add up to
+  `message_delay(n_bytes)` exactly. See link occupancy under *Changed*.
+
+- **`examples/concurrent_preprocessing.rs`**: the preprocessing of a Beaver multiplication run
+  one step after another and with its five independent steps in one `Join`, on the WAN preset,
+  with the two runs' metrics side by side. A party other than the king takes 400 ms one after
+  another and 200 ms under the `Join`, and sends the same bytes.
+
+- **Cancel safety is documented** for every async method of `Network`, `TcpNetwork`,
+  `SimNetwork`, `Protocol`, `Join` and `JoinAll`, under `# Cancel safety`: the receives and sends
+  are cancel safe on both backends; `TcpNetwork::recv`, `TcpNetwork::create` and `close()` on a
+  `TcpNetwork`'s root handle are not; a protocol is not, and is made safe to drop by running it in
+  a forked session.
 
 ### Changed
 
@@ -147,10 +195,11 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
     return a single peer's error: they wait while any peer is open, and return
     `ConnectionClosed(None)` once none is and nothing is left to take in the session.
   - `party_ids()` returns the parties in ascending order, instead of `HashMap` order.
-  - After `close()` on the root handle, receives from peers, in every session, still take what is
-    already queued, then end with `ConnectionClosed`, where a `recv_from` returned
-    `PartyNotFound`; sends to peers fail with `ConnectionClosed(Some(peer))`. `close()` on a
-    forked handle gives up only that handle's session.
+  - After `close()` on the root handle, receives from every party, this node included, in every
+    session, still take what is already queued, then end with `ConnectionClosed(Some(party))`,
+    where a `recv_from` returned `PartyNotFound`; sends to every party, this node included, fail
+    with `ConnectionClosed(Some(party))`, where a send to this node returned `SendError`.
+    `close()` on a forked handle gives up only that handle's session.
   - `NetworkError::SendError` is no longer returned: it came only from the old loop-back channel.
 
 - **Breaking: `protocol::GeneralEnv` is renamed `GeneralEnvironment`**, in `protocol` and in the
@@ -164,17 +213,52 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
   `session: SessionId` field**: the session the packet was sent or received in, or the protocol
   ran in. In code that never forks, it is always the root session,
   `SessionId::root(SIMULATION_ROOT_TAG)`; under `Join` or `JoinAll`, each sub-protocol's events
-  carry its own child session. The other variants and the `Display` of events and traces are
-  unchanged. Migration: patterns that list every field need `session` or `..`; struct
+  carry its own child session. The other variants and the `Display` of events are unchanged; the
+  `Display` of a trace changes only for runs that fork (see below). Migration: patterns that list
+  every field need `session` or `..`; struct
   literals, e.g. in a hand-built trace passed to `SimulationTrace::new`, need
   `session: SessionId::root(SIMULATION_ROOT_TAG)`.
 
 - **The simulator keeps sessions apart.** Its mailboxes, waiting receives and scheduled
   deliveries are keyed by link and session, so a receive takes only packets sent in its own
   session, and a delivery wakes only receives waiting in that session. Delivery on a link stays
-  first-in, first-out across sessions, as on one TCP stream. Code that does not fork sessions
-  behaves exactly as before: the golden snapshot in `tests/golden.rs` (traces, exact event
-  timestamps, bandwidth trees and metrics) is unchanged.
+  first-in, first-out across sessions, as on one TCP stream. For code that does not fork sessions,
+  this routing changes nothing: with it alone, the golden snapshot in `tests/golden.rs` (traces,
+  exact event timestamps, bandwidth trees and metrics) was unchanged. Link occupancy (below) does
+  change some timings.
+
+- **Simulated links now carry one message at a time (link occupancy).** A message holds its link
+  for its serialization time (its size over the channel's throughput), and a message sent on the
+  same link meanwhile starts once the link is free; the propagation time, half the RTT, is added
+  after and holds nothing. Before, every message got the link's whole bandwidth, so messages sent
+  at once on one link arrived together, which underestimated latency whenever a link carried more
+  than one message at a time, as concurrent sessions do. A message sent alone arrives exactly when
+  it did before. Messages on different links still do not share bandwidth (an uplink shared across
+  links is not modelled). Occupancy applies to every simulation: `simulate` always uses
+  `ConfigDelay`, which splits each channel's delay with `ChannelConfig::transmission`.
+
+  Timings change for code that sends several messages on one link at the same instant. In the
+  golden snapshot, 2 receives in `bandwidth_flamegraph` and 8 in `secure_stats_flamegraph` arrive
+  0.4 ms later; `secure_covariance`, which sends many packets on one link at once, finishes at
+  0.863 s instead of 0.859 s, with receives up to 4.4 ms later. The order of events, the bandwidth
+  trees and the byte counts are unchanged. Occupancy has not been checked against real concurrent
+  transfers: the `benches/comparison` scenarios keep one message in flight.
+
+- **Traces and bandwidth trees follow sessions.** Both are now read off one tree of protocol
+  scopes, built with a stack of open scopes per session, so the interleaved events of a `Join`'s
+  branches are attributed to the branch that recorded them.
+  - `bandwidth_tree_for` puts each branch under the `Join` or `JoinAll` node with its own bytes,
+    e.g. `<simulation>;Preprocessing;Join;PassiveRandShr`. A branch that a fail-fast combinator dropped
+    is closed with the combinator. A `ProtocolEnd` that does not match the scope open in its
+    session is now an error, `MalformedTrace`, where the old parser closed the innermost scope.
+  - A trace's `Display` prints each branch as its own block, labelled with its session, e.g.
+    `PassiveRandShr [session 0.2] {`; a scope that never ended closes with `} (not finished)`; an
+    unmatched `ProtocolEnd` prints as a plain event line instead of failing. A trace of code that
+    never forks renders exactly as before.
+
+- **`TcpNetwork::send` returns the total payload bytes it sent**: one packet's size per party,
+  this node included. 0.14.x returned the size of the packet sent to the last party, i.e. one
+  packet's size.
 
 - **A deadlock in `simulate` now says what is stuck.** The panic message keeps its first line,
   `scheduler: N task(s) parked, nothing to deliver (deadlock)`, and adds a report: each receive
@@ -1201,7 +1285,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.13.0...v0.14.0

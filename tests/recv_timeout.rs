@@ -1,3 +1,7 @@
+//! Tests of the timed receives `recv_from_with_timeout` and `recv_any_with_timeout` on the
+//! deterministic simulator, with two parties: a receive fails with `NetworkError::Timeout` when no
+//! packet arrives before its deadline, and returns the packet when one does.
+
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
@@ -33,6 +37,7 @@ impl<E: Environment> Protocol<E> for SilentPartyProtocol {
     }
 }
 
+/// A `recv_from_with_timeout` on a peer that never sends fails with `Timeout` naming that peer.
 #[test]
 fn silent_party_times_out() {
     let p0 = PartyId::from(0_usize);
@@ -77,6 +82,7 @@ impl<E: Environment> Protocol<E> for PromptSenderProtocol {
     }
 }
 
+/// A `recv_from_with_timeout` with a 60 s deadline returns the packet a peer sends at once.
 #[test]
 fn prompt_sender_succeeds() {
     let p0 = PartyId::from(0_usize);
@@ -118,6 +124,7 @@ impl<E: Environment> Protocol<E> for AllSilentProtocol {
     }
 }
 
+/// A `recv_any_with_timeout` that no peer sends to fails with `Timeout(None)`.
 #[test]
 fn recv_any_all_silent_times_out() {
     let p0 = PartyId::from(0_usize);
@@ -165,6 +172,8 @@ impl<E: Environment> Protocol<E> for LateSenderProtocol {
     }
 }
 
+/// A `recv_any_with_timeout` whose only packet arrives after its 1 ms deadline fails with
+/// `Timeout(None)` instead of returning the packet late.
 #[test]
 fn recv_any_late_packet_times_out() {
     let p0 = PartyId::from(0_usize);
@@ -213,6 +222,8 @@ impl<E: Environment> Protocol<E> for PromptAnyProtocol {
     }
 }
 
+/// A `recv_any_with_timeout` with a 60 s deadline returns the packet a peer sends at once, together
+/// with that peer's id.
 #[test]
 fn recv_any_prompt_sender_succeeds() {
     let p0 = PartyId::from(0_usize);

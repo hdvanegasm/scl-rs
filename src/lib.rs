@@ -412,32 +412,33 @@
 //!
 //! **The split that runs through every regime is round- versus bandwidth-dominated.** A protocol
 //! whose running time is a sum of round trips is predicted within a few percent in _every_ regime
-//! measured here — including under packet loss (the round-dominated `PingPong` came in at −0.7 % at
-//! 1 % loss). Round trips are priced by the RTT term, which every regime gets right; the throughput
-//! terms, where the model's uncertainty lives, barely enter. The error lives on the
-//! bandwidth-dominated side.
+//! measured here — including under packet loss, where the round-dominated `PingPong` came in 2.3 %
+//! above the real mean at 1 % loss (the mean is what the loss formula predicts; against the median,
+//! which sits on the loss-less floor, the gap is 10.3 %). Round trips are priced by the RTT term,
+//! which every regime gets right; the throughput terms, where the model's uncertainty lives, barely
+//! enter. The error lives on the bandwidth-dominated side.
 //!
-//! **Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT,
-//! 1 Mbit/s, loss-less link the simulator under-predicts by 3.4 % for `PingPong` and 10.6 % for
-//! `BulkTransfer` (real 3.63 s and 4.93 s; simulated 3.51 s and 4.41 s). The simulator prices an
-//! idealized steady-state throughput, and the shaped link's real goodput falls a little short of it
-//! — from protocol framing and the shaping tooling's own rate accounting the model does not
+//! **Bandwidth-limited and loss-less: a small, systematic under-prediction.** Over a 100 ms RTT, 1
+//! Mbit/s, loss-less link the simulator under-predicts by 1.8 % for `PingPong` and 10.6 % for
+//! `BulkTransfer` (real 3.575 s and 4.935 s; simulated 3.512 s and 4.410 s). The simulator prices
+//! an idealized steady-state throughput, and the shaped link's real goodput falls a little short of
+//! it — from protocol framing and the shaping tooling's own rate accounting the model does not
 //! reproduce — a shortfall that grows with bytes moved, so the bulk transfer's gap exceeds the
 //! latency-bound ping-pong's. The real distributions are extremely tight (coefficient of variation
-//! 0.0–0.1 % over 50 runs), so this is a genuine bias, not measurement noise. It is not TCP slow
-//! start: at 1 Mbit/s the bandwidth-delay product is below Linux's initial congestion window, so the
-//! pipe fills within the first round trip.
+//! 0.0–0.2 % over 50 runs), so this is a genuine bias, not measurement noise. It is not TCP slow
+//! start: at 1 Mbit/s the bandwidth-delay product is below Linux's initial congestion window, so
+//! the pipe fills within the first round trip.
 //!
-//! **Window-limited and loss-less: the model's form holds, and the window size must be calibrated.**
-//! When the bandwidth-delay product exceeds the TCP window, the window alone sets the rate
-//! (`window · 8 / RTT`) and the configured bandwidth is ignored. Over a 100 ms RTT, 100 Mbit/s link
-//! (BDP 1.25 MB, far above the 64 KiB default window) the nominal prediction over-predicts by 2.3 %
-//! (`PingPong`) and 7.0 % (`BulkTransfer`). Recovering the window Linux actually delivered from the
-//! real bulk transfers yields ~70 KB, only 7.5 % above the default. Re-simulating with it drives the
-//! bulk-transfer error to zero, but that is circular — the window was fit to that transfer's own
-//! median — and this run has no independent window-bound workload to cross-check it, since the
-//! round-dominated protocol is latency-bound and barely moves whatever the window. It demonstrates
-//! the calibration recipe rather than pinning the number down. See
+//! **Window-limited and loss-less: the model's form holds, and the window size must be
+//! calibrated.** When the bandwidth-delay product exceeds the TCP window, the window alone sets the
+//! rate (`window · 8 / RTT`) and the configured bandwidth is ignored. Over a 100 ms RTT, 100 Mbit/s
+//! link (BDP 1.25 MB, far above the 64 KiB default window) the nominal prediction over-predicts by
+//! 1.9 % (`PingPong`) and 7.1 % (`BulkTransfer`). Recovering the window Linux actually delivered
+//! from the real bulk transfers yields ~70 KB, only 7.5 % above the default. Re-simulating with it
+//! drives the bulk-transfer error to zero, but that is circular — the window was fit to that
+//! transfer's own median — and this run has no independent window-bound workload to cross-check it,
+//! since the round-dominated protocol is latency-bound and barely moves whatever the window. It
+//! demonstrates the calibration recipe rather than pinning the number down. See
 //! [`WindowSize`](net::simulation::channel::WindowSize) for why a configured window and a real one
 //! differ, and how to calibrate.
 //!
@@ -449,16 +450,19 @@
 //! crate reads a single number off it to price one short message. Two consequences show up in the
 //! data. First, because the formula enters only through throughput, its error is **confined to
 //! bandwidth-dominated protocols**: at 1 % loss the round-dominated `PingPong` is predicted within
-//! 0.7 %, while `BulkTransfer` on the same link is over-predicted by ~400 % against the median
-//! (~211 % against the mean). Second — more decisively than any error bar — the real runs are not
-//! reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to 7.11 s, precisely the
-//! deviation-from-the-mean that the formula makes no claim about. Treat simulated timings for a
-//! bandwidth-dominated protocol on a lossy channel as order-of-magnitude only.
+//! 2.3 % of the real mean, while `BulkTransfer` on the same link is over-predicted by ~379 %
+//! against the median (~260 % against the mean). Second — more decisively than any error bar — the
+//! real runs are not reproducible: 50 identical 1 % loss `BulkTransfer` trials spanned 0.73 s to
+//! 6.35 s, precisely the deviation-from-the-mean that the formula makes no claim about. Treat
+//! simulated timings for a bandwidth-dominated protocol on a lossy channel as order-of-magnitude
+//! only.
 //!
 //! Where the model does not fit, the results aren't silently wrong: a `tc`-shaped validation run
-//! surfaces the gap. The untested axis that matters most is concurrency: every measurement so far
-//! keeps a single message in flight, so the per-link independent-bandwidth assumption has never been
-//! stressed by simultaneous transfers.
+//! surfaces the gap. The axis these runs leave untested is concurrency: every measurement so far
+//! keeps a single message in flight. Since 0.15.0 the simulator models link occupancy (messages
+//! sent at once on one link share its bandwidth, one after another, instead of each getting all of
+//! it), but no shaped run has yet checked that against real concurrent transfers, and messages on
+//! different links still never share an uplink.
 //!
 //! ## Status and roadmap
 //!

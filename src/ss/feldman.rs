@@ -154,6 +154,7 @@ impl<const LIMBS: usize, C: EllipticCurve<LIMBS>> FeldmanSS<LIMBS, C> {
     }
 }
 
+/// Unit tests for Feldman share verification and for the errors reconstruction reports.
 #[cfg(test)]
 mod tests {
     use super::{FeldmanSS, ShamirSS, ShareError};
@@ -163,9 +164,12 @@ mod tests {
         ring::Ring,
     };
 
+    /// Degree of the dealt sharing polynomial.
     const T: usize = 3;
+    /// Number of parties dealt a share.
     const N: usize = 7;
 
+    /// Returns the party indexes `1, …, n` as scalar-field elements.
     fn party_indexes(n: u64) -> Vec<Secp256k1ScalarField> {
         (1..=n).map(Secp256k1ScalarField::from).collect()
     }
@@ -179,6 +183,7 @@ mod tests {
         (shares, indexes)
     }
 
+    /// Checks that every share of an honest dealing verifies against its commitments.
     #[test]
     fn honest_shares_are_valid() {
         let (shares, indexes) = honest_shares();
@@ -187,6 +192,8 @@ mod tests {
         }
     }
 
+    /// Checks that reconstruction from `T + 1` shares but only `T` indexes fails with
+    /// [`ShareError::LengthMismatch`] carrying both lengths.
     #[test]
     fn length_mismatch_is_rejected() {
         let (shares, indexes) = honest_shares();
@@ -203,6 +210,8 @@ mod tests {
         }
     }
 
+    /// Checks that a share whose value was changed after dealing fails verification, and that
+    /// reconstruction including it fails with [`ShareError::InvalidShare`] naming that party.
     #[test]
     fn tampered_share_is_detected() {
         let (mut shares, indexes) = honest_shares();
@@ -221,6 +230,9 @@ mod tests {
         }
     }
 
+    /// Checks that a share whose first commitment is replaced by a point not on the curve fails
+    /// verification, and that reconstruction including it fails with [`ShareError::InvalidShare`]
+    /// naming that party.
     #[test]
     fn off_curve_commitment_is_rejected() {
         let (mut shares, indexes) = honest_shares();
@@ -241,6 +253,7 @@ mod tests {
         }
     }
 
+    /// Checks that a share with fewer than `degree + 1` commitments fails verification.
     #[test]
     fn wrong_commitment_vector_length_is_rejected() {
         let (mut shares, indexes) = honest_shares();

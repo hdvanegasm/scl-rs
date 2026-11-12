@@ -41,6 +41,31 @@
 //! simulator, it ends in a deadlock panic that lists the packets left in sessions their recipient
 //! never opened. On a real network, the receives hang until they time out.
 //!
+//! # Fork only through the combinators
+//!
+//! Fork an environment by running `Join` or `JoinAll`, not by calling
+//! [`fork`](ForkEnvironment::fork) yourself. A combinator runs nothing in its own session while its
+//! sub-protocols run, and simulation traces rely on that. A trace records no fork, so the
+//! simulator places each scope from what is open when it begins and ends:
+//!
+//! - the first scope opened in a child session is placed inside the innermost scope open in the
+//!   parent session at that moment;
+//! - a scope that ends in the parent session closes every scope still open in the parent's child
+//!   sessions.
+//!
+//! A protocol that forks and then runs something else in its own session while a child still runs,
+//! for example `try_join!` of one sub-protocol on its own environment and another on the child,
+//! still gets correct outputs and virtual times, but not a correct trace. The child's scope is
+//! placed inside the wrong protocol and closed early, and its later events are counted under the
+//! parent. If the child's protocol ends after that,
+//! [`bandwidth_tree_for`](crate::net::simulation::simulator::SimulationOutcome::bandwidth_tree_for)
+//! returns [`MalformedTrace`](crate::net::simulation::SimulationError::MalformedTrace).
+//!
+//! A protocol that has to fork by hand, to implement a new combinator or to run one sub-protocol
+//! in a session of its own so that it can be dropped (see [Cancel safety](Protocol#cancel-safety)
+//! on `Protocol`), must do what the combinators do: fork, then run nothing else in its own session
+//! until every protocol on the children has returned or been dropped.
+//!
 //! # Errors
 //!
 //! A combinator fails fast: it returns the first error any of its sub-protocols returns, and drops
@@ -53,6 +78,21 @@
 //!
 //! The calling party's own session is not affected, so the caller may handle the error and keep
 //! using its environment.
+//!
+//! # Cancel safety
+//!
+//! Fail-fast drops the other sub-protocols at whatever `.await` they are suspended on. It relies on
+//! the cancel safety of the network calls (see [Cancel safety](crate::net::Network#cancel-safety)
+//! on `Network`): a send never leaves part of a packet on a link, and a receive dropped before it
+//! returns has taken nothing. The links therefore stay usable for every other session, and the
+//! caller's session is not affected.
+//!
+//! `Join` and `JoinAll` are protocols, and like other protocols they are not cancel safe (see
+//! [Cancel safety](Protocol#cancel-safety) on `Protocol`). Dropping one part-way drops all of its
+//! sub-protocols, as a failure does and with the same consequences, and leaves the caller's
+//! session as it was. A combinator forks its children when it is first polled, so a combinator
+//! dropped before its first poll has not forked. Every party must still make the same forks (see
+//! [Every party runs every branch](#every-party-runs-every-branch)).
 //!
 //! # Randomness
 //!
@@ -130,6 +170,11 @@ use crate::protocol::{Environment, Error, ForkEnvironment, Protocol, ProtocolId}
 ///
 /// Returns the first error any of the protocols returns, and drops the others unfinished; see
 /// [Errors](self#errors).
+///
+/// # Cancel safety
+///
+/// Not cancel safe: dropping a `Join` part-way drops all of its protocols, as a failure does. The
+/// caller's session is not affected. See [Cancel safety](self#cancel-safety).
 pub struct Join<T>(pub T);
 
 /// Implements `Protocol` for `Join` over a tuple of one arity. Each argument describes one position
@@ -183,6 +228,11 @@ impl_protocol_for_join!(P0 p0 e0, P1 p1 e1, P2 p2 e2, P3 p3 e3, P4 p4 e4, P5 p5 
 ///
 /// Returns the first error any of the protocols returns, and drops the others unfinished; see
 /// [Errors](self#errors).
+///
+/// # Cancel safety
+///
+/// Not cancel safe: dropping a `JoinAll` part-way drops all of its protocols, as a failure does.
+/// The caller's session is not affected. See [Cancel safety](self#cancel-safety).
 pub struct JoinAll<P>(pub Vec<P>);
 
 impl<E, P> Protocol<E> for JoinAll<P>

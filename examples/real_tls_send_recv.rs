@@ -77,6 +77,8 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
     }
 }
 
+/// Runs one party of `SendRecvProtocol` over mTLS, with the party id and configuration path taken
+/// from the command line, and prints the id received from the other party.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read this node's party id and configuration-file path from the command line:

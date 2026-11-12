@@ -19,6 +19,7 @@ use scl_rs::{
     ss::{additive::AdditiveSS, shamir::ShamirSS, LinearShare},
 };
 
+/// The number of parties in the test network.
 const N_PARTIES: usize = 3;
 
 /// The party ids of the test network.
@@ -53,6 +54,7 @@ struct DealThenOpen<S>
 where
     S: LinearShare,
 {
+    /// This party's side of the deal: the dealer's instance or a receiver's, from `deal_for`.
     deal: PassiveDealShr<S>,
 }
 
@@ -98,11 +100,14 @@ where
     }
 }
 
+/// An additive sharing dealt by party 0 opens to the dealt secret at every party.
 #[test]
 fn additive_deal_then_open_roundtrip() {
     deal_then_open_roundtrip::<AdditiveSS<Mersenne61>>(());
 }
 
+/// A Shamir sharing of degree `SHAMIR_DEGREE` dealt by party 0 opens to the dealt secret at every
+/// party.
 #[test]
 fn shamir_deal_then_open_roundtrip() {
     deal_then_open_roundtrip::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);
@@ -114,8 +119,11 @@ struct DealAffineOpen<S>
 where
     S: LinearShare,
 {
+    /// This party's side of the deal of `x`: the dealer's instance or a receiver's.
     deal: PassiveDealShr<S>,
+    /// The public factor that multiplies the share.
     a: S::Value,
+    /// The public constant added after the multiplication.
     b: S::Value,
 }
 
@@ -168,11 +176,14 @@ where
     }
 }
 
+/// Under additive sharing, the local `a * [x] + b` opens to `a * x + b` at every party.
 #[test]
 fn additive_deal_affine_open() {
     deal_affine_open::<AdditiveSS<Mersenne61>>(());
 }
 
+/// Under Shamir sharing of degree `SHAMIR_DEGREE`, the local `a * [x] + b` opens to `a * x + b`
+/// at every party.
 #[test]
 fn shamir_deal_affine_open() {
     deal_affine_open::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);
@@ -184,7 +195,9 @@ struct DealThenOpenTo<S>
 where
     S: LinearShare,
 {
+    /// This party's side of the deal: the dealer's instance or a receiver's, from `deal_for`.
     deal: PassiveDealShr<S>,
+    /// The only party that learns the secret.
     receiver: PartyId,
 }
 
@@ -240,11 +253,15 @@ where
     }
 }
 
+/// Under additive sharing, opening towards party 1 gives it the secret and every other party,
+/// the dealer included, `None`.
 #[test]
 fn additive_deal_then_open_to_party() {
     deal_then_open_to_party::<AdditiveSS<Mersenne61>>(());
 }
 
+/// Under Shamir sharing of degree `SHAMIR_DEGREE`, opening towards party 1 gives it the secret and
+/// every other party, the dealer included, `None`.
 #[test]
 fn shamir_deal_then_open_to_party() {
     deal_then_open_to_party::<ShamirSS<1, Mersenne61>>(SHAMIR_DEGREE);

@@ -1,224 +1,179 @@
 # scl-rs — Testing & Examples Plan
 
-**Date:** 2026-06-21
-**Against:** `main` at v0.4.1 + the `[Unreleased]` `Environment`-trait refactor
-(`Protocol<E: Environment>`, `GeneralEnv<N>`, factory-based `simulate`).
-**Toolchain note:** written from reading the source tree, not from a `cargo test` run.
-Anything marked *(verify)* should be confirmed once compiled.
+**Date:** 2026-06-21, updated 2026-11-12.
+**Against:** the 0.15.0 release (`main` at `8c34ace` plus the 0.15.0 changes). The plan was first
+written against v0.4.1; §2 and §3 keep its items, each now marked done, open or declined.
+**How this was checked:** the test names and counts below come from reading `tests/` and the inline
+`#[cfg(test)]` modules on 2026-11-12. `cargo test --all-features --no-fail-fast` passed 288 tests
+with 5 ignored, the doctests included (21 passed, 5 ignored).
 
 ---
 
-## 1. Honest coverage snapshot
+## 1. Coverage snapshot
 
-What the suite actually exercises today, by module:
+What the suite exercises, by module. Counts are `#[test]` / `#[tokio::test]` functions, property
+tests included.
 
-| Area | State | Notes |
+| Area | State | Where |
 |---|---|---|
-| `net/simulation` | **Strong** | `tests/simulator.rs`: 13 tests — send/recv, message ordering, chained-stage state, bandwidth+latency timing, trace rendering & per-party arrows, broadcast, `recv_any` quorum, hooks, payload eliding. |
-| `net` (real TLS) | **Decent** | 3 inline `#[tokio::test]`: end-to-end public API (incl. 64 KiB multi-record frame), raw handshake, mTLS client-without-cert rejection. |
-| `math/field/*` | **Decent** | mersenne61 (8), secp256k1 prime/scalar (2+3), curve (14), naf (1). Mostly happy-path. |
-| `math/poly` | **Thin** | One interpolation round-trip (`lagrange.rs`). Error paths untested. |
-| `math/vector` | **Thin** | 6 tests, basic ops. |
-| `ss/additive` | **Thin** | One reconstruct round-trip. |
-| `math/matrix` | **None** | Referenced by zero tests/examples. |
-| `ss/shamir` | **None** | Reconstruction error paths, threshold behavior, index validation all unexercised. |
-| `ss/feldman` | **None** | Share-validity / tamper detection — the whole point of VSS — untested. |
-| `protocol` (generic-`E`) | **Indirect** | Tests pin `Protocol<GeneralEnv<SimNetwork>>` with `env.network.*` field access; the generic `impl<E: Environment>` form (what examples now use) is never compiled by a test. |
+| `net/simulation` | **Strong** | `tests/simulator.rs` (20): send/recv, ordering, chained stages, bandwidth and latency timing, trace rendering and per-party arrows, broadcast, `recv_any` quorum, hooks, reproducibility, deadlock reports. `tests/recv_timeout.rs` (5): virtual-time timeouts. `tests/golden.rs` (11): byte-for-byte snapshots of the simulator examples and four timing shapes (traces, exact timestamps, bandwidth trees, metrics). `tests/trace_tree.rs` (4): traces and bandwidth trees under concurrency. `tests/occupancy.rs` (3): link occupancy. Inline: `switchboard/mod.rs` (9), `channel.rs` (4). |
+| `net` sessions | **Strong** | Inline in `src/net/session.rs` (21): `SessionId` construction, ordering, `Display`, `digest`. |
+| `net` (real TLS) | **Strong** | Inline in `src/net/tcp.rs` (21): public API end to end, handshake, mTLS rejection, multi-party `recv_any`, closed peers, sessions over one link, early arrival, a `Join` over TLS, receive and send cancel safety, close and drop, the loop-back after `close()`, and `PeerFailed` for an undecodable frame, a cut stream and a failed write (these three run over in-memory streams, not TLS). Config and PEM errors. |
+| `net::Packet` | **Decent** | `tests/packet.rs` (7) and inline in `src/net/mod.rs` (3): round trips, malformed reads, element labels. |
+| `math/field/*` | **Strong** | `tests/mersenne61.rs` (23), `tests/prime_secp256k1.rs` (18), `tests/scalar_secp256k1.rs` (19): field laws as property tests, inverses, division by zero. |
+| `math/ec` | **Decent** | `tests/secp256k1.rs` (15) and inline in `src/math/ec/secp256k1.rs` (4): group law, scalar multiplication, on-curve checks. `tests/naf.rs` (3). |
+| `math/poly` | **Decent** | `tests/poly.rs` (3): interpolation as a property test, empty and length-mismatch inputs as typed errors. `tests/lagrange.rs` (1). |
+| `math/matrix` | **Decent** | `tests/matrix.rs` (15): constructors, shapes, bounds, dimension errors, non-square products, matrices of shares. |
+| `math/vector` | **Decent** | `tests/vector.rs` (15): ops, dimension errors, vectors of shares. |
+| `ss/additive` | **Thin** | `tests/additive.rs` (2): reconstruction and `LinearShare` dealing. |
+| `ss/shamir` | **Decent** | `tests/shamir.rs` (5): threshold floor, subset invariance as a property test, threshold-aware dealing, serialization. Three error paths untested (§2, Tier 1). |
+| `ss/feldman` | **Strong** | `tests/feldman.rs` (2) and inline in `src/ss/feldman.rs` (5): round trip, tamper detection naming the party, off-curve and wrong-length commitments, length mismatch. |
+| `protocol` | **Decent** | `tests/protocol_share.rs` (6): passive deal and open. `tests/passive_shamir.rs` (6): DN07 `Random`, `Double-Random`, triples and Beaver multiplication. `tests/schnorr_pok.rs` (4). `tests/concurrent.rs` (13): `Join`, `JoinAll`, boxed protocols, timing, session isolation, determinism, deadlock reports. All protocols are generic over `E: Environment`. |
 
-Two structural gaps cut across everything: **no property-based tests** (high leverage for
-an algebra/crypto library) and **no negative/adversarial tests** (the security claims rest
-on rejection paths that nothing currently triggers). `tests/net.rs` is a 1-byte stub —
-delete it or fill it.
+The two structural gaps of June are closed: there are property tests (`proptest`, in nine test
+files), and the rejection paths have negative tests (Tier 3). The empty `tests/net.rs` stub is gone.
 
 ---
 
 ## 2. Testing plan
 
-Six tiers, ordered by leverage-per-effort. Tiers 1–3 are pure unit/property work with no
-protocol machinery and should land first; 4–6 build on the simulator and TLS paths.
+Six tiers, ordered by leverage-per-effort. Tiers 1–3 are unit and property work with no protocol
+machinery; 4–6 build on the simulator and the TLS paths.
 
 ### Tier 1 — Close the zero-coverage holes
 
-These are correctness tests against existing public APIs. Target output correctness, not
-internal representation, so they survive refactors.
+Correctness tests against public APIs, targeting outputs rather than representations.
 
 - **Shamir** (`tests/shamir.rs`):
-  - Round-trip: share a random secret at degree `t`, reconstruct from any `t+1` of `n`
-    shares, assert equality — and assert it holds for *several different* `(t+1)`-subsets
-    (subset-invariance is the real Shamir property, not just one happy path).
-  - Threshold floor: reconstructing from `< t+1` shares returns `ShareError::NotEnoughShares`.
-  - `EvalAndShareLenMismatch` when `shares.len() != party_indexes.len()`.
-  - `SharesWithDifferentDegree` when shares carry mixed `degree` fields.
-  - Duplicate `party_indexes` → surfaces as `ReconstructionError`
-    (`NotAllDifferentInterpolation` from the poly layer). This pins a *security-relevant*
-    guard that exists but is invisible. *(verify the error variant wraps as expected.)*
-
-- **Feldman** (`tests/feldman.rs`) — the security-load-bearing one:
-  - Round-trip on the secp256k1 scalar field.
-  - `is_valid` is `true` for honest shares, `false` after flipping a single share value.
-  - Tampered share → `secret_from_shares` returns `ShareError::InvalidShare { party_idx }`
-    naming the right party.
-  - Wrong commitment-vector length (`!= degree + 1`) → `is_valid` is `false`. This maps
-    directly to the audit checklist's "commitment vector length not checked"; here the
-    check exists, so the test locks it in.
-  - `LengthMismatch` when `shares.len() != party_indexes.len()`.
-
-- **Matrix** (`tests/matrix.rs`):
-  - `from_vec` dimension mismatch → error; `identity`/`zero`/`random` shapes; `get`/`get_mut`
-    in-bounds vs `None` out-of-bounds; `is_square`.
-  - Pin `scalar_mut_in_place` vs `scalar_mult`. **Design flag:** `scalar_mult(&mut self,…) -> Self`
-    takes `&mut self` but doesn't mutate (it builds a fresh matrix). The `&mut` is misleading
-    and the name collides conceptually with the in-place variant. A test documents current
-    behavior; consider renaming to `&self` before any 0.x that touches this module.
+  - Round trip and subset invariance. ✅ **done** — `reconstruction_is_subset_invariant_across_configs`
+    (property test over `n`, `t` and two random `(t + 1)`-subsets).
+  - Threshold floor. ✅ **done** — `too_few_shares_is_not_enough` (every subset smaller than
+    `t + 1` returns `NotEnoughShares`).
+  - `EvalAndShareLenMismatch` when `shares.len() != party_indexes.len()`. ❌ **open** — no test
+    names the variant (`src/ss/shamir.rs:120`).
+  - `SharesWithDifferentDegree` when shares carry mixed degrees. ❌ **open** — no test names the
+    variant (`src/ss/shamir.rs:128`).
+  - Duplicate `party_indexes` surface as `ReconstructionError` (`NotAllDifferentInterpolation`
+    from the poly layer). ❌ **open** — untested.
+- **Feldman** (`tests/feldman.rs`, inline in `src/ss/feldman.rs`): ✅ **done** — `round_trip`;
+  `honest_shares_are_valid`; `tampered_share_is_detected` (`InvalidShare` names the party);
+  `wrong_commitment_vector_length_is_rejected`; `length_mismatch_is_rejected`.
+- **Matrix** (`tests/matrix.rs`): ✅ **done** — `from_vec_dimension_mismatch`,
+  `constructor_shapes` (also `is_square`), `get_out_of_bounds_is_none`,
+  `get_returns_row_major_element`, `get_mut_writes_through`,
+  `scalar_mult_does_not_mutate_but_in_place_does`.
+  - **Design flag, still open:** `scalar_mult` still takes `&mut self` without mutating
+    (`src/math/matrix.rs:167`). The test pins the behaviour; changing the receiver to `&self` is a
+    breaking change for a later 0.x.
 
 ### Tier 2 — Property-based tests (`proptest`)
 
-Highest leverage for this codebase: algebraic structures have laws that example-based tests
-sample sparsely. Add `proptest` to `[dev-dependencies]`; gate behind a generator strategy per
-field. Candidates:
+✅ **done** (`proptest` is a dev-dependency):
 
-- **Ring/field laws** over Mersenne61, secp256k1 prime & scalar: associativity, commutativity,
-  distributivity, additive/multiplicative identity & inverse, `a - a == 0`,
-  `a * a⁻¹ == 1` for `a ≠ 0`.
-- **Shamir:** for random `(secret, t, n)` with `t < n`, every `(t+1)`-subset reconstructs the
-  same secret. This is the property the one-shot Tier-1 test only samples.
-- **Poly:** evaluate-then-interpolate is identity for random polynomials and random node sets
-  (generalizes the single `lagrange.rs` case).
-- **Serialization round-trip:** `T -> postcard/serde -> T` for every `Serialize`/`Deserialize`
-  type that crosses the wire — `Packet` contents, `ShamirSS`, `FeldmanSS`, field elements,
-  curve points. The simulator already serializes outputs with `postcard`; a malformed
-  round-trip would surface as a runtime `expect` panic in `drive`, so this guards a real path.
+- **Field laws** over Mersenne61 and the secp256k1 prime and scalar fields: associativity,
+  commutativity, distributivity, identities, inverses, `a - a == 0`, `a * a⁻¹ == 1`, division
+  (`tests/mersenne61.rs`, `tests/prime_secp256k1.rs`, `tests/scalar_secp256k1.rs`).
+- **Shamir:** subset invariance (Tier 1 above).
+- **Poly:** `interpolation_recovers_polynomial` (random polynomial of degree below 16, evaluated
+  then interpolated at a random point and at 0).
+- **Serialization round trips** (`postcard`): `Packet`, `ShamirSS`, `FeldmanSS`, curve points,
+  the secp256k1 fields. Not covered: `Mersenne61` has no round trip of its own; it is an alias of
+  the same `Fp` type as the secp256k1 fields since 0.14.0.
 
 ### Tier 3 — Negative / adversarial tests (security rejection paths)
 
-The library's value proposition is structural guarantees; these tests assert the guards fire.
-Each maps to a specific item in the `mpc-audit` checklist and to real code:
+✅ **done**, mostly in 0.7.0:
 
-- **On-curve rejection** (`AffinePoint::is_valid`, `math/ec/secp256k1.rs`): construct a point
-  with a y that fails y²=x³+7 and assert `is_valid()` is `false`. Then the sharper question:
-  **does Feldman validate dealer commitments are on-curve before using them in `scalar_mul`?**
-  Reading `FeldmanSS::is_valid`, commitments feed straight into `scalar_mul` with no on-curve
-  check. A test that feeds an off-curve commitment is either a passing guard or a **finding**
-  ("adversary-supplied point not validated as on-curve"). Write the test; let it adjudicate.
-- **Packet malformed reads** (`net/mod.rs`): `read`/`pop` now return `Result`. Assert
-  `WrongPacketIdx` on out-of-range index and a deserialize-failure variant on a buffer that
-  holds the wrong type. This is the 0.4.0 error-API change; nothing tests it yet.
-- **Poly guard surfaces as error, not panic:** `interpolate_polynomial_at` uses `assert!`/
-  `assert_eq!` for empty and length-mismatch inputs — those are panics on adversary-reachable
-  shapes. A test pins current behavior and flags whether these should become typed errors
-  (audit checklist: "panic instead of structured abort"). Likely a small 0.x API change.
-- **CSPRNG bound (documentation test):** secret-gen accepts any `Rng`. Until the `CryptoRng`
-  bound lands, a test can at least assert determinism-from-seed is *possible* (the footgun),
-  documenting the gap the roadmap already tracks.
+- **On-curve rejection:** `off_curve_point_is_rejected` (`tests/secp256k1.rs`) and the inline
+  `src/math/ec/secp256k1.rs` tests. The sharper question, whether Feldman checks that dealer
+  commitments are on the curve, was answered by adding the check:
+  `off_curve_commitment_is_rejected` (`src/ss/feldman.rs`).
+- **Packet malformed reads:** `pop_on_empty_packet_is_rejected`, `read_out_of_range_index_is_rejected`,
+  `read_wrong_type_is_a_serialization_error`, `pop_wrong_type_is_a_serialization_error`.
+- **Poly guards as errors, not panics:** the `assert!`s became typed errors (`EmptyInterpolation`,
+  `LengthMismatch` in `src/math/poly.rs`), tested by `interpolate_with_empty_input_is_rejected`
+  and `interpolate_with_length_mismatch_is_rejected`.
+- **CSPRNG bound:** superseded. Share generation now requires `CryptoRng`
+  (`ShamirSS::shares_from_secret`, `FeldmanSS::shares_from_secret`, `LinearShare`), so the
+  footgun the documentation test was meant to show no longer compiles.
 
 ### Tier 4 — Protocol layer (generic over `E: Environment`)
 
-The refactor's whole point is protocols generic over the environment; tests should exercise
-that, not just the concrete `GeneralEnv<SimNetwork>` shape.
-
-- **Migrate `tests/simulator.rs` protocols to `impl<E: Environment> Protocol<E>`** with
-  `env.network()/network_mut()`, matching the examples. This compiles the generic path and
-  catches capability-bound regressions the concrete tests miss. ✅ **done** — all `tests/simulator.rs`
-  protocols now `impl<E: Environment> Protocol<E>`.
-- **Determinism / reproducibility:** run the *same* `simulate(...)` twice and assert byte-equal
-  outputs **and** identical event traces. This is the core promise of the deterministic
-  executor and currently nothing asserts run-to-run stability (the `seq` tiebreaker exists
-  precisely for this — test it). ✅ **done** — `simulation_is_reproducible_across_runs`.
-- **A capability-carrying environment:** define a tiny test-only `Env` supertrait (e.g. a
-  counter or a Δ value) and a protocol bounded on it, proving the "capabilities accumulate up
-  the composition and the factory must supply them" claim from the CHANGELOG compiles and runs.
-  This is the dogfood for the MASCOT direction. ✅ **done** — `DeltaEnv` supertrait +
-  `DeltaExchange` protocol in `capability_env_supplies_extra_state_to_protocol`.
-- **Adversarial reordering harness** (roadmap "deferred to post-1.0", but the explicit-blocking
-  state makes it cheap now): a `Switchboard` variant or hook that delays/reorders deliveries
-  within the model, asserting a correct protocol still converges. Even a minimal version is a
-  strong robustness signal and exercises `recv_any` under reorder. ❌ **out of scope** (declined
-  2026-06-30): deliberately left out of the test suite.
+- Migrate `tests/simulator.rs` protocols to `impl<E: Environment> Protocol<E>`. ✅ **done**.
+- Determinism: the same `simulate(...)` twice gives equal outputs and traces. ✅ **done** —
+  `simulation_is_reproducible_across_runs`; under concurrency, `same_seeds_give_the_same_events_and_outputs`
+  (`tests/concurrent.rs`); the golden snapshot pins exact timestamps.
+- A capability-carrying environment. ✅ **done** — `DeltaEnv` and `DeltaExchange` in
+  `capability_env_supplies_extra_state_to_protocol`.
+- Adversarial reordering harness. ❌ **declined** (2026-06-30): deliberately left out.
 
 ### Tier 5 — Real network, failure injection
 
-- Fill `tests/net.rs` (or delete it and keep the inline ones — pick one home). If kept as an
-  integration test, cover the multi-party (`n > 2`) `recv_any` path over real TLS, which the
-  current 2-party inline test doesn't reach. ✅ **done** — the empty `tests/net.rs` stub was
-  removed and the new tests live inline in `src/net/tcp.rs` (Option A), reusing the existing
-  cert/config helpers. `recv_any_collects_from_multiple_peers_over_tls` drives `recv_any`'s
-  `StreamMap` over three live mTLS sockets.
-- **Failure paths:** connection closed mid-recv → `ConnectionClosed`; malformed config JSON →
-  `ConfigParse`; unloadable PEM → `InvalidPemFile`. These variants were added in 0.4.0 and are
-  untested. ✅ **done** — `recv_from_closed_peer_reports_connection_closed` (clean TLS shutdown →
-  `ConnectionClosed(Some(peer))`), `malformed_config_json_is_rejected`, and
-  `unloadable_pem_material_is_rejected`.
+✅ **done**, inline in `src/net/tcp.rs`:
+
+- Multi-party `recv_any` over real TLS: `recv_any_collects_from_multiple_peers_over_tls`.
+- Failure paths: `recv_from_closed_peer_reports_connection_closed`,
+  `malformed_config_json_is_rejected`, `unloadable_pem_material_is_rejected`.
+- Since 0.15.0: a closing peer ends the receives of every session; dropping the network closes
+  its connections; `close()` ends receives and sends to every party, this node included; and a
+  failed peer (undecodable frame, stream cut inside a frame, failed write) is reported as
+  `PeerFailed` in every session. The failure tests start the network over in-memory streams, so
+  they do not exercise TLS itself.
 
 ### Tier 6 — Cross-cutting gates (CI)
 
-- **MSRV job:** ✅ **done** (landed in 0.3.0). `.github/workflows/rust.yml` has a dedicated `msrv`
-  job pinned to `dtolnay/rust-toolchain@1.88` (kept in sync with `rust-version` in `Cargo.toml`;
-  raised from 1.85.1 when `sha2` 0.11.1 was added) that runs `cargo build --all-features`. It
-  builds — rather than tests — on MSRV on purpose: that compiles the library against 1.88 without dragging dev-dependencies (e.g. `proptest`, whose own
-  MSRV is newer) into the constraint. `stable` is covered by the `fmt`/`clippy`/`test`/`docs` jobs.
-- **Doctests:** the crate-doc protocol/simulator examples are compiled doctests; keep them green
-  and add a doctest to each public constructor on `Packet`, `ShamirSS`, `FeldmanSS`. ✅ **done** —
-  per-constructor doctests on `Packet::empty`, `ShamirSS::{new, shares_from_secret}`, and
-  `FeldmanSS::{new, shares_from_secret}` (the share/reconstruct ones double as executable
-  round-trip smoke tests). `Packet::new` is private, so `empty` is its only public constructor.
-- `cargo-audit` is wired (`.github/workflows/audit.yml`, `cargo audit -D warnings`). `cargo-deny`
-  was considered and **declined** (2026-06-30): its `advisories` check duplicates `cargo-audit`,
-  and the incremental `licenses`/`bans`/`sources` checks don't justify a second tool plus a
-  `deny.toml` to maintain for a dependency set this small.
+- **MSRV job:** ✅ **done**. `.github/workflows/rust.yml` builds with `cargo build --all-features`
+  on 1.88, kept in sync with `rust-version` in `Cargo.toml`. It builds rather than tests, so
+  dev-dependencies such as `proptest`, whose own MSRV is newer, stay out of the constraint.
+- **Doctests:** ✅ **done** — the crate-doc examples, and one doctest per public constructor on
+  `Packet::empty`, `ShamirSS::{new, shares_from_secret}` and `FeldmanSS::{new, shares_from_secret}`.
+- **`cargo-audit`:** ✅ wired (`.github/workflows/audit.yml`). `cargo-deny` was considered and
+  **declined** (2026-06-30): its advisories check duplicates `cargo-audit`, and the rest does not
+  justify a second tool for a dependency set this small.
+- **Examples in CI:** ❌ **open**. `cargo test` compiles every example but runs none. The golden
+  snapshot (`tests/golden.rs`) runs copies of the protocols of seven of the eight simulator
+  examples (all but `concurrent_preprocessing`), which catches behaviour changes in them, but not a
+  broken `main`.
 
 ---
 
 ## 3. Examples plan
 
-Examples are the fastest on-ramp **and** double as smoke tests (`cargo run --example` in CI).
-Today there are two (`simple_send_recv`, `additive_shr_secure_sum`), both simulator-only and
-both already on the new generic-`E` API. Build a deliberate ladder; each rung should be
-runnable and, where cheap, assert its own result so CI catches rot.
+Examples are the on-ramp, and where they assert their result they double as smoke tests.
 
 | # | Example | Teaches | Status |
 |---|---|---|---|
 | 1 | `simple_send_recv` | minimal protocol, generic over `E` | exists |
-| 2 | `additive_shr_secure_sum` | additive sharing + all-to-all round | exists |
-| 3 | `shamir_reconstruct` | `ss` API standalone (no network) — share/reconstruct, show threshold | **add** |
-| 4 | `feldman_vss` | VSS: dealer commits, party verifies, tamper is caught | **add** |
-| 5 | `real_tls_two_party` | the deployment path: `NetworkConfig` + `TcpNetwork`, two processes/tasks over mTLS | **add** (sketched in crate docs; make it real) |
-| 6 | `broadcast_round` | `futures` combinators for fan-out/fan-in under the simulator | **add** |
-| 7 | `composed_protocol` | call-and-return nesting with a typed `Output`; capability-carrying `Env` | **add** (showcase; pairs with MASCOT direction) |
+| 2 | `additive_shr_secure_sum` | additive sharing, an all-to-all round | exists |
+| 3 | `shamir_reconstruct` | the `ss` API on its own: share, reconstruct, threshold | ❌ not added |
+| 4 | `feldman_vss` | VSS: the dealer commits, a party verifies, a tamper is caught | ❌ not added |
+| 5 | `real_tls_two_party` | deployment: `NetworkConfig` + `TcpNetwork`, two processes over mTLS | ✅ as `real_tls_send_recv` |
+| 6 | `broadcast_round` | fan-out and fan-in | ❌ not added as such; `additive_shr_secure_sum` and `secure_stats_flamegraph` both have rounds in which every party sends to every other |
+| 7 | `composed_protocol` | nesting with typed outputs; a capability-carrying `Environment` | partly: `secure_stats_flamegraph` and `secure_covariance` nest protocols with typed outputs; no example defines its own environment (the test `capability_env_supplies_extra_state_to_protocol` does) |
 
-Notes on priorities:
+Added since, beyond the ladder:
 
-- **#3 and #4 are the urgent ones** — they're the missing on-ramps for the two completely
-  untested modules, and writing the example *is* the first integration test for them. Do these
-  alongside Tier 1.
-- **#5** closes the gap the roadmap keeps flagging: the simulator suite never shows a user how
-  to actually deploy. Reuse the cert-generation pattern already in `net/mod.rs`'s inline tests.
-- **#7** is the dogfooding example for the typed-composition / `Env`-capability design. Worth
-  doing once a second real sub-protocol exists (e.g. an `Open`), not before — "bake before
-  freeze" applies to examples too.
+- `send_different_types` — packets holding values of different types.
+- `bandwidth_flamegraph`, `secure_stats_flamegraph` — per-protocol bandwidth profiling, exported
+  as flamegraphs.
+- `secure_covariance` — a larger computation with a preprocessing phase.
+- `schnorr_pok` — a self-contained Schnorr proof of knowledge between two parties.
+- `concurrent_preprocessing` — the same preprocessing one step after another and under `Join`,
+  with the two runs' metrics side by side.
 
-Convention to adopt: every example ends with an `assert!` on a known-correct result (the
-secure-sum example can check the sum equals the cleartext sum of inputs), so `cargo run
---example X` is a pass/fail smoke test, not just output-on-stdout.
+**Convention: every example ends with an `assert!` on a known-correct result**, so that running it
+is a pass/fail check. ❌ **Partly followed:** `concurrent_preprocessing`, `secure_stats_flamegraph`
+and `secure_covariance` assert their results; `simple_send_recv`, `send_different_types`,
+`additive_shr_secure_sum`, `bandwidth_flamegraph`, `schnorr_pok` and `real_tls_send_recv` do not.
 
 ---
 
-## 4. Sequencing
+## 4. What is still open
 
-Bottom-up, mirroring the project's own build order:
-
-1. **Tier 1 + examples #3/#4** — kills the three zero-coverage modules with both a test file
-   and a runnable example each. Highest correctness-per-hour; no new deps except maybe none.
-2. **Tier 2** — add `proptest`; convert the strongest happy-path tests (fields, Shamir, poly,
-   serialization) into laws. This is where latent algebra bugs surface.
-3. **Tier 3** — adversarial rejection tests. The on-curve/Feldman-commitment test may produce
-   the first real finding; budget for a small fix.
-4. **Tier 4** — migrate simulator tests to generic `E`, add determinism assertions, then the
-   reordering harness. Lands with the `[Unreleased]` refactor since it's the thing that
-   validates it.
-5. **Example #5 + Tier 5** — real-TLS deployment example and failure-path tests together
-   (shared cert/config scaffolding).
-6. **Tier 6 + examples #6/#7** — CI MSRV matrix, then the showcase examples once the
-   composition surface is stable.
-
-The first batch (step 1) is independent of the `Environment` refactor and can land on `main`
-immediately; steps 4+ should ride with the 0.5.0 trait change so tests and API move together.
+1. **Shamir error paths** (Tier 1): `EvalAndShareLenMismatch`, `SharesWithDifferentDegree`, and
+   duplicate party indexes.
+2. **`Matrix::scalar_mult` receiver** (Tier 1 design flag): `&mut self` → `&self`, breaking.
+3. **`additive` coverage** is still two tests: no property test, no error paths.
+4. **Examples #3 and #4** (`shamir_reconstruct`, `feldman_vss`): the on-ramps for the `ss` API.
+5. **Assertions in the six examples** listed above, then **running the examples in CI**, which
+   needs the TLS example left out or given generated certificates.

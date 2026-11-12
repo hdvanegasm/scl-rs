@@ -470,8 +470,54 @@ impl NetworkConfig<'_> {
 /// `async fn`, because a bare `async fn` in a trait leaves the returned future's auto traits
 /// unspecified: an implementor could return a non-`Send` future and callers spawning a protocol on
 /// a multi-threaded runtime would not compile. Implementors still write a plain `async fn`.
+///
+/// # Cancel safety
+///
+/// A future is *cancel safe* if dropping it before it completes, and then creating it again, has
+/// the same effect as never having created the first one. This is tokio's definition, from the
+/// docs of `tokio::select!`. It matters wherever a future can be dropped part-way: a branch of
+/// `select!` that loses to another, a receive whose timeout expires, or a sub-protocol of a
+/// fail-fast [`Join`](crate::protocol::concurrent::Join) whose sibling fails.
+///
+/// On both backends of this crate, [`TcpNetwork`] and
+/// [`SimNetwork`](crate::net::simulation::network::SimNetwork):
+///
+/// - The receives, [`recv_from`](Network::recv_from), [`recv_any`](Network::recv_any) and their
+///   `_with_timeout` forms, are cancel safe. A receive takes a packet only in the poll that
+///   returns it, so a receive dropped before it returns has taken nothing, and the packet stays for
+///   the next receive in the same session.
+/// - The sends, [`send_to`](Network::send_to) and [`send_many`](Network::send_many), are cancel
+///   safe. They complete on their first poll, so they are never dropped part-way, and they never
+///   leave part of a packet on a link.
+/// - [`close`](Network::close) is cancel safe, except on the root handle of a [`TcpNetwork`]: see
+///   [Cancel safety](TcpNetwork#cancel-safety) on `TcpNetwork`.
+///
+/// To bound a receive in time, use the `_with_timeout` receives rather than wrapping a receive in
+/// `tokio::time::timeout`. They work on both backends, while the simulator does not drive tokio's
+/// timers (see [Cancel safety](crate::net::simulation::network::SimNetwork#cancel-safety) on
+/// `SimNetwork`).
+///
+/// Cancel safety is a property of one call. A [`Protocol`](crate::protocol::Protocol) makes many
+/// calls in step with the other parties, and dropping it part-way is not safe even when each of its
+/// calls is: see [Cancel safety](crate::protocol::Protocol#cancel-safety) on `Protocol`.
+///
+/// ## For implementors
+///
+/// Protocol code and the fail-fast combinators of [`concurrent`](crate::protocol::concurrent) rely
+/// on the guarantees above, so a backend should give them too:
+///
+/// - A receive must take a packet only in the poll that returns it.
+/// - A send dropped at any `.await` must not leave part of a packet on a link that other sessions
+///   share. Writing to a socket with `tokio::io::AsyncWriteExt::write_all` inside `send_to` breaks
+///   this: tokio documents `write_all` as not cancel safe, since a dropped call may have written
+///   only part of the buffer. [`TcpNetwork`] queues each complete frame for a writer task instead.
 pub trait Network: Send {
     /// Sends a `packet` to the party with ID `party_id`.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel safe on both backends of this crate: the future completes on its first poll. See
+    /// [Cancel safety](Network#cancel-safety).
     fn send_to(
         &mut self,
         party_id: PartyId,
@@ -496,6 +542,13 @@ pub trait Network: Send {
     ///
     /// Each peer should appear at most once in `messages`; to send several packets to the same peer,
     /// call [`send_to`](Network::send_to) in sequence.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel safe on both backends of this crate: the future completes on its first poll. The
+    /// default implementation is cancel safe only if `send_to` completes on its first poll. If
+    /// `send_to` can suspend, a drop part-way leaves some packets sent and others not, and calling
+    /// `send_many` again sends the first ones twice.
     fn send_many(
         &mut self,
         messages: &[(PartyId, Packet)],
@@ -509,9 +562,21 @@ pub trait Network: Send {
     }
 
     /// Receives a `packet` from the party with ID `party_id`.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe on both backends of this crate. If it is used as a branch of
+    /// `select!` and another branch completes first, or a timeout drops it, it has taken no packet:
+    /// the packet stays for the next receive in this session.
     fn recv_from(&mut self, party_id: PartyId) -> impl Future<Output = Result<Packet>> + Send;
 
     /// Receives a `packet` from any party returning also the party ID of the sender.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe on both backends of this crate. If it is used as a branch of
+    /// `select!` and another branch completes first, or a timeout drops it, it has taken no packet:
+    /// the packet stays for the next receive in this session.
     fn recv_any(&mut self) -> impl Future<Output = Result<(PartyId, Packet)>> + Send;
 
     /// Receives a `packet` from a party within a `timeout`.
@@ -520,6 +585,13 @@ pub trait Network: Send {
     ///
     /// If the current party does not receive the message within the provided `timeout`, the
     /// function will return a [`NetworkError::Timeout`] with the ID of the delayed party.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe on both backends of this crate, as
+    /// [`recv_from`](Network::recv_from) is. When the `timeout` expires, the method drops its own
+    /// pending receive, which takes nothing either: a packet that arrives later stays for the next
+    /// receive in this session.
     fn recv_from_with_timeout(
         &mut self,
         party_id: PartyId,
@@ -534,12 +606,27 @@ pub trait Network: Send {
     /// If no message arrives from any party within the provided `timeout`, the function will
     /// return a [`NetworkError::Timeout`] carrying `None`, as no single party can be identified
     /// as the cause of the timeout.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe on both backends of this crate, as
+    /// [`recv_any`](Network::recv_any) is. When the `timeout` expires, the method drops its own
+    /// pending receive, which takes nothing either: a packet that arrives later stays for the next
+    /// receive in this session.
     fn recv_any_with_timeout(
         &mut self,
         timeout: Duration,
     ) -> impl Future<Output = Result<(PartyId, Packet)>> + Send;
 
     /// Closes the connection with the network.
+    ///
+    /// # Cancel safety
+    ///
+    /// Depends on the backend and the handle. On a
+    /// [`SimNetwork`](crate::net::simulation::network::SimNetwork), and on a forked
+    /// [`TcpNetwork`] handle, the future completes on its first poll. On the root handle of a
+    /// `TcpNetwork`, it is **not** cancel safe: see [Cancel safety](TcpNetwork#cancel-safety) on
+    /// `TcpNetwork`.
     fn close(&mut self) -> impl Future<Output = Result<()>> + Send;
 
     /// Returns the ID of the party executing the current node.
@@ -618,6 +705,13 @@ pub trait ForkNetwork: Network {
     /// The `i`-th call on a handle, counting from 0, returns a handle on
     /// `self.session().with_child(i)`. Every party must make the same sequence of calls within a
     /// session; see [Every party forks alike](ForkNetwork#every-party-forks-alike).
+    ///
+    /// Protocols fork through the combinators of
+    /// [`concurrent`](crate::protocol::concurrent), which fork the environment and with it this
+    /// handle. Code that forks by hand must, as they do, run nothing else in this handle's session
+    /// until the child's protocols have returned or been dropped, or simulation traces attribute
+    /// the child's scopes wrongly; see [Fork only through the
+    /// combinators](crate::protocol::concurrent#fork-only-through-the-combinators).
     fn fork(&mut self) -> Self;
 
     /// Returns the session this handle sends, receives and records trace events in.

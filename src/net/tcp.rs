@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
-use tokio::io::{self, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{self, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
@@ -30,7 +30,7 @@ use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 /// Size of the length prefix of a frame: the body's length as a little-endian `u64`.
 ///
 /// The reader's `LengthDelimitedCodec` is built with this same length (see
-/// [`TcpNetwork::create`]), so the two must change together.
+/// [`TcpNetwork::start`]), so the two must change together.
 const LENGTH_PREFIX_BYTES: usize = 8;
 
 /// Encodes `packet`, sent in `session`, as one frame on the wire: the length prefix, then the
@@ -97,11 +97,16 @@ struct Mailboxes {
     /// The mailbox of each session, created by the first packet that arrives in it or the first
     /// receive that waits in it, whichever comes first.
     sessions: HashMap<SessionId, SessionMailbox>,
-    /// The state of the connection to each peer. This node itself is not in it.
+    /// The state of the connection to each peer. This node itself is not in it: it has no
+    /// connection to itself, and its loop-back is closed by [`closed`](Self::closed) instead.
     peers: HashMap<PartyId, PeerState>,
     /// The sessions whose handle was dropped, or closed if it was a forked handle. Packets that
     /// arrive for them are discarded.
     retired: HashSet<SessionId>,
+    /// Whether the root handle has closed the network. From then on this node's loop-back is
+    /// closed as well: a receive from this node, once nothing is queued, and a send to it return
+    /// [`NetworkError::ConnectionClosed`], as they do for a closed peer.
+    closed: bool,
 }
 
 impl Mailboxes {
@@ -134,17 +139,40 @@ impl Mailboxes {
             .collect()
     }
 
-    /// The error that an operation on the connection to `peer` reports: `None` while it is open,
-    /// and for a party with no connection (this node itself).
+    /// The error that an operation on the connection to `peer` reports: `None` while it is open.
+    ///
+    /// A party with no entry in [`peers`](Self::peers) is this node itself. Its loop-back has no
+    /// connection that could fail, so it is open until the root handle closes the network, and
+    /// closed from then on.
     fn peer_error(&self, peer: PartyId) -> Option<NetworkError> {
-        match self.peers.get(&peer)? {
-            PeerState::Open => None,
-            PeerState::Closed => Some(ConnectionClosed(Some(peer))),
-            PeerState::Failed(reason) => Some(NetworkError::PeerFailed {
+        match self.peers.get(&peer) {
+            None if self.closed => Some(ConnectionClosed(Some(peer))),
+            None | Some(PeerState::Open) => None,
+            Some(PeerState::Closed) => Some(ConnectionClosed(Some(peer))),
+            Some(PeerState::Failed(reason)) => Some(NetworkError::PeerFailed {
                 peer,
                 reason: reason.clone(),
             }),
         }
+    }
+
+    /// Records that the root handle closed the network: every peer connection still open is now
+    /// closed, and so is this node's loop-back. Returns the waker of every receive waiting in any
+    /// session, so that each can see the end.
+    ///
+    /// The waiters are taken here, not through [`end_peer`](Self::end_peer), so that a receive
+    /// from this node is woken even on a network with no peers.
+    fn close(&mut self) -> Vec<Waker> {
+        self.closed = true;
+        for state in self.peers.values_mut() {
+            if matches!(state, PeerState::Open) {
+                *state = PeerState::Closed;
+            }
+        }
+        self.sessions
+            .values_mut()
+            .filter_map(|mailbox| mailbox.waiter.take())
+            .collect()
     }
 
     /// Takes the oldest packet from `sender` queued in `session`.
@@ -219,9 +247,12 @@ impl Mailboxes {
 /// It decodes each frame that arrives, files its packet under the frame's session, and wakes the
 /// receive waiting there. When the stream ends, or a frame fails to arrive or to decode, it
 /// records how the connection ended and wakes every waiting receive, then exits.
-async fn read_loop(
+///
+/// It is generic over the stream so that tests can feed it an in-memory one; the network itself
+/// always reads the read half of a TLS stream.
+async fn read_loop<R: AsyncRead + Unpin>(
     peer: PartyId,
-    mut frames: FramedRead<ReadHalf<Socket>, LengthDelimitedCodec>,
+    mut frames: FramedRead<R, LengthDelimitedCodec>,
     mailboxes: Arc<Mutex<Mailboxes>>,
     root_tag: [u8; 32],
 ) {
@@ -265,9 +296,11 @@ async fn read_loop(
 /// - it is sent [`WriterCmd::Close`]: it shuts the connection down and sends back the result;
 /// - every sender of `commands_receiver` is dropped, because the last handle was: it shuts the
 ///   connection down, so the peer sees it close.
-async fn write_loop(
+///
+/// Like [`read_loop`], it is generic over the stream so that tests can give it one that fails.
+async fn write_loop<W: AsyncWrite + Unpin>(
     peer: PartyId,
-    mut socket: WriteHalf<Socket>,
+    mut socket: W,
     mut commands_receiver: UnboundedReceiver<WriterCmd>,
     mailboxes: Arc<Mutex<Mailboxes>>,
 ) {
@@ -343,9 +376,33 @@ impl Drop for TcpCore {
 ///
 /// Dropping or closing a forked handle retires its session: the packets queued in it are dropped,
 /// and frames that arrive for it later are discarded. [`close`](Network::close) on the root handle
-/// closes every connection, after the frames already queued are written. When the last handle is
-/// dropped without `close`, the reader tasks are aborted, and each writer task writes what is
-/// queued, shuts its connection down and exits, so the peers see the connections close.
+/// closes every connection, after the frames already queued are written, and the loop-back to this
+/// node, in every session. When the last handle is dropped without `close`, the reader tasks are
+/// aborted, and each writer task writes what is queued, shuts its connection down and exits, so
+/// the peers see the connections close.
+///
+/// # Cancel safety
+///
+/// What each async method guarantees when its future is dropped before it completes (see [Cancel
+/// safety](Network#cancel-safety) on `Network` for the definition):
+///
+/// - The receives of [`Network`], [`recv_from`](Network::recv_from),
+///   [`recv_any`](Network::recv_any) and their `_with_timeout` forms, are cancel safe. A receive
+///   looks in its session's mailbox and takes a packet only in the poll that returns it. A receive
+///   dropped before it returns has taken nothing, and the packet stays for the next receive in the
+///   session.
+/// - The sends, [`send_to`](Network::send_to), [`send_many`](Network::send_many) and
+///   [`send`](TcpNetwork::send), are cancel safe. A send only queues complete frames for the
+///   writer tasks, without suspending, so its future is never dropped part-way. A writer task
+///   writes each frame whole, even if the sub-protocol that queued it has been dropped since.
+/// - [`recv`](TcpNetwork::recv) is **not** cancel safe: if it is dropped, the packets it has
+///   already taken are lost.
+/// - [`close`](Network::close) is cancel safe on a forked handle, and **not** on the root handle.
+/// - [`create`](TcpNetwork::create) is **not** cancel safe.
+///
+/// [`fork`](ForkNetwork::fork) is not async. Dropping a forked handle retires its session (see
+/// [Lifecycle](TcpNetwork#lifecycle)), which is what makes it safe to drop a sub-protocol that
+/// runs in a session of its own.
 pub struct TcpNetwork {
     /// ID of the party running this node.
     local_pid: PartyId,
@@ -415,6 +472,14 @@ impl TcpNetwork {
     ///   client.
     /// - With [`NetworkError::PartyNotFound`] when, after every connection is established, some peer
     ///   ID is missing (for example because two accepts reported the same `remote_id`).
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is **not** cancel safe. If its future is dropped before it completes, the
+    /// connections it has opened so far are closed, and no task is left running: the reader and
+    /// writer tasks start only once every connection is up. A peer that already completed its
+    /// handshake with this node keeps a connection that is now closed, so a dropped `create`
+    /// cannot be resumed. To retry, call `create` again on every party.
     pub async fn create(
         id: usize,
         config: NetworkConfig<'static>,
@@ -431,7 +496,7 @@ impl TcpNetwork {
         let (client_conf, server_conf) = Self::configure_tls(&config)?;
         let parties: Vec<PartyId> = (0..n_parties).map(PartyId::from).collect();
 
-        let mut sockets = HashMap::new();
+        let mut sockets: HashMap<PartyId, Socket> = HashMap::new();
         for i in parties.iter().map(PartyId::as_usize) {
             match i.cmp(&id) {
                 Ordering::Less => {
@@ -467,24 +532,52 @@ impl TcpNetwork {
             }
         }
 
-        // Create the mailboxes and spawn tasks.
-        //
-        // This needs to be done after all the parties are
-        // connected because a later connection will return an error an leave an open socket in a
-        // running task.
+        // Start the tasks only now that every party is connected: if a later connection failed,
+        // `create` would return an error and leave the tasks of the earlier ones running on open
+        // sockets.
+        let connections = sockets
+            .into_iter()
+            .map(|(peer, socket)| {
+                let (read_half, write_half) = io::split(socket);
+                (peer, read_half, write_half)
+            })
+            .collect();
+        Ok(Self::start(
+            PartyId::from(id),
+            parties,
+            root_tag,
+            connections,
+        ))
+    }
+
+    /// Starts a reader and a writer task for each connection, and returns the handle on the root
+    /// session of `root_tag`.
+    ///
+    /// `connections` holds, for each peer, the side of its connection that this node reads from
+    /// and the side it writes to. [`create`](Self::create) passes the two halves of each TLS
+    /// stream once every handshake is done. The tests pass in-memory streams, to make a peer's
+    /// connection fail in ways a real connection cannot be made to on demand.
+    fn start<R, W>(
+        local_pid: PartyId,
+        parties: Vec<PartyId>,
+        root_tag: [u8; 32],
+        connections: Vec<(PartyId, R, W)>,
+    ) -> Self
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
         let mailboxes = Arc::new(Mutex::new(Mailboxes {
-            sessions: HashMap::new(),
-            peers: sockets
-                .keys()
-                .map(|peer| (*peer, PeerState::Open))
+            peers: connections
+                .iter()
+                .map(|(peer, _, _)| (*peer, PeerState::Open))
                 .collect(),
-            retired: HashSet::new(),
+            ..Mailboxes::default()
         }));
 
         let mut writers = HashMap::new();
         let mut readers = Vec::new();
-        for (peer, socket) in sockets {
-            let (read_half, write_half) = io::split(socket);
+        for (peer, read_half, write_half) in connections {
             let codec = LengthDelimitedCodec::builder()
                 .little_endian()
                 .length_field_length(LENGTH_PREFIX_BYTES)
@@ -498,8 +591,8 @@ impl TcpNetwork {
             writers.insert(peer, tx);
         }
 
-        Ok(Self {
-            local_pid: PartyId::from(id),
+        Self {
+            local_pid,
             session: SessionId::root(root_tag),
             core: Arc::new(TcpCore {
                 parties,
@@ -508,11 +601,19 @@ impl TcpNetwork {
                 readers,
             }),
             next_child: 0,
-        })
+        }
     }
 
-    /// Sends a packet to every party in the network, including this node's own loop-back channel.
-    /// Returns the number of payload bytes written for the last peer.
+    /// Sends a packet to every party in the network, this node included, in this handle's session.
+    ///
+    /// Returns the total payload size sent: the sum of what [`send_to`](Network::send_to) returns
+    /// for each party, so the packet's size times the number of parties. Stops at the first party
+    /// whose send fails, and returns that error; the parties before it have been sent the packet.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe: like [`send_to`](Network::send_to), it never suspends, so its
+    /// future completes on its first poll.
     pub async fn send(&mut self, packet: &Packet) -> Result<usize> {
         let mut size = 0;
         for party in self.core.parties.clone() {
@@ -523,6 +624,15 @@ impl TcpNetwork {
 
     /// Receives one packet from each party in the network, including this node itself, in this
     /// handle's session, ordered by ascending party ID.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is **not** cancel safe. It receives from the parties one at a time, and keeps
+    /// the packets it has taken in its future until it has one from every party. If the future is
+    /// dropped before it returns, for example by a timeout or by losing a `select!`, the packets it
+    /// has already taken are lost. Where the call may be dropped, call
+    /// [`recv_from`](Network::recv_from) for each party instead, and keep the packets outside the
+    /// future that may be dropped.
     pub async fn recv(&mut self) -> Result<Vec<Packet>> {
         let mut packets = Vec::new();
         for party in self.core.parties.clone() {
@@ -574,28 +684,41 @@ impl Network for TcpNetwork {
     ///
     /// A send to a peer queues the encoded frame for that peer's writer task and returns without
     /// waiting for the write. A send to this party itself goes straight into this session's own
-    /// mailbox. Either way the future never suspends, so dropping it (as a fail-fast join does to a
-    /// sibling) cannot leave a frame half written. Returns the payload size of the packet.
+    /// mailbox. Returns the payload size of the packet.
     ///
     /// # Error
     ///
     /// - [`NetworkError::PartyNotFound`] if `party_id` is not a party of the network.
     /// - [`NetworkError::PeerFailed`] if the connection with the peer has failed.
     /// - [`NetworkError::ConnectionClosed`] if the peer's writer has stopped, after
-    ///   [`close`](Network::close) or a failed write.
+    ///   [`close`](Network::close) or a failed write; and, for a send to this party itself, once
+    ///   the root handle has been closed.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe. Whether the packet goes to a peer or to this party, the future
+    /// never suspends, so dropping it (as a fail-fast join does to a sibling) cannot leave a frame
+    /// half written. A frame that is queued is written whole by the writer task, even if the
+    /// sub-protocol that queued it is dropped before the write.
     async fn send_to(&mut self, party_id: PartyId, packet: &Packet) -> Result<usize> {
         if party_id.as_usize() >= self.core.parties.len() {
             return Err(NetworkError::PartyNotFound(party_id));
         }
 
         if party_id == self.local_pid {
-            // Simulates a loop-back channel.
-            let waker = self
-                .core
-                .mailboxes
-                .lock()
-                .expect("the mutex can not be poisoned")
-                .deliver(self.local_pid, self.session.clone(), packet.clone());
+            // The loop-back: the packet goes straight into this session's mailbox, unless the root
+            // handle has closed the network, which closes the loop-back as it does every peer.
+            let waker = {
+                let mut mailboxes = self
+                    .core
+                    .mailboxes
+                    .lock()
+                    .expect("the mutex can not be poisoned");
+                if let Some(error) = mailboxes.peer_error(party_id) {
+                    return Err(error);
+                }
+                mailboxes.deliver(self.local_pid, self.session.clone(), packet.clone())
+            };
             if let Some(waker) = waker {
                 waker.wake();
             }
@@ -624,6 +747,11 @@ impl Network for TcpNetwork {
     /// Every target is checked first, so a missing peer is reported before any packet is sent. The
     /// sends need no joining: [`send_to`](Network::send_to) only queues the frame for the peer's
     /// writer task, and the writer tasks already write to their sockets concurrently.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe: like `send_to`, it never suspends, so its future completes on
+    /// its first poll.
     async fn send_many(&mut self, messages: &[(PartyId, Packet)]) -> Result<()> {
         for (pid, _) in messages {
             if pid.as_usize() >= self.core.parties.len() {
@@ -657,6 +785,12 @@ impl Network for TcpNetwork {
     }
 
     /// Receives a packet from a given party.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe. If it is used as a branch of `select!` and another branch
+    /// completes first, or a timeout drops it, it has taken no packet: the packet stays in this
+    /// session's mailbox for the next receive.
     async fn recv_from(&mut self, party_id: PartyId) -> Result<Packet> {
         if party_id.as_usize() >= self.core.parties.len() {
             return Err(NetworkError::PartyNotFound(party_id));
@@ -678,14 +812,31 @@ impl Network for TcpNetwork {
     ///
     /// On the root handle, this closes every connection: each writer task writes the frames
     /// already queued, shuts its connection down and exits, and then the reader tasks are stopped.
-    /// Afterwards, in every session, a receive from a peer first takes the packets already filed
-    /// and then returns [`NetworkError::ConnectionClosed`], and a send to a peer returns
-    /// `ConnectionClosed(Some(peer))`.
+    /// The loop-back to this party is closed too. Afterwards, in every session, a receive from a
+    /// party, this one included, first takes the packets already filed and then returns
+    /// `ConnectionClosed(Some(party))`; a send to a party returns the same; and
+    /// [`recv_any`](Network::recv_any), once nothing is filed, returns `ConnectionClosed(None)`.
     ///
     /// # Error
     ///
     /// Returns the error of a writer task that failed to shut its connection down; if several
     /// failed, one of their errors.
+    ///
+    /// # Cancel safety
+    ///
+    /// On a forked handle, this method is cancel safe: its future completes on its first poll.
+    ///
+    /// On the root handle, it is **not** cancel safe. It asks every writer task to close, waits
+    /// for them, and only then stops the reader tasks and ends the receives. If its future is
+    /// dropped while it waits:
+    ///
+    /// - the writer tasks still close the connections: a send to a peer returns
+    ///   `ConnectionClosed(Some(peer))`, and the peers see the connections close;
+    /// - the reader tasks keep running: a receive from a peer waits for that peer's next frame or
+    ///   end instead of returning `ConnectionClosed`, and frames the peer still sends are received;
+    /// - the error of a writer task that failed to shut its connection down is lost.
+    ///
+    /// Calling `close` again on the root handle finishes the close.
     async fn close(&mut self) -> Result<()> {
         if self.session.depth() > 0 {
             // A forked handle only gives up its own session.
@@ -714,17 +865,12 @@ impl Network for TcpNetwork {
             reader.abort();
         }
 
-        let mut wakers = Vec::new();
-        {
-            let mut mailboxes = self
-                .core
-                .mailboxes
-                .lock()
-                .expect("the mutex must not be poisoned");
-            for peer in self.core.writers.keys() {
-                wakers.extend(mailboxes.end_peer(*peer, PeerState::Closed));
-            }
-        }
+        let wakers = self
+            .core
+            .mailboxes
+            .lock()
+            .expect("the mutex must not be poisoned")
+            .close();
         wakers.into_iter().for_each(Waker::wake);
         result
     }
@@ -1408,6 +1554,167 @@ mod tests {
                     "expected ConnectionClosed(Some(1)), got {result:?}"
                 );
             }
+        })
+        .await;
+    }
+
+    /// After the root handle's `close()`, this node's loop-back is closed as a connection to a peer
+    /// is. A receive from this node first takes what is already queued, then ends with
+    /// `ConnectionClosed(Some(local))` in every session instead of waiting for ever; a send to this
+    /// node fails the same way.
+    #[tokio::test]
+    async fn after_close_the_loop_back_ends_as_a_peer_does() {
+        within(TEST_TIMEOUT, async {
+            let mut nets = connected(2).await;
+            let (_net1, mut net0) = (nets.pop().unwrap(), nets.pop().unwrap());
+            let mut forked = net0.fork();
+            net0.send_to(party(0), &packet(7)).await.unwrap();
+            net0.close().await.unwrap();
+
+            assert_eq!(net0.recv_from(party(0)).await.unwrap(), packet(7));
+            for result in [
+                net0.recv_from(party(0)).await,
+                forked.recv_from(party(0)).await,
+                net0.send_to(party(0), &packet(1)).await.map(|_| packet(0)),
+            ] {
+                assert!(
+                    matches!(&result, Err(NetworkError::ConnectionClosed(Some(peer))) if *peer == party(0)),
+                    "expected ConnectionClosed(Some(0)), got {result:?}"
+                );
+            }
+        })
+        .await;
+    }
+
+    /// Starts party 0 of a two-party network whose connection to party 1 is `read` and `write`.
+    /// The test plays party 1 through the other ends of those streams.
+    ///
+    /// The network is started by [`TcpNetwork::start`], as [`TcpNetwork::create`] starts it after
+    /// the TLS handshakes, but no TLS is involved. The tests that use it check what the reader and
+    /// writer tasks and the mailboxes do when a connection fails in a way that a real connection
+    /// cannot be made to fail on demand; they do not exercise TLS itself.
+    fn network_over<R, W>(read: R, write: W) -> TcpNetwork
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
+        TcpNetwork::start(
+            party(0),
+            vec![party(0), party(1)],
+            test_root_tag(),
+            vec![(party(1), read, write)],
+        )
+    }
+
+    /// A writer whose every write fails, as a write on a connection that the peer has reset does.
+    struct FailingWriter;
+
+    impl AsyncWrite for FailingWriter {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::from(io::ErrorKind::BrokenPipe)))
+        }
+
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// Asserts that `result` is `PeerFailed` for party 1, with a reason, and returns the reason.
+    fn assert_party_1_failed<T: std::fmt::Debug>(result: &Result<T>) -> String {
+        match result {
+            Err(NetworkError::PeerFailed { peer, reason }) if *peer == party(1) => {
+                assert!(!reason.is_empty(), "PeerFailed carries no reason");
+                reason.clone()
+            }
+            other => panic!("expected PeerFailed from party 1, got {other:?}"),
+        }
+    }
+
+    /// A frame whose body does not decode fails the connection with that peer. The packets that
+    /// arrived before it are still received; after them, a receive from the peer in any session,
+    /// and a send to it, return `PeerFailed`, not `ConnectionClosed`. Over in-memory streams: see
+    /// [`network_over`].
+    #[tokio::test]
+    async fn an_undecodable_frame_fails_the_peer_in_every_session() {
+        within(TEST_TIMEOUT, async {
+            let (net_end, mut peer_end) = io::duplex(1024);
+            let (read, write) = io::split(net_end);
+            let mut net0 = network_over(read, write);
+            let mut forked = net0.fork();
+
+            let good = encode_frame(net0.session(), &packet(1)).unwrap();
+            peer_end.write_all(&good).await.unwrap();
+            // A frame with an empty body: `postcard` cannot decode a session path from no bytes.
+            peer_end.write_all(&0u64.to_le_bytes()).await.unwrap();
+
+            assert_eq!(net0.recv_from(party(1)).await.unwrap(), packet(1));
+            assert_party_1_failed(&net0.recv_from(party(1)).await);
+            assert_party_1_failed(&forked.recv_from(party(1)).await);
+            assert_party_1_failed(&net0.send_to(party(1), &packet(2)).await);
+            // The peer's end stays open to the last, so the failure cannot come from an EOF.
+            drop(peer_end);
+        })
+        .await;
+    }
+
+    /// A stream that ends in the middle of a frame is a read error, not a clean close: a receive
+    /// from the peer in any session, and a send to it, return `PeerFailed`, not
+    /// `ConnectionClosed`. Over in-memory streams: see [`network_over`].
+    #[tokio::test]
+    async fn a_stream_cut_inside_a_frame_fails_the_peer_in_every_session() {
+        within(TEST_TIMEOUT, async {
+            let (net_end, mut peer_end) = io::duplex(1024);
+            let (read, write) = io::split(net_end);
+            let mut net0 = network_over(read, write);
+            let mut forked = net0.fork();
+
+            // The length prefix promises 100 bytes; 10 follow, then the stream ends.
+            peer_end.write_all(&100u64.to_le_bytes()).await.unwrap();
+            peer_end.write_all(&[0u8; 10]).await.unwrap();
+            drop(peer_end);
+
+            assert_party_1_failed(&net0.recv_from(party(1)).await);
+            assert_party_1_failed(&forked.recv_from(party(1)).await);
+            assert_party_1_failed(&net0.send_to(party(1), &packet(2)).await);
+        })
+        .await;
+    }
+
+    /// A write that fails fails the connection with that peer, although nothing went wrong on the
+    /// reading side. The send that queued the frame returned before the write; afterwards a
+    /// receive from the peer in any session, and the next send to it, return `PeerFailed`, whose
+    /// reason is the write's error. Over in-memory streams: see [`network_over`].
+    #[tokio::test]
+    async fn a_failed_write_fails_the_peer_in_every_session() {
+        within(TEST_TIMEOUT, async {
+            // The peer's end is kept to the end of the test, so the reading side stays open.
+            let (net_end, _peer_end) = io::duplex(1024);
+            let mut net0 = network_over(net_end, FailingWriter);
+            let mut forked = net0.fork();
+
+            net0.send_to(party(1), &packet(1)).await.unwrap();
+
+            let reason = assert_party_1_failed(&net0.recv_from(party(1)).await);
+            assert_eq!(
+                reason,
+                io::Error::from(io::ErrorKind::BrokenPipe).to_string()
+            );
+            assert_party_1_failed(&forked.recv_from(party(1)).await);
+            assert_party_1_failed(&net0.send_to(party(1), &packet(2)).await);
         })
         .await;
     }

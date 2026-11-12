@@ -221,6 +221,8 @@ where
     }
 }
 
+/// Simulates one proof over `SimpleNetworkConfig::wan()`, party 0 proving to party 1 on a random
+/// witness, then prints both traces, both outputs and the metrics.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prover = PartyId::from(0);
     let verifier = PartyId::from(1);
