@@ -46,7 +46,7 @@ _SCL-inspired_ than a faithful port.
 
 ```toml
 [dependencies]
-scl-rs = "0.15.0"
+scl-rs = "0.16.0"
 ```
 
 ### Releases vs. `main`
@@ -497,7 +497,7 @@ I develop scl-rs with the help of AI. This is how it is used:
 - **Code written on request.** Most of the library code is written by me. When I ask for it,
   Claude writes code too: many of the tests (for example the simulator's golden snapshot and the
   concurrency tests), examples, documentation comments, `CHANGELOG.md` entries, parts of this
-  README, and some fixes and features.
+  README, and some fixes and mechanical but time-consuming features.
 - **Checks.** When Claude changes the code, it runs the test suite, Clippy and the documentation
   build, and reports what it ran and what it did not check.
 

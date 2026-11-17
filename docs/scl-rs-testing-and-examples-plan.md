@@ -1,11 +1,14 @@
 # scl-rs — Testing & Examples Plan
 
-**Date:** 2026-06-21, updated 2026-11-12.
-**Against:** the 0.15.0 release (`main` at `8c34ace` plus the 0.15.0 changes). The plan was first
+**Date:** 2026-06-21, updated 2026-11-17.
+**Against:** the 0.16.0 release (`main` at `dfffb79` plus the 0.16.0 version bump). The plan was first
 written against v0.4.1; §2 and §3 keep its items, each now marked done, open or declined.
 **How this was checked:** the test names and counts below come from reading `tests/` and the inline
-`#[cfg(test)]` modules on 2026-11-12. `cargo test --all-features --no-fail-fast` passed 288 tests
-with 5 ignored, the doctests included (21 passed, 5 ignored).
+`#[cfg(test)]` modules on 2026-11-12, updated on 2026-11-17 for the two tests 0.16.0 adds to
+`tests/concurrent.rs`. On the tree committed as `dfffb79`, `cargo test --all-features` passed 291
+tests, the doctests included (`cargo test --doc`: 22 passed, 6 ignored). The 6 ignored are all
+doctests: 0.15.0 had 5 ignored, all doctests, and 0.16.0 adds one `ignore` doctest and no
+`#[ignore]` test.
 
 ---
 
@@ -28,7 +31,7 @@ tests included.
 | `ss/additive` | **Thin** | `tests/additive.rs` (2): reconstruction and `LinearShare` dealing. |
 | `ss/shamir` | **Decent** | `tests/shamir.rs` (5): threshold floor, subset invariance as a property test, threshold-aware dealing, serialization. Three error paths untested (§2, Tier 1). |
 | `ss/feldman` | **Strong** | `tests/feldman.rs` (2) and inline in `src/ss/feldman.rs` (5): round trip, tamper detection naming the party, off-curve and wrong-length commitments, length mismatch. |
-| `protocol` | **Decent** | `tests/protocol_share.rs` (6): passive deal and open. `tests/passive_shamir.rs` (6): DN07 `Random`, `Double-Random`, triples and Beaver multiplication. `tests/schnorr_pok.rs` (4). `tests/concurrent.rs` (13): `Join`, `JoinAll`, boxed protocols, timing, session isolation, determinism, deadlock reports. All protocols are generic over `E: Environment`. |
+| `protocol` | **Decent** | `tests/protocol_share.rs` (6): passive deal and open. `tests/passive_shamir.rs` (6): DN07 `Random`, `Double-Random`, triples and Beaver multiplication. `tests/schnorr_pok.rs` (4). `tests/concurrent.rs` (15): `Join`, `JoinAll`, boxed protocols, error conversion with `err_into` (one trace scope per adapted protocol, the converted error aborting a `Join`), timing, session isolation, determinism, deadlock reports. All protocols are generic over `E: Environment`. |
 
 The two structural gaps of June are closed: there are property tests (`proptest`, in nine test
 files), and the rejection paths have negative tests (Tier 3). The empty `tests/net.rs` stub is gone.

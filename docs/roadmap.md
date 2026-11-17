@@ -1,8 +1,13 @@
 # scl-rs Development Roadmap
 
-**Date:** 2026-11-12
+**Date:** 2026-11-17
 
-**Current version:** 0.15.0 (released 2026-11-12) — concurrent composition: the `Join` and
+**Current version:** 0.16.0 (released 2026-11-17) — per-protocol error types: `Protocol` has an
+associated `Error` type, so a protocol's signature lists only the failures it can have. The
+secret-sharing protocols fail with `protocol::share::Error<T>`, which holds a structured
+`ShareError<T>` instead of a boxed one, `SchnorrPok` fails with `protocol::zk::Error`, and
+`ProtocolExt::err_into` adapts protocols with different errors to run in one `Join`. On top of
+0.15.0 (2026-11-12), concurrent composition: the `Join` and
 `JoinAll` combinators run independent sub-protocols at the same time within one party, over child
 sessions that both backends keep apart, with session-aware traces and link occupancy in the
 simulator's delay model (§7). On top of 0.14.2 (2026-09-21), `SimulationOutcome::metrics()`, the flat
@@ -105,7 +110,8 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   single-threaded deterministic discrete-event simulator (`SimNetwork` + `Switchboard` + virtual
   clock), both behind one `Network` trait. The simulator records a per-party event trace and exposes
   a `TriggeredHook` extension point (`net::simulation::hook`) for observing or steering a run.
-- **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output`; protocols compose by
+- **`protocol`** — a `Protocol<E: Environment>` trait with a typed `Output` and, since 0.16.0, a
+  typed `Error` of its own; protocols compose by
   calling one another through `Protocol::execute` (which brackets each call with trace markers),
   or concurrently through the `Join` and `JoinAll` combinators of `protocol::concurrent`, each
   sub-protocol in a child session of its own (0.15.0).
@@ -113,7 +119,7 @@ workstreams, a suggested version sequence, and a **Definition of a stable `0.x`*
   `GeneralEnv` until 0.15.0), and `simulate<P, E>` runs protocols
   deterministically and returns typed outputs + nesting-aware event traces.
 
-**Published and iterating** (see §4): releases `0.2.0`–`0.10.0` have shipped to crates.io. `Cargo.toml`
+**Published and iterating** (see §4): releases `0.2.0`–`0.16.0` have shipped to crates.io. `Cargo.toml`
 has `license`, `description`, `keywords`, `categories`, `repository`, `readme`; tokio features are
 narrowed; `certs/` and the generator script are excluded; `cargo publish --dry-run` passes in CI; MSRV
 is pinned at 1.88 (raised from 1.85.1 for `sha2` 0.11); and the security disclaimer + `SECURITY.md`
@@ -584,7 +590,7 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
     receiver reconstructs (`Some(secret)`), everyone else sends one message and outputs `None`.
       Also added the `protocol::Error::{Share, Input}` variants — `Share` boxes a type-erased
       `ShareError<T>` so the `Protocol` trait stays ring-independent. _Non-breaking (new
-      protocols)._ (Superseded after 0.15.0: `Protocol` now has an associated `Error` type, and
+      protocols)._ (Superseded in 0.16.0: `Protocol` now has an associated `Error` type, and
       these protocols fail with `protocol::share::Error<T>`, whose `Share` variant holds the
       `ShareError<T>` unboxed.)
   - [x] `open_many` — **DONE (0.11.0)**, as `passive_shamir::open_king::BatchedPassiveOpenToKing`:
@@ -784,6 +790,7 @@ stable, patch-mostly `0.x` is the intended terminal state (§2).
 | **0.14.1**      | _Containers over shares_ ✅ **RELEASED 2026-08-24** | Non-breaking feature-and-fix patch per §2: `Vector` and `Matrix` operators are bounded on the element operation itself (`T: for<'a> Add<&'a T, Output = T>` and friends) instead of on `Ring`, so a container may hold ring elements *or* secret shares — over `S: LinearShare` the `+`, `-`, `+=`, `-=` and unary `-` on a whole container are the local, communication-free operations of a linear scheme, and the new `Vector::mul_constant` / `Matrix::mul_constant` scale a container of shares by a public constant. Share × share multiplication is deliberately still absent (it needs an interactive protocol), so the element-wise and matrix products stay ring-only — the local groundwork for the §11.3 shared linear algebra, not that item itself. Also adds `Neg` for `Matrix` and `Vector<T> * &T`, and fixes `Matrix<T> * &T` on non-square matrices, which panicked or left trailing columns unscaled. Non-breaking (`Ring` implies every new bound). See `CHANGELOG.md` `[0.14.1]`. |
 | **0.14.2**      | _Run metrics & dependency floors_ ✅ **RELEASED 2026-09-21** | Non-breaking feature patch per §2: `SimulationOutcome::metrics()` returns a `SimulationMetrics` — payload bytes sent and virtual time elapsed, per party and for the run as a whole, folded out of the recorded traces with no protocol instrumentation and no change to how a run executes. It is the flat counterpart to the per-protocol `bandwidth_tree_for`: same byte accounting (payload sizes, self-sends excluded), plus the virtual-clock span from a party's first event to its last, which measures the modelled network alone. Printed as a table in IEC units by its `Display`, or read per party with `sent_bytes_for` / `elapsed_time_for`; all seven simulator examples now print it. Also dependency hygiene: every `Cargo.toml` requirement names the full patch version it is tested against instead of a bare major, and `rustls` / `chacha20` (transitive via `tokio-rustls` and `rand`) are declared directly to hold those floors. New `bytesize` dependency for the IEC rendering. See `CHANGELOG.md` `[0.14.2]`. |
 | **0.15.0**      | _Concurrent composition_ ✅ **RELEASED 2026-11-12** | Concurrent composition (§7 entry above): `SessionId` and sessions on both backends, `ForkNetwork` / `ForkEnvironment`, the `Join` / `JoinAll` / `BoxedProtocol` combinators, session-aware traces and bandwidth trees, and link occupancy on by default. Breaking: `Event` gains `session`; the `TcpNetwork` wire format and `create` signature change (a required root tag); `GeneralEnv` is renamed `GeneralEnvironment`; MSRV 1.88; simulated timings change where one link carries several messages at once. So a minor bump per §2. See `CHANGELOG.md` `[0.15.0]`. |
+| **0.16.0**      | _Per-protocol error types_ ✅ **RELEASED 2026-11-17** | `Protocol` gains an associated `Error` type (bounded by `std::error::Error + Send + Sync + 'static`), and the crate-wide `protocol::Error` is removed. The secret-sharing protocols of `protocol::share` and `protocol::passive_shamir` fail with `protocol::share::Error<T>`, whose `Share` variant holds a structured `ShareError<T>` instead of a boxed, type-erased one; `SchnorrPok` fails with `protocol::zk::Error`. `ProtocolExt::err_into` adapts a protocol's error so that protocols with different errors run in one `Join` or boxed `JoinAll`; `BoxedProtocol` gains an error type parameter. Also fixed: matrix/vector errors that could not occur were boxed as share errors, and are now `expect`s. Breaking, so a minor bump per §2. See `CHANGELOG.md` `[0.16.0]`. |
 | **0.x**         | _Tier 1 remainder — "real MPC"_                    | The rest of §11 Tier 1: `open_many` (batched opening), error-detecting Shamir reconstruction, trusted-dealer **Beaver-triple `mul`** with a worked `examples/` circuit, and the active deal/open variants built on the 0.8.2/0.9.0 timeout receives. Turns the crate into "real MPC." |
 | **0.x**         | _MPC protocol library (Tiers 2–4)_                 | The rest of §11 as it is scoped in: shared randomness / PRSS / coin-tossing, `recv_any`-based broadcast, shared linear algebra, commitments, comparison/bit-decomposition, and additional sharing schemes (replicated, packed). Sequenced by the §11.6 dependency graph. |
 | **0.x**         | _Hardening & completeness_                         | Remaining §6 (constant-time review — deferred; threat-model doc) and chosen §10 features. _(The real-TLS deployment example landed in `real_tls_send_recv.rs`; `CONTRIBUTING.md` is deferred until there are outside contributors.)_                          |

@@ -9,6 +9,8 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-17
+
 Each protocol now names the error it fails with: `Protocol` gains an associated `Error` type, and
 the crate-wide `protocol::Error` is removed. A protocol's signature lists only the failures it can
 have — a zero-knowledge proof no longer claims it can fail with a share error — and a share error
@@ -1384,7 +1386,8 @@ Initial release, published to [crates.io](https://crates.io/crates/scl-rs).
   real deployment share one `Network` trait, so a protocol runs on either
   unchanged.
 
-[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/hdvanegasm/scl-rs/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/hdvanegasm/scl-rs/compare/v0.14.0...v0.14.1
