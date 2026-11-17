@@ -919,7 +919,7 @@ mod tests {
         double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr,
     };
     use crate::protocol::{
-        Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
+        share, Environment, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolExt, ProtocolId,
         RandEnvironment,
     };
     use crate::ss::shamir::{DoubleShare, ShamirSS};
@@ -1342,8 +1342,9 @@ mod tests {
 
     impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for RandomAndDoubles {
         type Output = RandomAndDoublesOutput;
+        type Error = share::Error<F>;
 
-        async fn run(self, env: &mut E) -> std::result::Result<Self::Output, Error> {
+        async fn run(self, env: &mut E) -> std::result::Result<Self::Output, Self::Error> {
             let parties = env.network().party_ids();
             let (random, doubles) = Join((
                 PassiveRandShr::<1, F>::new(T8_THRESHOLD, parties.clone())?,
@@ -1370,7 +1371,7 @@ mod tests {
                         GeneralEnvironment::new(network, ChaCha20Rng::seed_from_u64(i as u64));
                     let output = RandomAndDoubles.execute(&mut env).await?;
                     env.network.close().await?;
-                    Ok::<_, Error>(output)
+                    Ok::<_, share::Error<F>>(output)
                 },
             );
             let outputs = try_join_all(runs).await.unwrap();
@@ -1426,8 +1427,9 @@ mod tests {
 
     impl<E: Environment> Protocol<E> for SendThenWait {
         type Output = ();
+        type Error = NetworkError;
 
-        async fn run(self, env: &mut E) -> std::result::Result<(), Error> {
+        async fn run(self, env: &mut E) -> std::result::Result<(), NetworkError> {
             let other = env.network().other()?;
             env.network_mut().send_to(other, &self.0).await?;
             env.network_mut().recv_from(other).await?;
@@ -1439,14 +1441,25 @@ mod tests {
         }
     }
 
+    /// The error of the `Join` in `a_join_that_fails_fast_leaves_the_stream_usable`: `Fail`
+    /// fails with it, and `SendThenWait`'s network error converts into it.
+    #[derive(Debug, thiserror::Error)]
+    enum JoinTestError {
+        #[error(transparent)]
+        Network(#[from] NetworkError),
+        #[error("failed on purpose")]
+        Failed,
+    }
+
     /// Fails at once.
     struct Fail;
 
     impl<E: Environment> Protocol<E> for Fail {
         type Output = ();
+        type Error = JoinTestError;
 
-        async fn run(self, _env: &mut E) -> std::result::Result<(), Error> {
-            Err(Error::Input)
+        async fn run(self, _env: &mut E) -> std::result::Result<(), JoinTestError> {
+            Err(JoinTestError::Failed)
         }
 
         fn id(&self) -> ProtocolId {
@@ -1468,10 +1481,13 @@ mod tests {
             let mut env0 = GeneralEnvironment::new(net0, ChaCha20Rng::seed_from_u64(0));
             // `try_join!` polls in the order written, so `SendThenWait` queues its frame and
             // waits. `Fail` then fails, and the `Join` drops `SendThenWait` where it is.
-            let joined = Join((SendThenWait(big.clone()), Fail))
+            let joined = Join((SendThenWait(big.clone()).err_into::<JoinTestError>(), Fail))
                 .execute(&mut env0)
                 .await;
-            assert!(matches!(joined, Err(Error::Input)), "the Join must fail");
+            assert!(
+                matches!(joined, Err(JoinTestError::Failed)),
+                "the Join must fail"
+            );
             env0.network.send_to(party(1), &packet(5)).await.unwrap();
 
             // Party 1 forks as its own `Join` would: the large frame is in child session 0.

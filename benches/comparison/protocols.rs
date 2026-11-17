@@ -23,8 +23,8 @@
 //! the run.
 
 use scl_rs::{
-    net::{Network, Packet},
-    prelude::{Environment, Error, Protocol},
+    net::{Network, NetworkError, Packet},
+    prelude::{Environment, Protocol},
     protocol::ProtocolId,
 };
 
@@ -51,8 +51,9 @@ pub struct PingPong {
 impl<E: Environment> Protocol<E> for PingPong {
     /// Total bytes this party received over the run, summed across rounds.
     type Output = usize;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Self::Error> {
         let me = environment.network().local_party().as_usize();
         let other = environment.network().other()?;
         let mut received = 0;
@@ -100,8 +101,9 @@ pub struct BulkTransfer {
 impl<E: Environment> Protocol<E> for BulkTransfer {
     /// Total bytes this party received over the run.
     type Output = usize;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Self::Error> {
         let me = environment.network().local_party().as_usize();
         let other = environment.network().other()?;
 
@@ -132,7 +134,7 @@ impl<E: Environment> Protocol<E> for BulkTransfer {
 /// model and which varies far more than the protocol itself under a lossy shape. It lives here
 /// rather than inside a protocol on purpose: a protocol runs on both backends, and adding a round
 /// trip to the simulated run would shift the very number being compared.
-pub async fn barrier<E: Environment>(environment: &mut E) -> Result<(), Error> {
+pub async fn barrier<E: Environment>(environment: &mut E) -> Result<(), NetworkError> {
     let me = environment.network().local_party().as_usize();
     let other = environment.network().other()?;
     let mut packet = Packet::empty();

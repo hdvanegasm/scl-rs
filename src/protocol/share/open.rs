@@ -1,7 +1,7 @@
 use crate::{
     net::{Network, Packet, PartyId},
-    prelude::{Abbreviate, Environment, Error, Protocol},
-    protocol::ProtocolId,
+    prelude::{Abbreviate, Environment, Protocol},
+    protocol::{share, ProtocolId},
     ss::LinearShare,
 };
 
@@ -47,8 +47,9 @@ where
     S::Value: Sync + Send + 'static,
 {
     type Output = S::Value;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let parties = env.network().party_ids();
 
@@ -123,8 +124,9 @@ where
     S::Value: Sync + Send + 'static,
 {
     type Output = Option<S::Value>;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
 
         if self.receiver != me {

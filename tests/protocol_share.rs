@@ -8,8 +8,9 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Abbreviate, Error, GeneralEnvironment, Protocol, RandEnvironment},
+    prelude::{simulate, Abbreviate, GeneralEnvironment, Protocol, RandEnvironment},
     protocol::{
+        share,
         share::{
             deal::PassiveDealShr,
             open::{PassiveOpenShr, PassiveOpenToParty},
@@ -65,8 +66,9 @@ where
     S::Value: Send + Sync + 'static,
 {
     type Output = S::Value;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let share: S = self.deal.execute(env).await?;
         PassiveOpenShr::new(share).execute(env).await
     }
@@ -134,8 +136,9 @@ where
     S::Value: Send + Sync + 'static,
 {
     type Output = S::Value;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let share: S = self.deal.execute(env).await?;
         let affine_share = share * &self.a + &self.b;
         PassiveOpenShr::new(affine_share).execute(env).await
@@ -208,8 +211,9 @@ where
     S::Value: Send + Sync + 'static,
 {
     type Output = Option<S::Value>;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let share: S = self.deal.execute(env).await?;
         PassiveOpenToParty::new(self.receiver, share)
             .execute(env)

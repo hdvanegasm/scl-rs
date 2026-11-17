@@ -2,7 +2,7 @@ use crate::{
     abbreviate::Abbreviate,
     math::field::FiniteField,
     net::{Network, Packet, PartyId},
-    protocol::{Error, Protocol, ProtocolId, RandEnvironment},
+    protocol::{share, Protocol, ProtocolId, RandEnvironment},
     ss::{shamir::ShamirSS, LinearShare},
 };
 
@@ -51,8 +51,9 @@ where
     E: RandEnvironment,
 {
     type Output = F;
+    type Error = share::Error<F>;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error> {
         let me = environment.network().local_party();
         if me == self.king {
             let mut shares = Vec::new();
@@ -127,8 +128,9 @@ where
     E: RandEnvironment,
 {
     type Output = Vec<F>;
+    type Error = share::Error<F>;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error> {
         let me = environment.network().local_party();
         if me == self.king {
             let n_shares = self.own_shares.len();

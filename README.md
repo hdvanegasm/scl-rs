@@ -125,15 +125,18 @@ minimal introduction) and `examples/secure_stats_flamegraph.rs` (nested phases).
 
 ## Writing a protocol
 
-A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`) and
-its behavior in `run`; network operations return a `Result`, so errors propagate with `?`:
+A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`), the
+error it may fail with (`Error`), and its behavior in `run`; network operations return a `Result`,
+so errors propagate with `?`:
 
 ```rust
 pub trait Protocol<E: Environment>: Send + Sync {
     /// The typed value this protocol produces.
     type Output;
+    /// The error the protocol may fail with.
+    type Error: std::error::Error + Send + Sync + 'static;
     /// Behavior of the protocol when run.
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error>;
     /// Identifier of the protocol.
     fn id(&self) -> ProtocolId;
 }
@@ -149,16 +152,18 @@ over `E: Environment`** (and therefore over any `Network` the environment wraps)
 runs on either without changes:
 
 ```rust
-use scl_rs::net::{Network, Packet};
-use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
+use scl_rs::net::{Network, NetworkError, Packet};
+use scl_rs::protocol::{Environment, Protocol, ProtocolId};
 
 pub struct SendRecvProtocol;
 
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // This protocol returns the other party's id.
     type Output = usize;
+    // It only exchanges packets, so a network error is all it can fail with.
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<usize, Error> {
+    async fn run(self, env: &mut E) -> Result<usize, NetworkError> {
         // Put this party's id into a packet and send it to the other party.
         let mut packet = Packet::empty();
         packet.write(&env.network().local_party().as_usize())?;

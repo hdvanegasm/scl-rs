@@ -6,8 +6,9 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use scl_rs::net::simulation::channel::SimpleNetworkConfig;
 use scl_rs::net::simulation::simulator::simulate;
+use scl_rs::net::NetworkError;
 use scl_rs::net::{Network, Packet, PartyId};
-use scl_rs::protocol::{Environment, Error, GeneralEnvironment, Protocol, ProtocolId};
+use scl_rs::protocol::{Environment, GeneralEnvironment, Protocol, ProtocolId};
 use std::time::Duration;
 
 /// P0 waits with a timeout; P1 never sends. The recv must resolve to a Timeout error.
@@ -15,8 +16,9 @@ pub struct SilentPartyProtocol;
 
 impl<E: Environment> Protocol<E> for SilentPartyProtocol {
     type Output = bool;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<bool, Error> {
+    async fn run(self, environment: &mut E) -> Result<bool, Self::Error> {
         let me = environment.network().local_party();
         if me.as_usize() == 0 {
             let other = environment.network().other()?;
@@ -57,8 +59,9 @@ pub struct PromptSenderProtocol;
 
 impl<E: Environment> Protocol<E> for PromptSenderProtocol {
     type Output = bool;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<bool, Error> {
+    async fn run(self, environment: &mut E) -> Result<bool, Self::Error> {
         let me = environment.network().local_party();
         let other = environment.network().other()?;
         if me.as_usize() == 0 {
@@ -103,8 +106,9 @@ pub struct AllSilentProtocol;
 
 impl<E: Environment> Protocol<E> for AllSilentProtocol {
     type Output = bool;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<bool, Error> {
+    async fn run(self, environment: &mut E) -> Result<bool, Self::Error> {
         let me = environment.network().local_party();
         if me.as_usize() == 0 {
             let res = environment
@@ -146,8 +150,9 @@ pub struct LateSenderProtocol;
 
 impl<E: Environment> Protocol<E> for LateSenderProtocol {
     type Output = bool;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<bool, Error> {
+    async fn run(self, environment: &mut E) -> Result<bool, Self::Error> {
         let me = environment.network().local_party();
         let other = environment.network().other()?;
         if me.as_usize() == 0 {
@@ -197,8 +202,9 @@ pub struct PromptAnyProtocol;
 
 impl<E: Environment> Protocol<E> for PromptAnyProtocol {
     type Output = bool;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<bool, Error> {
+    async fn run(self, environment: &mut E) -> Result<bool, Self::Error> {
         let me = environment.network().local_party();
         let other = environment.network().other()?;
         if me.as_usize() == 0 {

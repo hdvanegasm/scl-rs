@@ -2,8 +2,9 @@ use crate::{
     math::{field::FiniteField, matrix::Matrix, vector::Vector},
     net::{Network, PartyId},
     protocol::{
-        passive_shamir::extraction_matrix, share::deal::PassiveDealShr, Error, Protocol,
-        ProtocolId, RandEnvironment,
+        passive_shamir::extraction_matrix,
+        share::{self, deal::PassiveDealShr},
+        Protocol, ProtocolId, RandEnvironment,
     },
     ss::shamir::{DoubleShare, ShamirSS},
 };
@@ -43,13 +44,13 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Input`] unless `2 * t < parties.len()`. A degree-`2t` sharing needs
+    /// Returns [`share::Error::Input`] unless `2 * t < parties.len()`. A degree-`2t` sharing needs
     /// `2t + 1` shares to reconstruct, so with fewer than `2t + 1` parties the degree-`2t` half
     /// could never be opened — this is DN07's `n >= 2t + 1` requirement.
-    pub fn new(t: usize, mut parties: Vec<PartyId>) -> Result<Self, Error> {
+    pub fn new(t: usize, mut parties: Vec<PartyId>) -> Result<Self, share::Error<F>> {
         let n = parties.len();
         if 2 * t >= n {
-            return Err(Error::Input);
+            return Err(share::Error::Input);
         }
         parties.sort();
         let vandermonde = extraction_matrix::<LIMBS, F>(&parties, n - t);
@@ -67,8 +68,9 @@ where
     E: RandEnvironment,
 {
     type Output = Vec<DoubleShare<LIMBS, F>>;
+    type Error = share::Error<F>;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error> {
         // `self.parties` was sorted at construction, which is what aligns each Vandermonde column
         // with the dealer it belongs to, identically at every party.
         let s = F::random(environment.rng_mut());
@@ -114,14 +116,15 @@ where
         let v_shares_t = Vector::from(shares_t);
         let v_shares_2t = Vector::from(shares_2t);
 
-        let r_shares_t = self
-            .vandermonde
-            .mul_shares(&v_shares_t)
-            .map_err(|e| Error::Share(Box::new(e)))?;
-        let r_shares_2t = self
-            .vandermonde
-            .mul_shares(&v_shares_2t)
-            .map_err(|e| Error::Share(Box::new(e)))?;
+        // `mul_shares` fails only on a dimension mismatch, and there is none: `new` built
+        // `vandermonde` with one column per entry of `self.parties`, and each loop above collected
+        // one share per entry of the same list.
+        let r_shares_t = self.vandermonde.mul_shares(&v_shares_t).expect(
+            "the extraction matrix has one column per party, and one share per party was collected",
+        );
+        let r_shares_2t = self.vandermonde.mul_shares(&v_shares_2t).expect(
+            "the extraction matrix has one column per party, and one share per party was collected",
+        );
 
         let result = r_shares_t
             .into_iter()

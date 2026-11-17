@@ -9,8 +9,8 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::{ec::secp256k1::Secp256k1, field::secp256k1_scalar::Secp256k1ScalarField},
-    net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
-    prelude::{simulate, EllipticCurve, Environment, Error, Protocol, Ring},
+    net::{simulation::channel::SimpleNetworkConfig, Network, NetworkError, Packet, PartyId},
+    prelude::{simulate, EllipticCurve, Environment, Protocol, Ring},
     protocol::{GeneralEnvironment, ProtocolId},
     ss::additive::AdditiveSS,
 };
@@ -26,8 +26,9 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
         Secp256k1,
         Vec<AdditiveSS<Secp256k1ScalarField>>,
     );
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error> {
         let mut packet = Packet::empty();
 
         let mut rng = ChaCha20Rng::from_rng(&mut rand::rng());

@@ -11,6 +11,11 @@
 //!   one `JoinAll`, box each with [`Protocol::boxed`], which maps
 //!   its output into a common type.
 //!
+//! Whatever their types, the sub-protocols of one combinator must share one
+//! [error type](Protocol::Error), since the combinator fails with whichever error comes first.
+//! Convert the errors of the others into that type with
+//! [`err_into`](crate::protocol::ProtocolExt::err_into); see [Errors](#errors).
+//!
 //! Both are ordinary [`Protocol`]s: they nest, so a `Join` may contain another `Join`, and they are
 //! called with `execute` like any other protocol. Their environment must implement
 //! [`ForkEnvironment`]. A combinator forks the environment once per sub-protocol, and each
@@ -33,8 +38,8 @@
 //!
 //! Do not use a protocol that rejects non-participants as that sub-protocol.
 //! [`SchnorrPok`](crate::protocol::zk::schnorr::SchnorrPok), for example, returns
-//! [`Error::Input`] on a party that is neither the prover nor the verifier, and that error aborts
-//! the whole combinator (see [Errors](#errors)).
+//! [`zk::Error::Input`] on a party that is neither the prover
+//! nor the verifier, and that error aborts the whole combinator (see [Errors](#errors)).
 //!
 //! If a party skips a combinator, every later fork in that session gets a different index on that
 //! party, so the problem shows up at a later combinator, not necessarily at the skipped one. On the
@@ -78,6 +83,18 @@
 //!
 //! The calling party's own session is not affected, so the caller may handle the error and keep
 //! using its environment.
+//!
+//! A combinator's [error type](Protocol::Error) is the one its sub-protocols share: `Join` requires
+//! every sub-protocol to have the same error type, and `JoinAll` takes its element's. When the
+//! errors differ, adapt each sub-protocol with
+//! [`err_into`](crate::protocol::ProtocolExt::err_into) to a type that every error converts into:
+//! one of them, if the others convert into it (as [`NetworkError`](crate::net::NetworkError)
+//! converts into [`share::Error`]), or an enum of your own with one
+//! `From` conversion per error. For example, with `MyError` such an enum:
+//!
+//! ```ignore
+//! Join((pok.err_into::<MyError>(), rand_shr.err_into::<MyError>())).execute(env).await?
+//! ```
 //!
 //! # Cancel safety
 //!
@@ -125,12 +142,12 @@
 //! use scl_rs::protocol::passive_shamir::{
 //!     double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr,
 //! };
-//! use scl_rs::protocol::ForkEnvironment;
+//! use scl_rs::protocol::{share, ForkEnvironment};
 //!
 //! async fn preprocess<E: RandEnvironment + ForkEnvironment>(
 //!     env: &mut E,
 //!     t: usize,
-//! ) -> Result<(), Error> {
+//! ) -> Result<(), share::Error<Mersenne61>> {
 //!     let parties = env.network().party_ids();
 //!     let (a, b, doubles) = Join((
 //!         PassiveRandShr::<1, Mersenne61>::new(t, parties.clone())?,
@@ -149,7 +166,7 @@ use std::future::Future;
 
 use futures_util::future::BoxFuture;
 
-use crate::protocol::{Environment, Error, ForkEnvironment, Protocol, ProtocolId};
+use crate::protocol::{Environment, ForkEnvironment, Protocol, ProtocolId};
 
 /// Runs a fixed number of protocols, of possibly different types, concurrently, and outputs the
 /// tuple of their outputs.
@@ -168,6 +185,10 @@ use crate::protocol::{Environment, Error, ForkEnvironment, Protocol, ProtocolId}
 ///
 /// # Errors
 ///
+/// The protocols may have different types, but must share one [error type](Protocol::Error), which
+/// is also the `Join`'s. Adapt one whose error differs with
+/// [`err_into`](crate::protocol::ProtocolExt::err_into).
+///
 /// Returns the first error any of the protocols returns, and drops the others unfinished; see
 /// [Errors](self#errors).
 ///
@@ -181,14 +202,22 @@ pub struct Join<T>(pub T);
 /// of the tuple: the protocol's type parameter, the binding that takes the protocol out of the
 /// tuple, and the binding of its forked environment, for example `P0 p0 e0`. The bindings are
 /// passed in because `macro_rules!` cannot build a distinct identifier per repetition.
+///
+/// The impl's own `Err` parameter is the error type every protocol must have. `try_join!` needs
+/// one error type across its futures; binding each `$P::Error` to `Err` states that requirement,
+/// and fixes `Err` from the protocols (so the impl is allowed to declare it, E0207).
 macro_rules! impl_protocol_for_join {
     ($($P:ident $p:ident $e:ident), +) => {
-        impl<E: ForkEnvironment, $($P: Protocol<E>),+> Protocol<E> for Join<($($P,)+)>
-        where $($P::Output: Send,)+
+        impl<E: ForkEnvironment, Err, $($P: Protocol<E, Error = Err>),+> Protocol<E>
+            for Join<($($P,)+)>
+        where
+            $($P::Output: Send,)+
+            Err: std::error::Error + Send + Sync + 'static,
         {
             type Output = ($($P::Output,)+);
+            type Error = Err;
 
-            async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+            async fn run(self, env: &mut E) -> Result<Self::Output, Err> {
                 let Join(($($p,)+)) = self;
                 // Fork every child before running any, in tuple order: child sessions are numbered
                 // by the order of the forks, so every party must fork in the same order.
@@ -226,8 +255,8 @@ impl_protocol_for_join!(P0 p0 e0, P1 p1 e1, P2 p2 e2, P3 p3 e3, P4 p4 e4, P5 p5 
 ///
 /// # Errors
 ///
-/// Returns the first error any of the protocols returns, and drops the others unfinished; see
-/// [Errors](self#errors).
+/// The `JoinAll`'s [error type](Protocol::Error) is its protocols'. Returns the first error any of
+/// the protocols returns, and drops the others unfinished; see [Errors](self#errors).
 ///
 /// # Cancel safety
 ///
@@ -242,8 +271,9 @@ where
     P::Output: Send,
 {
     type Output = Vec<P::Output>;
+    type Error = P::Error;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, P::Error> {
         // Fork every child before running any, in input order: child sessions are numbered by the
         // order of the forks, so every party must fork in the same order.
         let mut envs: Vec<_> = self.0.iter().map(|_| environment.fork()).collect();
@@ -266,9 +296,9 @@ where
 /// `Protocol` itself cannot: its `run` takes `self` by value and returns `impl Future`, whose type
 /// differs per implementation. Here the protocol is consumed from a `Box`, and the future is boxed
 /// into one type, [`BoxFuture`].
-trait DynProtocol<E: Environment, O>: Send + Sync {
+trait DynProtocol<E: Environment, O, Err>: Send + Sync {
     /// Runs the boxed protocol, as [`Protocol::run`] does.
-    fn run_boxed<'a>(self: Box<Self>, env: &'a mut E) -> BoxFuture<'a, Result<O, Error>>;
+    fn run_boxed<'a>(self: Box<Self>, env: &'a mut E) -> BoxFuture<'a, Result<O, Err>>;
     /// The boxed protocol's id, as [`Protocol::id`] returns it.
     fn id(&self) -> ProtocolId;
 }
@@ -282,13 +312,13 @@ struct MappedProtocol<P, F> {
     map: F,
 }
 
-impl<E, O, P, F> DynProtocol<E, O> for MappedProtocol<P, F>
+impl<E, O, P, F> DynProtocol<E, O, P::Error> for MappedProtocol<P, F>
 where
     E: Environment,
     P: Protocol<E> + 'static,
     F: FnOnce(P::Output) -> O + Send + Sync + 'static,
 {
-    fn run_boxed<'a>(self: Box<Self>, env: &'a mut E) -> BoxFuture<'a, Result<O, Error>> {
+    fn run_boxed<'a>(self: Box<Self>, env: &'a mut E) -> BoxFuture<'a, Result<O, P::Error>> {
         let MappedProtocol { protocol, map } = *self;
         Box::pin(async move { protocol.run(env).await.map(map) })
     }
@@ -298,34 +328,40 @@ where
     }
 }
 
-/// A protocol whose type is erased, with output `O`: what [`Protocol::boxed`] returns.
+/// A protocol whose type is erased, with output `O` and error `Err`: what [`Protocol::boxed`]
+/// returns.
 ///
-/// Protocols of different types become the same type once boxed with the same output type, so
-/// they can run in one [`JoinAll`]. A boxed protocol runs the same code as the protocol it was
-/// made from, and reports that protocol's [`id`](Protocol::id). See [`Protocol::boxed`].
-pub struct BoxedProtocol<E, O>(Box<dyn DynProtocol<E, O>>);
+/// Protocols of different types become the same type once boxed with the same output and error
+/// types, so they can run in one [`JoinAll`]. `Err` is the error type of the protocol that was
+/// boxed; to box protocols with different error types together, adapt them first with
+/// [`err_into`](crate::protocol::ProtocolExt::err_into). A boxed protocol runs the same code as
+/// the protocol it was made from, and reports that protocol's [`id`](Protocol::id). See
+/// [`Protocol::boxed`].
+pub struct BoxedProtocol<E, O, Err>(Box<dyn DynProtocol<E, O, Err>>);
 
-impl<E, O> BoxedProtocol<E, O>
+impl<E, O, Err> BoxedProtocol<E, O, Err>
 where
     E: Environment,
 {
     /// Boxes `protocol` with `map` applied to its output. Called through [`Protocol::boxed`].
     pub(crate) fn new<P, F>(protocol: P, map: F) -> Self
     where
-        P: Protocol<E> + 'static,
+        P: Protocol<E, Error = Err> + 'static,
         F: FnOnce(P::Output) -> O + Send + Sync + 'static,
     {
         BoxedProtocol(Box::new(MappedProtocol { protocol, map }))
     }
 }
 
-impl<E, O> Protocol<E> for BoxedProtocol<E, O>
+impl<E, O, Err> Protocol<E> for BoxedProtocol<E, O, Err>
 where
     E: Environment,
+    Err: std::error::Error + Send + Sync + 'static,
 {
     type Output = O;
+    type Error = Err;
 
-    fn run(self, environment: &mut E) -> impl Future<Output = Result<Self::Output, Error>> + Send {
+    fn run(self, environment: &mut E) -> impl Future<Output = Result<Self::Output, Err>> + Send {
         self.0.run_boxed(environment)
     }
 

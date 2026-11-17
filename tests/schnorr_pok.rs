@@ -9,8 +9,8 @@ use scl_rs::{
         field::secp256k1_scalar::Secp256k1ScalarField,
     },
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{simulate, Error, GeneralEnvironment, Protocol, RandEnvironment, Ring},
-    protocol::{zk::schnorr::SchnorrPok, ProtocolId},
+    prelude::{simulate, GeneralEnvironment, Protocol, RandEnvironment, Ring},
+    protocol::{zk, zk::schnorr::SchnorrPok, ProtocolId},
 };
 
 /// The number of parties in the test network, more than the two that take part in a proof.
@@ -39,8 +39,9 @@ where
     E: RandEnvironment,
 {
     type Output = Result<Option<bool>, String>;
+    type Error = zk::Error;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         Ok(match self.pok {
             Some(pok) => pok.execute(env).await.map_err(|e| e.to_string()),
             None => Ok(None),
@@ -121,17 +122,23 @@ fn wrong_witness_is_rejected() {
 fn same_prover_and_verifier_is_rejected() {
     let (x, h) = instance();
     let party = PartyId::from(0);
-    assert!(matches!(Pok::prover(party, party, x, h), Err(Error::Input)));
-    assert!(matches!(Pok::verifier(party, party, h), Err(Error::Input)));
+    assert!(matches!(
+        Pok::prover(party, party, x, h),
+        Err(zk::Error::Input)
+    ));
+    assert!(matches!(
+        Pok::verifier(party, party, h),
+        Err(zk::Error::Input)
+    ));
 }
 
-/// A node whose local party does not match its role fails with `Error::Input` before sending
+/// A node whose local party does not match its role fails with `zk::Error::Input` before sending
 /// anything, so the parties that do not run the proof are unaffected.
 #[test]
 fn role_mismatch_is_rejected() {
     let (prover, verifier) = (PartyId::from(0), PartyId::from(1));
     let (x, h) = instance();
-    let input_error = Err(Error::Input.to_string());
+    let input_error = Err(zk::Error::Input.to_string());
 
     let outputs = run(|pid| match usize::from(pid) {
         // Party 1 is the prover of its own proof but was built without the witness.

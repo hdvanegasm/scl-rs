@@ -36,6 +36,7 @@ use std::time::Duration;
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use scl_rs::protocol::share;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{
@@ -47,8 +48,7 @@ use scl_rs::{
         PartyId,
     },
     prelude::{
-        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, Protocol, ProtocolId,
-        RandEnvironment,
+        simulate, ForkEnvironment, GeneralEnvironment, Join, Protocol, ProtocolId, RandEnvironment,
     },
     protocol::passive_shamir::{
         double_rand_share::PassiveRandDoubleShr,
@@ -91,8 +91,9 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for Preprocessing {
     /// The factors `x` and `y`, and the triples, each a `Vec` with one entry per output of
     /// `Random`. A triple is given as its three sharings `([a], [b], [a · b])`.
     type Output = Output;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let random = || PassiveRandShr::<1, F>::new(T, parties());
         let double_random = || PassiveRandDoubleShr::<1, F>::new(T, parties());
 

@@ -9,9 +9,7 @@ use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, PartyId},
-    prelude::{
-        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, Protocol, RandEnvironment,
-    },
+    prelude::{simulate, ForkEnvironment, GeneralEnvironment, Join, Protocol, RandEnvironment},
     protocol::{
         passive_shamir::{
             double_rand_share::PassiveRandDoubleShr,
@@ -19,7 +17,7 @@ use scl_rs::{
             rand_share::PassiveRandShr,
             triple::{PassiveTriple, ShamirTriple},
         },
-        ProtocolId,
+        share, ProtocolId,
     },
     ss::{shamir::ShamirSS, LinearShare},
 };
@@ -63,8 +61,9 @@ impl<E: RandEnvironment> Protocol<E> for GenTriples {
     // `ShamirTriple` is deliberately one-shot (not `Clone`), like `DoubleShare`, so the shares are
     // handed back destructured.
     type Output = Vec<(Share, Share, Share)>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let a = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
         let b = PassiveRandShr::<1, F>::new(T, parties())?.run(env).await?;
         let doubles = PassiveRandDoubleShr::<1, F>::new(T, parties())?
@@ -120,8 +119,9 @@ struct GenDoubles;
 
 impl<E: RandEnvironment> Protocol<E> for GenDoubles {
     type Output = Vec<(Share, Share)>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let doubles = PassiveRandDoubleShr::<1, F>::new(T, parties())?
             .run(env)
             .await?;
@@ -192,8 +192,9 @@ struct MulRandomPairs {
 
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for MulRandomPairs {
     type Output = Vec<(Share, Share, Share)>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         // The factors `x` and `y`: sharings of values nobody knows, so no party could shortcut the
         // product. Then the inputs of triple generation: `a`, `b` and the double sharings that
         // mask `a · b`. None of the five depends on another.

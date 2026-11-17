@@ -4,7 +4,7 @@ use crate::{
     net::PartyId,
     protocol::{
         passive_shamir::{open_king::BatchedPassiveOpenToKing, triple::ShamirTriple},
-        Error, Protocol, ProtocolId, RandEnvironment,
+        share, Protocol, ProtocolId, RandEnvironment,
     },
     ss::shamir::ShamirSS,
 };
@@ -60,7 +60,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Input`] if the three vectors differ in length or are empty, if `king` is
+    /// Returns [`share::Error::Input`] if the three vectors differ in length or are empty, if `king` is
     /// not one of `parties`, if the shares and their triple do not all have the same degree `t`, or
     /// if `t >= parties.len()`, which would leave the masked values unopenable. Note that unlike
     /// triple *generation*, this protocol opens only degree-`t` sharings, so it does not need
@@ -71,14 +71,14 @@ where
         x_shares: Vec<ShamirSS<LIMBS, F>>,
         y_shares: Vec<ShamirSS<LIMBS, F>>,
         triples: Vec<ShamirTriple<LIMBS, F>>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, share::Error<F>> {
         let n_products = x_shares.len();
         if n_products == 0
             || y_shares.len() != n_products
             || triples.len() != n_products
             || !parties.contains(&king)
         {
-            return Err(Error::Input);
+            return Err(share::Error::Input);
         }
 
         for ((x, y), triple) in x_shares.iter().zip(&y_shares).zip(&triples) {
@@ -89,7 +89,7 @@ where
                 || triple.mult().degree() != t
                 || t >= parties.len()
             {
-                return Err(Error::Input);
+                return Err(share::Error::Input);
             }
         }
 
@@ -110,8 +110,9 @@ where
     E: RandEnvironment,
 {
     type Output = Vec<ShamirSS<LIMBS, F>>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let n_products = self.x_shares.len();
 
         // Mask both operands of every product with its triple, and open all of them at once: the

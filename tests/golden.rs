@@ -60,6 +60,7 @@ use scl_rs::{
             rand_share::PassiveRandShr,
             triple::{PassiveTriple, ShamirTriple},
         },
+        share,
         share::{deal::PassiveDealShr, open::PassiveOpenShr},
     },
     ss::{additive::AdditiveSS, shamir::ShamirSS},
@@ -174,8 +175,9 @@ struct SimpleSendRecv;
 
 impl<E: Environment> Protocol<E> for SimpleSendRecv {
     type Output = usize;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Self::Error> {
         let mut packet = Packet::empty();
         packet.write(&environment.network().local_party().as_usize())?;
         let other = environment.network().other()?;
@@ -217,8 +219,9 @@ impl<E: RandEnvironment> Protocol<E> for SendDifferentTypes {
         Secp256k1,
         Vec<AdditiveSS<Secp256k1ScalarField>>,
     );
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error> {
         let mut packet = Packet::empty();
         let rnd_scalar = Secp256k1ScalarField::random(environment.rng_mut());
         let rnd_ec = Secp256k1::gen().scalar_mul(&rnd_scalar);
@@ -278,12 +281,13 @@ where
     R: Ring + Sync + Send,
 {
     type Output = Vec<AdditiveSS<R>>;
+    type Error = NetworkError;
 
     fn id(&self) -> ProtocolId {
         ProtocolId::from("DistAdditiveShr")
     }
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let n_parties = env.network().party_ids().len();
         let party_ids = env.network().party_ids();
         let shares = AdditiveSS::shares_from_secret(self.secret, &party_ids, env.rng_mut());
@@ -316,8 +320,9 @@ where
     R: Ring + Send + Sync,
 {
     type Output = R;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let n_parties = env.network().party_ids().len();
         let mut packet = Packet::empty();
         packet.write_labeled(&self.share)?;
@@ -353,8 +358,9 @@ where
     E: RandEnvironment,
 {
     type Output = R;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let shares: Vec<AdditiveSS<R>> =
             DistrAdditiveShr { secret: self.input }.execute(env).await?;
         let share_sum = shares
@@ -397,8 +403,9 @@ struct InputPhase {
 
 impl<E: RandEnvironment> Protocol<E> for InputPhase {
     type Output = Vec<ShamirM61>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let mut shares = Vec::new();
         for dealer in env.network().party_ids() {
@@ -423,7 +430,7 @@ impl<E: RandEnvironment> Protocol<E> for InputPhase {
 async fn share_sum_open<E: RandEnvironment>(
     env: &mut E,
     value: Mersenne61,
-) -> Result<Mersenne61, Error> {
+) -> Result<Mersenne61, share::Error<Mersenne61>> {
     let shares: Vec<ShamirM61> = InputPhase { value }.execute(env).await?;
     let sum_share = shares
         .into_iter()
@@ -438,8 +445,9 @@ struct SecSumShamirShr {
 
 impl<E: RandEnvironment> Protocol<E> for SecSumShamirShr {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         share_sum_open(env, self.input).await
     }
 
@@ -472,8 +480,9 @@ struct SumValues {
 
 impl<E: RandEnvironment> Protocol<E> for SumValues {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         share_sum_open(env, self.input).await
     }
 
@@ -488,8 +497,9 @@ struct SumSquares {
 
 impl<E: RandEnvironment> Protocol<E> for SumSquares {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         share_sum_open(env, self.input * &self.input).await
     }
 
@@ -504,8 +514,9 @@ struct SecStats {
 
 impl<E: RandEnvironment> Protocol<E> for SecStats {
     type Output = (Mersenne61, Mersenne61);
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let sum = SumValues { input: self.input }.execute(env).await?;
         let sum_sq = SumSquares { input: self.input }.execute(env).await?;
         Ok((sum, sum_sq))
@@ -555,13 +566,14 @@ struct DealVector {
 
 impl<E: RandEnvironment> Protocol<E> for DealVector {
     type Output = Vec<ShamirM61>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let mut shares = Vec::with_capacity(COV_VECTOR_LEN);
         for i in 0..COV_VECTOR_LEN {
             let deal = if me == self.owner {
-                let values = self.values.as_ref().ok_or(Error::Input)?;
+                let values = self.values.as_ref().ok_or(share::Error::Input)?;
                 PassiveDealShr::dealer(self.owner, values[i], self.parties.clone(), COV_THRESHOLD)
             } else {
                 PassiveDealShr::receiver(self.owner)
@@ -583,8 +595,9 @@ struct Preprocessing {
 
 impl<E: RandEnvironment> Protocol<E> for Preprocessing {
     type Output = Vec<TripleM61>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let mut triples: Vec<TripleM61> = Vec::with_capacity(COV_VECTOR_LEN);
         while triples.len() < COV_VECTOR_LEN {
             let a = PassiveRandShr::<1, Mersenne61>::new(COV_THRESHOLD, self.parties.clone())?
@@ -630,8 +643,9 @@ struct SecureCovariance {
 
 impl<E: RandEnvironment> Protocol<E> for SecureCovariance {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let x_shares = DealVector {
             owner: self.parties[COV_OWNER_X],
             values: self.x,
@@ -723,8 +737,9 @@ where
     E: RandEnvironment,
 {
     type Output = Option<bool>;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let other = env.network().other()?;
         if let Some(x) = self.x {
             let r = C::ScalarField::random(env.rng_mut());
@@ -820,15 +835,16 @@ struct BulkTransfer;
 
 impl<E: Environment> Protocol<E> for BulkTransfer {
     type Output = Vec<u8>;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<Vec<u8>, Error> {
+    async fn run(self, environment: &mut E) -> Result<Vec<u8>, Self::Error> {
         let other = environment.network().other()?;
         let mut packet = Packet::empty();
         packet.write(&vec![0u8; 200_000])?;
         environment.network_mut().send_to(other, &packet).await?;
         let received = environment.network_mut().recv_from(other).await?;
         environment.network_mut().close().await?;
-        Ok(received.read(0)?)
+        received.read(0)
     }
 
     fn id(&self) -> ProtocolId {
@@ -858,8 +874,9 @@ struct QuorumCollect {
 
 impl<E: Environment> Protocol<E> for QuorumCollect {
     type Output = Vec<usize>;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Vec<usize>, Error> {
+    async fn run(self, env: &mut E) -> Result<Vec<usize>, Self::Error> {
         let me = env.network().local_party().as_usize();
         let mut heard = Vec::new();
         if me == self.collector {
@@ -923,8 +940,9 @@ struct StragglerScenario;
 
 impl<E: Environment> Protocol<E> for StragglerScenario {
     type Output = Vec<usize>;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Vec<usize>, Error> {
+    async fn run(self, env: &mut E) -> Result<Vec<usize>, Self::Error> {
         let me = env.network().local_party().as_usize();
         let mut packet = Packet::empty();
         packet.write(&me)?;
@@ -989,8 +1007,9 @@ struct TimedReceives;
 impl<E: Environment> Protocol<E> for TimedReceives {
     /// Party 0: (first receive timed out, the value received, last receive timed out).
     type Output = (bool, usize, bool);
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party().as_usize();
         let output = if me == 0 {
             let first = env

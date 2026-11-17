@@ -26,17 +26,17 @@ use scl_rs::{
             network::SimNetwork,
             simulator::simulate,
         },
-        Network, Packet, PartyId,
+        Network, NetworkError, Packet, PartyId,
     },
     protocol::{
-        concurrent::{Join, JoinAll},
+        concurrent::{BoxedProtocol, Join, JoinAll},
         passive_shamir::{
             double_rand_share::PassiveRandDoubleShr,
             mul::PassiveShamirMul,
             rand_share::PassiveRandShr,
             triple::{PassiveTriple, ShamirTriple},
         },
-        Environment, Error, GeneralEnvironment, Protocol, ProtocolId, RandEnvironment,
+        share, Environment, GeneralEnvironment, Protocol, ProtocolExt, ProtocolId, RandEnvironment,
     },
     ss::{
         shamir::{DoubleShare, ShamirSS},
@@ -104,7 +104,7 @@ fn scopes(events: &[Event], names: &[&str]) -> Vec<(String, String)> {
     scopes
 }
 
-fn u64_packet(value: u64) -> Result<Packet, Error> {
+fn u64_packet(value: u64) -> Result<Packet, NetworkError> {
     let mut packet = Packet::empty();
     packet.write(&value)?;
     Ok(packet)
@@ -114,7 +114,7 @@ fn u64_packet(value: u64) -> Result<Packet, Error> {
 async fn triples<E: RandEnvironment>(
     king: PartyId,
     env: &mut E,
-) -> Result<Vec<ShamirTriple<1, F>>, Error> {
+) -> Result<Vec<ShamirTriple<1, F>>, share::Error<F>> {
     let a = PassiveRandShr::<1, F>::new(T, parties())?
         .execute(env)
         .await?;
@@ -134,8 +134,9 @@ struct Noop;
 
 impl<E: Environment> Protocol<E> for Noop {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, _env: &mut E) -> Result<(), Error> {
+    async fn run(self, _env: &mut E) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -153,8 +154,9 @@ struct Exchange {
 
 impl<E: Environment> Protocol<E> for Exchange {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         let network = env.network_mut();
         let local = network.local_party();
         let others: Vec<PartyId> = network
@@ -211,8 +213,9 @@ type JoinOfDifferentTypesOutput = (
 
 impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for JoinOfDifferentTypes {
     type Output = JoinOfDifferentTypesOutput;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let x = PassiveRandShr::<1, F>::new(T, parties())?
             .execute(env)
             .await?;
@@ -282,8 +285,9 @@ impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E>
 {
     /// The factors and the products, in input order.
     type Output = (Vec<Share>, Vec<Share>, Vec<Share>);
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         const COUNT: usize = 8;
         let (mut xs, mut ys, mut spare) = (Vec::new(), Vec::new(), Vec::new());
         while xs.len() < COUNT {
@@ -361,8 +365,9 @@ type NestedJoinsOutput = (
 
 impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for NestedJoins {
     type Output = NestedJoinsOutput;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let (outer, (middle, (inner_random, inner_doubles))) = Join((
             PassiveRandShr::<1, F>::new(T, parties())?,
             Join((
@@ -460,14 +465,16 @@ struct JoinAllOfBoxed;
 impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for JoinAllOfBoxed {
     /// The number of sharings each protocol produced, scaled so the two can be told apart.
     type Output = Vec<usize>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
-        JoinAll(vec![
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
+        // The annotation names the boxed type in full: a boxed protocol keeps the error type of
+        // the protocol it was made from, here `share::Error<F>` for both.
+        let boxed: Vec<BoxedProtocol<E, usize, share::Error<F>>> = vec![
             PassiveRandShr::<1, F>::new(T, parties())?.boxed(|shares| shares.len()),
             PassiveRandDoubleShr::<1, F>::new(T, parties())?.boxed(|doubles| 10 * doubles.len()),
-        ])
-        .execute(env)
-        .await
+        ];
+        JoinAll(boxed).execute(env).await
     }
 
     fn id(&self) -> ProtocolId {
@@ -527,6 +534,150 @@ fn join_all_runs_each_protocol_in_its_own_scope_and_session() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Error conversion.
+// ---------------------------------------------------------------------------------------------
+
+/// A `Join` of two protocols with different error types: `Exchange` fails with a
+/// `NetworkError`, `PassiveRandShr` with a `share::Error<F>`. `err_into` adapts `Exchange` to the
+/// latter, which the `Join` then shares.
+struct JoinOfDifferentErrors;
+
+impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for JoinOfDifferentErrors {
+    /// The random sharings of `PassiveRandShr`.
+    type Output = Vec<Share>;
+    type Error = share::Error<F>;
+
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
+        let ((), random) = Join((
+            Exchange { rounds: 1 }.err_into::<share::Error<F>>(),
+            PassiveRandShr::<1, F>::new(T, parties())?,
+        ))
+        .execute(env)
+        .await?;
+        Ok(random)
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("JoinOfDifferentErrors")
+    }
+}
+
+/// The adapted protocol runs as it would on its own, and opens exactly one trace scope, under its
+/// own name and in the session of its fork: `ErrInto` reports the inner protocol's id and opens
+/// no scope of its own.
+#[test]
+fn err_into_runs_the_protocol_in_one_scope_under_its_own_name() {
+    let outcome = simulate(
+        SimpleNetworkConfig::default(),
+        parties(),
+        |_| JoinOfDifferentErrors,
+        seeded_env,
+        vec![],
+    );
+
+    assert_eq!(outcome.outputs[&party(0)].len(), N - T);
+    for k in 0..N - T {
+        assert_ne!(
+            open(&outcome.outputs, |o| o[k].clone()),
+            F::from(0u64),
+            "random sharing {k} opens to 0"
+        );
+    }
+
+    let mut expected: Vec<(String, String)> =
+        [("Join", "root"), ("Exchange", "0"), ("PassiveRandShr", "1")]
+            .iter()
+            .map(|(name, session)| (name.to_string(), session.to_string()))
+            .collect();
+    expected.sort();
+    for p in parties() {
+        assert_eq!(
+            scopes(
+                outcome.traces[&p].events(),
+                &["Join", "Exchange", "PassiveRandShr"]
+            ),
+            expected,
+            "party {p}: the protocols of the `Join` opened unexpected scopes"
+        );
+    }
+}
+
+/// Fails at once with `NetworkError::EmptyPacket`, by decoding a value from an empty packet.
+struct DecodeFromEmpty;
+
+impl<E: Environment> Protocol<E> for DecodeFromEmpty {
+    type Output = ();
+    type Error = NetworkError;
+
+    async fn run(self, _env: &mut E) -> Result<(), Self::Error> {
+        Packet::empty().pop::<u64>()?;
+        Ok(())
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("DecodeFromEmpty")
+    }
+}
+
+/// A protocol that does nothing, with the error type of the secret-sharing protocols.
+struct ShareNoop;
+
+impl<E: Environment> Protocol<E> for ShareNoop {
+    type Output = ();
+    type Error = share::Error<F>;
+
+    async fn run(self, _env: &mut E) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ShareNoop")
+    }
+}
+
+/// Runs a `Join` whose adapted branch fails, and outputs whether the `Join` failed with that
+/// branch's error, converted.
+struct ConvertedErrorAbortsTheJoin;
+
+impl<E: scl_rs::protocol::ForkEnvironment> Protocol<E> for ConvertedErrorAbortsTheJoin {
+    type Output = bool;
+    type Error = NetworkError;
+
+    async fn run(self, env: &mut E) -> Result<bool, Self::Error> {
+        let joined = Join((DecodeFromEmpty.err_into::<share::Error<F>>(), ShareNoop))
+            .execute(env)
+            .await;
+        Ok(matches!(
+            joined,
+            Err(share::Error::Network(NetworkError::EmptyPacket))
+        ))
+    }
+
+    fn id(&self) -> ProtocolId {
+        ProtocolId::from("ConvertedErrorAbortsTheJoin")
+    }
+}
+
+/// The error of an adapted protocol reaches the caller converted with `Into`, here a
+/// `NetworkError` wrapped in `share::Error::Network`.
+#[test]
+fn err_into_converts_the_error_that_aborts_the_join() {
+    let outcome = simulate(
+        SimpleNetworkConfig::default(),
+        parties(),
+        |_| ConvertedErrorAbortsTheJoin,
+        seeded_env,
+        vec![],
+    );
+    for p in parties() {
+        assert!(
+            outcome.outputs[&p],
+            "party {p}: the `Join` did not fail with the converted `EmptyPacket` error"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Timing.
 // ---------------------------------------------------------------------------------------------
 
@@ -541,8 +692,9 @@ struct Preprocessing {
 impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for Preprocessing {
     /// The factors and the triples, each triple as its three sharings.
     type Output = (Vec<Share>, Vec<Share>, Vec<(Share, Share, Share)>);
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let random = || PassiveRandShr::<1, F>::new(T, parties());
         let (x, y, a, b, doubles) = if self.concurrent {
             Join((
@@ -662,10 +814,11 @@ impl Tree {
 
 impl Protocol<Env> for Tree {
     type Output = ();
+    type Error = NetworkError;
 
-    fn run(self, env: &mut Env) -> impl Future<Output = Result<(), Error>> + Send {
+    fn run(self, env: &mut Env) -> impl Future<Output = Result<(), Self::Error>> + Send {
         // A tree's future contains its subtrees' futures. Boxing it keeps the type finite.
-        let future: Pin<Box<dyn Future<Output = Result<(), Error>> + Send + '_>> =
+        let future: Pin<Box<dyn Future<Output = Result<(), NetworkError>> + Send + '_>> =
             Box::pin(async move {
                 match self {
                     Tree::Leaf(rounds) => Exchange { rounds }.execute(env).await,
@@ -771,8 +924,9 @@ struct IsolationA;
 
 impl<E: Environment> Protocol<E> for IsolationA {
     type Output = u64;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<u64, Error> {
+    async fn run(self, env: &mut E) -> Result<u64, Self::Error> {
         let network = env.network_mut();
         if network.local_party() == party(0) {
             network.recv_from(party(1)).await?;
@@ -795,8 +949,9 @@ struct IsolationB;
 
 impl<E: Environment> Protocol<E> for IsolationB {
     type Output = u64;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<u64, Error> {
+    async fn run(self, env: &mut E) -> Result<u64, Self::Error> {
         let network = env.network_mut();
         if network.local_party() == party(0) {
             network.send_to(party(1), &u64_packet(2)?).await?;
@@ -835,8 +990,9 @@ struct WakeBranch {
 
 impl<E: Environment> Protocol<E> for WakeBranch {
     type Output = u64;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<u64, Error> {
+    async fn run(self, env: &mut E) -> Result<u64, Self::Error> {
         let network = env.network_mut();
         if network.local_party() == party(0) {
             network.send_to(party(1), &u64_packet(self.value)?).await?;
@@ -847,7 +1003,7 @@ impl<E: Environment> Protocol<E> for WakeBranch {
         } else {
             network.recv_from(party(0)).await?
         };
-        Ok(packet.read(0)?)
+        packet.read(0)
     }
 
     fn id(&self) -> ProtocolId {
@@ -860,8 +1016,9 @@ struct LostWakeup;
 
 impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for LostWakeup {
     type Output = ((u64, u64), (u64, u64));
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let any_first = Join((
             WakeBranch {
                 value: 10,
@@ -914,8 +1071,9 @@ struct EarlyBranch;
 
 impl<E: Environment> Protocol<E> for EarlyBranch {
     type Output = u64;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<u64, Error> {
+    async fn run(self, env: &mut E) -> Result<u64, Self::Error> {
         let network = env.network_mut();
         if network.local_party() == party(0) {
             network.send_to(party(1), &u64_packet(7)?).await?;
@@ -936,8 +1094,9 @@ struct EarlyArrival;
 
 impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for EarlyArrival {
     type Output = u64;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<u64, Error> {
+    async fn run(self, env: &mut E) -> Result<u64, Self::Error> {
         let branches = || Join((Noop, Noop, Noop, EarlyBranch));
         if env.network().local_party() == party(0) {
             let (_, _, _, value) = branches().execute(env).await?;
@@ -985,8 +1144,9 @@ struct JoinTriples {
 
 impl<E: RandEnvironment + scl_rs::protocol::ForkEnvironment> Protocol<E> for JoinTriples {
     type Output = Vec<(Share, Share, Share)>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let (a, b, doubles) = Join((
             PassiveRandShr::<1, F>::new(T, parties())?,
             PassiveRandShr::<1, F>::new(T, parties())?,
@@ -1052,8 +1212,9 @@ struct OnlyTheKingForks;
 
 impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for OnlyTheKingForks {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         if env.network().local_party() == party(0) {
             Join((Exchange { rounds: 1 }, Exchange { rounds: 1 }))
                 .execute(env)
@@ -1100,8 +1261,9 @@ struct PairExchange;
 
 impl<E: Environment> Protocol<E> for PairExchange {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         let network = env.network_mut();
         let other = if network.local_party() == party(0) {
             party(1)
@@ -1124,8 +1286,9 @@ struct BystanderSkipsAJoin;
 
 impl<E: Environment + scl_rs::protocol::ForkEnvironment> Protocol<E> for BystanderSkipsAJoin {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         if env.network().local_party() != party(2) {
             Join((PairExchange, PairExchange)).execute(env).await?;
         }

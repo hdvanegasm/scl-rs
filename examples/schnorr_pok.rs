@@ -157,8 +157,9 @@ where
     E: RandEnvironment,
 {
     type Output = Option<bool>;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let other = env.network().other()?;
         if let Some(x) = self.x {
             // Here, the node is the prover: holding `x` is what selects this branch.

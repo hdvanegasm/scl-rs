@@ -33,8 +33,8 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use scl_rs::{
     math::field::secp256k1_scalar::Secp256k1ScalarField,
-    net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
-    prelude::{simulate, Environment, Error, GeneralEnvironment, Protocol, Ring},
+    net::{simulation::channel::SimpleNetworkConfig, Network, NetworkError, Packet, PartyId},
+    prelude::{simulate, Environment, GeneralEnvironment, Protocol, Ring},
     protocol::ProtocolId,
     ss::additive::AdditiveSS,
 };
@@ -55,12 +55,13 @@ where
     // The output is the collection of shares this party holds after the exchange: one share of
     // every party's input.
     type Output = Vec<AdditiveSS<R>>;
+    type Error = NetworkError;
 
     fn id(&self) -> ProtocolId {
         ProtocolId::from("DistAdditiveShr")
     }
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let n_parties = env.network().party_ids().len();
 
         // Split this party's secret into `n_parties` random additive shares. Because the shares are
@@ -111,8 +112,9 @@ where
 {
     // The output is the reconstructed secret, a single ring element.
     type Output = R;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let n_parties = env.network().party_ids().len();
 
         // Reveal our own share by sending it to every party (ourselves included, as before) — the
@@ -160,8 +162,9 @@ where
 {
     // The output is the sum of every party's input.
     type Output = R;
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         // Step 1: distribute a sharing of our input and gather a share of every party's input.
         let shares: Vec<AdditiveSS<R>> =
             DistrAdditiveShr { secret: self.input }.execute(env).await?;

@@ -61,11 +61,11 @@ use scl_rs::{
     math::field::{mersenne61::Mersenne61, FiniteField},
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
     prelude::{
-        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, Protocol, ProtocolId,
-        RandEnvironment,
+        simulate, ForkEnvironment, GeneralEnvironment, Join, Protocol, ProtocolId, RandEnvironment,
     },
     protocol::{
         passive_shamir::{mul::PassiveShamirMul, triple::ShamirTriple},
+        share,
         share::{deal::PassiveDealShr, open::PassiveOpenShr},
     },
     ss::shamir::ShamirSS,
@@ -122,14 +122,15 @@ struct DealVector {
 impl<E: RandEnvironment> Protocol<E> for DealVector {
     /// One share of each of the owner's values.
     type Output = Vec<Share>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let mut shares = Vec::with_capacity(VECTOR_LEN);
 
         for i in 0..VECTOR_LEN {
             let deal = if me == self.owner {
-                let values = self.values.as_ref().ok_or(Error::Input)?;
+                let values = self.values.as_ref().ok_or(share::Error::Input)?;
                 PassiveDealShr::dealer(self.owner, values[i], self.parties.clone(), THRESHOLD)
             } else {
                 PassiveDealShr::receiver(self.owner)
@@ -177,8 +178,9 @@ struct SecureCovariance {
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecureCovariance {
     /// The covariance — the one and only value anybody learns.
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         // --- Input phase: both owners share their vectors at the same time. -----------------
         // The two dealings are independent and have different dealers, so they run concurrently,
         // each in its own session. Every party runs both, even the parties that own no data.

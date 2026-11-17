@@ -41,11 +41,12 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::fs;
 
+use scl_rs::protocol::share;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
     prelude::{
-        simulate, Error, ForkEnvironment, GeneralEnvironment, JoinAll, Protocol, ProtocolId,
+        simulate, ForkEnvironment, GeneralEnvironment, JoinAll, Protocol, ProtocolId,
         RandEnvironment, Ring,
     },
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
@@ -67,8 +68,9 @@ struct InputPhase {
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
     // One share per party in the computation, in party order.
     type Output = Vec<Share>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let parties = env.network().party_ids();
         // Full-threshold sharing (degree n − 1): every party is needed to reconstruct, preserving
@@ -106,8 +108,9 @@ struct SecSumShamirShr {
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecSumShamirShr {
     // The sum of every party's input, learned by everyone.
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let shares: Vec<Share> = InputPhase { input: self.input }.execute(env).await?;
 
         let sum_share = shares

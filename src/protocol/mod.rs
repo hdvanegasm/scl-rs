@@ -10,46 +10,13 @@ pub mod zk;
 pub mod passive_shamir;
 
 use crate::{
-    net::{ForkNetwork, Network, NetworkError},
-    prelude::Ring,
+    net::{ForkNetwork, Network},
     protocol::concurrent::BoxedProtocol,
-    ss::ShareError,
 };
 use rand::{CryptoRng, SeedableRng};
 use std::fmt;
 use std::future::Future;
-use thiserror::Error;
-
-/// Error that may occur during a protocol execution.
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum Error {
-    /// A network operation failed during the protocol.
-    #[error("network error: {0:?}")]
-    Network(#[from] NetworkError),
-    /// A secret-sharing operation (dealing or reconstructing) failed during the protocol.
-    ///
-    /// The boxed source is a [`ShareError<T>`](crate::ss::ShareError) with the ring type erased, so
-    /// that this enum — and therefore the [`Protocol`] trait — stays independent of any particular
-    /// ring. Callers that need the structured error can downcast the box to the concrete
-    /// `ShareError<T>`.
-    #[error("share error: {0}")]
-    Share(Box<dyn std::error::Error + Send + Sync>),
-    /// The protocol was constructed with input that does not match the role it is asked to play —
-    /// for example, running as the dealer of [`PassiveDealShr`](share::deal::PassiveDealShr)
-    /// without providing a secret.
-    #[error("the input is not well formed for the current protocol")]
-    Input,
-}
-
-impl<T> From<ShareError<T>> for Error
-where
-    T: Ring + Send + Sync + 'static,
-{
-    fn from(value: ShareError<T>) -> Self {
-        Error::Share(Box::new(value))
-    }
-}
+use std::marker::PhantomData;
 
 /// The name a protocol reports for itself, used to label its scope in a trace.
 ///
@@ -115,15 +82,43 @@ impl fmt::Display for ProtocolId {
 /// each sub-protocol this way. Like them, run nothing else in the caller's session until the
 /// protocol on the child has returned or been dropped (see [Fork only through the
 /// combinators](concurrent#fork-only-through-the-combinators)).
+///
+/// # Errors
+///
+/// Each protocol names the error it fails with in [`Error`](Protocol::Error), so its signature
+/// lists only the failures it can actually have. The library's protocols use:
+///
+/// - [`share::Error<T>`](share::Error) for the secret-sharing protocols of [`share`] and
+///   [`passive_shamir`]: network failures, failed dealing or reconstruction, and malformed input;
+/// - [`zk::Error`] for the proofs of [`zk`]: network failures and malformed input;
+/// - [`NetworkError`](crate::net::NetworkError) is enough for a protocol that only exchanges
+///   messages.
+///
+/// A protocol that calls sub-protocols with different error types defines its own error, for
+/// example a [`thiserror`](https://docs.rs/thiserror) enum with one `#[from]` variant per
+/// sub-protocol error, so that `?` converts each of them. The trait has no default error type,
+/// because associated type defaults are not stable Rust.
+///
+/// The combinators of [`concurrent`] run sub-protocols that share one error type. To run
+/// protocols with different error types together, convert their errors into a common type with
+/// [`ProtocolExt::err_into`].
 pub trait Protocol<E: Environment>: Send + Sync {
     /// The output of the protocol.
     type Output;
+    /// The error the protocol fails with. See [Errors](Protocol#errors).
+    ///
+    /// The bounds let a caller propagate it with `?` into a `Box<dyn std::error::Error + Send +
+    /// Sync>` and return it from a task spawned on a multi-threaded runtime.
+    type Error: std::error::Error + Send + Sync + 'static;
     /// Behavior of the protocol when run.
     ///
     /// Declared as `fn … -> impl Future + Send` rather than `async fn` so the returned future is
     /// guaranteed [`Send`] and a protocol can be driven on a multi-threaded runtime; implementors
     /// still write a plain `async fn run`.
-    fn run(self, environment: &mut E) -> impl Future<Output = Result<Self::Output, Error>> + Send;
+    fn run(
+        self,
+        environment: &mut E,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send;
     /// Identifier of the protocol, used to label its scope in a trace. See [`ProtocolId`].
     fn id(&self) -> ProtocolId;
 
@@ -142,7 +137,7 @@ pub trait Protocol<E: Environment>: Send + Sync {
     fn execute(
         self,
         environment: &mut E,
-    ) -> impl Future<Output = Result<Self::Output, Error>> + Send
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + Send
     where
         Self: Sized,
     {
@@ -158,8 +153,9 @@ pub trait Protocol<E: Environment>: Send + Sync {
     /// Erases this protocol's type and maps its output with `map`, so that protocols of different
     /// types can run in one [`JoinAll`](concurrent::JoinAll).
     ///
-    /// The result is a [`BoxedProtocol<E, O>`](BoxedProtocol), whose type depends only on the
-    /// environment and on the output `O`. Map each output into one type, for example an enum:
+    /// The result is a [`BoxedProtocol<E, O, Self::Error>`](BoxedProtocol), whose type depends
+    /// only on the environment, on the output `O` and on the error type. Map each output into one
+    /// type, for example an enum:
     ///
     /// ```ignore
     /// enum Pre { Shares(Vec<Share>), Doubles(Vec<DoubleShare>) }
@@ -172,6 +168,10 @@ pub trait Protocol<E: Environment>: Send + Sync {
     /// .await?;
     /// ```
     ///
+    /// The boxed protocols of one `JoinAll` must also share an error type. If they don't, convert
+    /// each error first with [`err_into`](ProtocolExt::err_into), then box:
+    /// `pok.err_into::<MyError>().boxed(Pre::Verdict)`.
+    ///
     /// The boxed protocol behaves as this one: it runs the same code on the same environment, and
     /// reports this protocol's [`id`](Protocol::id), so its trace scope carries this protocol's
     /// name. `map` is applied only to a successful output; an error passes through unchanged.
@@ -179,12 +179,135 @@ pub trait Protocol<E: Environment>: Send + Sync {
     /// The protocol and `map` must be `'static`, because they are stored behind a
     /// `Box<dyn …>`; the environment need not be. Boxing costs two heap allocations: one for the
     /// protocol and one for the future that runs it.
-    fn boxed<F, O>(self, map: F) -> BoxedProtocol<E, O>
+    fn boxed<F, O>(self, map: F) -> BoxedProtocol<E, O, Self::Error>
     where
         F: FnOnce(Self::Output) -> O + Send + Sync + 'static,
         Self: Sized + 'static,
     {
         BoxedProtocol::new(self, map)
+    }
+}
+
+/// Adapters on any protocol, independent of its environment.
+///
+/// It is implemented for every `Send + Sync` type, so its methods are available on every
+/// protocol. Import it, or the [prelude](crate::prelude), to call them.
+///
+/// # Why a separate trait
+///
+/// A protocol usually implements [`Protocol<E>`] for every environment `E`. An adapter whose type
+/// does not mention `E`, such as [`ErrInto`], therefore cannot be a method of `Protocol<E>`: at
+/// the call site nothing determines `E`, and the call fails to compile with a "type annotations
+/// needed" error (E0283). This trait has no `E`, so its methods resolve without one, and the
+/// adapter's `Protocol<E>` implementation is chosen later, where the adapted protocol is run.
+/// ([`Protocol::boxed`] can be a method of `Protocol<E>` because its return type names `E`.)
+///
+/// # Name clash
+///
+/// [`futures_util::TryFutureExt`](https://docs.rs/futures-util/latest/futures_util/future/trait.TryFutureExt.html)
+/// also has an `err_into` method. With both traits in scope, calling `err_into` on a `Send +
+/// Sync` future is ambiguous (E0034); call it as `TryFutureExt::err_into(future)` there.
+pub trait ProtocolExt: Sized {
+    /// Converts the error of this protocol into `T` with [`Into`], so that it can run alongside
+    /// protocols whose error type is `T`.
+    ///
+    /// The combinators of [`concurrent`] need one error type for all their sub-protocols, and a
+    /// [`BoxedProtocol`] fixes its error type. `err_into` adapts a protocol whose error converts
+    /// into that type:
+    ///
+    /// ```rust
+    /// use scl_rs::math::field::mersenne61::Mersenne61;
+    /// use scl_rs::prelude::*;
+    /// use scl_rs::protocol::concurrent::Join;
+    /// use scl_rs::protocol::passive_shamir::rand_share::PassiveRandShr;
+    /// use scl_rs::protocol::{share, ForkEnvironment};
+    ///
+    /// /// Sends one packet to every other party and receives one from each.
+    /// struct Hello;
+    ///
+    /// impl<E: Environment> Protocol<E> for Hello {
+    ///     type Output = ();
+    ///     type Error = NetworkError;
+    ///
+    ///     async fn run(self, env: &mut E) -> Result<(), NetworkError> {
+    ///         let others: Vec<_> = env
+    ///             .network()
+    ///             .party_ids()
+    ///             .into_iter()
+    ///             .filter(|p| *p != env.network().local_party())
+    ///             .collect();
+    ///         for p in &others {
+    ///             env.network_mut().send_to(*p, &Packet::empty()).await?;
+    ///         }
+    ///         for p in &others {
+    ///             env.network_mut().recv_from(*p).await?;
+    ///         }
+    ///         Ok(())
+    ///     }
+    ///
+    ///     fn id(&self) -> ProtocolId {
+    ///         ProtocolId::from("Hello")
+    ///     }
+    /// }
+    ///
+    /// async fn hello_and_randomness<E: RandEnvironment + ForkEnvironment>(
+    ///     env: &mut E,
+    ///     t: usize,
+    /// ) -> Result<(), share::Error<Mersenne61>> {
+    ///     let parties = env.network().party_ids();
+    ///     // `Hello` fails with a `NetworkError`, `PassiveRandShr` with a `share::Error`. The
+    ///     // network error converts into the share error, so `Hello` is adapted to it.
+    ///     let ((), shares) = Join((
+    ///         Hello.err_into::<share::Error<Mersenne61>>(),
+    ///         PassiveRandShr::<1, Mersenne61>::new(t, parties)?,
+    ///     ))
+    ///     .execute(env)
+    ///     .await?;
+    ///     # let _ = shares;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// The adapted protocol runs the same code on the same environment, and reports this
+    /// protocol's [`id`](Protocol::id), so the trace shows one scope under this protocol's name.
+    /// Name `T` explicitly, with `err_into::<T>()`: nothing at the call site determines it.
+    fn err_into<T>(self) -> ErrInto<Self, T> {
+        ErrInto {
+            protocol: self,
+            error: PhantomData,
+        }
+    }
+}
+
+impl<P: Send + Sync> ProtocolExt for P {}
+
+/// A protocol whose error is converted into `T`: what [`ProtocolExt::err_into`] returns.
+pub struct ErrInto<P, T> {
+    /// The protocol that is run.
+    protocol: P,
+    /// The target error type. `fn() -> T` keeps `ErrInto` `Send + Sync` whatever `T` is, since no
+    /// `T` is stored.
+    error: PhantomData<fn() -> T>,
+}
+
+impl<E, P, T> Protocol<E> for ErrInto<P, T>
+where
+    E: Environment,
+    P: Protocol<E>,
+    P::Error: Into<T>,
+    T: std::error::Error + Send + Sync + 'static,
+{
+    type Output = P::Output;
+    type Error = T;
+
+    async fn run(self, environment: &mut E) -> Result<Self::Output, T> {
+        // `run`, not `execute`: `ErrInto` is the protocol being executed, and it reports the inner
+        // protocol's id, so the inner protocol's scope must not be opened a second time.
+        self.protocol.run(environment).await.map_err(Into::into)
+    }
+
+    fn id(&self) -> ProtocolId {
+        self.protocol.id()
     }
 }
 

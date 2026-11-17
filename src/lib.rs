@@ -44,15 +44,18 @@
 //!
 //! ## Writing a protocol
 //!
-//! A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`) and
-//! its behavior in `run`; network operations return a `Result`, so errors propagate with `?`:
+//! A protocol implements the `Protocol` trait. It declares the typed value it produces (`Output`),
+//! the error it may fail with (`Error`), and its behavior in `run`; network operations return a
+//! `Result`, so errors propagate with `?`:
 //!
 //! ```ignore
 //! pub trait Protocol<E: Environment>: Send + Sync {
 //!     /// The output of the protocol.
 //!     type Output;
+//!     /// The error the protocol may fail with.
+//!     type Error: std::error::Error + Send + Sync + 'static;
 //!     /// Behavior of the protocol when run.
-//!     async fn run(self, environment: &mut E) -> Result<Self::Output, Error>;
+//!     async fn run(self, environment: &mut E) -> Result<Self::Output, Self::Error>;
 //!     /// Identifier of the protocol.
 //!     fn id(&self) -> ProtocolId;
 //! }
@@ -68,16 +71,18 @@
 //! written **generic over `E: Environment`**, the very same code runs on either without changes:
 //!
 //! ```rust
-//! use scl_rs::net::{Network, Packet};
-//! use scl_rs::protocol::{Environment, Error, Protocol, ProtocolId};
+//! use scl_rs::net::{Network, NetworkError, Packet};
+//! use scl_rs::protocol::{Environment, Protocol, ProtocolId};
 //!
 //! pub struct SendRecvProtocol;
 //!
 //! impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //!     // This protocol returns the other party's id.
 //!     type Output = usize;
+//!     // It only exchanges packets, so a network error is all it can fail with.
+//!     type Error = NetworkError;
 //!
-//!     async fn run(self, env: &mut E) -> Result<usize, Error> {
+//!     async fn run(self, env: &mut E) -> Result<usize, NetworkError> {
 //!         // Put this party's id into a packet and send it to the other party.
 //!         let mut packet = Packet::empty();
 //!         packet.write(&env.network().local_party().as_usize())?;
@@ -123,6 +128,9 @@
 //!   their outputs in input order. Protocols of different types fit in one `JoinAll` once boxed
 //!   to a common output type with [`Protocol::boxed`](protocol::Protocol::boxed).
 //!
+//! The sub-protocols of one combinator must share an error type. Adapt one whose error differs
+//! with [`err_into`](protocol::ProtocolExt::err_into).
+//!
 //! Both are protocols themselves: they are called with `execute` like any other, and they nest.
 //! They need an environment that implements [`ForkEnvironment`](protocol::ForkEnvironment), as
 //! `GeneralEnvironment` does on both the simulator and a real TLS network. Each sub-protocol runs
@@ -130,13 +138,14 @@
 //! never mix, even over the same link:
 //!
 //! ```rust
-//! # use scl_rs::net::{Network, Packet};
+//! # use scl_rs::net::{Network, NetworkError, Packet};
 //! # use scl_rs::protocol::Environment;
 //! # pub struct SendRecvProtocol;
 //! #
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //! #     type Output = usize;
-//! #     async fn run(self, env: &mut E) -> Result<usize, Error> {
+//! #     type Error = NetworkError;
+//! #     async fn run(self, env: &mut E) -> Result<usize, NetworkError> {
 //! #         let mut packet = Packet::empty();
 //! #         packet.write(&env.network().local_party().as_usize())?;
 //! #
@@ -152,14 +161,16 @@
 //! # }
 //! #
 //! use scl_rs::protocol::concurrent::{Join, JoinAll};
-//! use scl_rs::protocol::{Error, ForkEnvironment, Protocol, ProtocolId};
+//! use scl_rs::protocol::{ForkEnvironment, Protocol, ProtocolId};
 //!
 //! pub struct ConcurrentExchanges;
 //!
 //! impl<E: ForkEnvironment> Protocol<E> for ConcurrentExchanges {
 //!     type Output = ((usize, usize), Vec<usize>);
+//!     // The same error as its sub-protocols, so `?` passes theirs through unchanged.
+//!     type Error = NetworkError;
 //!
-//!     async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+//!     async fn run(self, env: &mut E) -> Result<Self::Output, NetworkError> {
 //!         // Two exchanges at once; the outputs come back as a tuple.
 //!         let pair = Join((SendRecvProtocol, SendRecvProtocol)).execute(env).await?;
 //!         // Three more at once; the outputs come back as a `Vec`, in input order.
@@ -204,13 +215,14 @@
 //! clock and returns a `SimulationOutcome` with each party's typed output and its event trace:
 //!
 //! ```rust
-//! # use scl_rs::net::{Network, Packet};
-//! # use scl_rs::protocol::{Environment, GeneralEnvironment, Error, Protocol, ProtocolId};
+//! # use scl_rs::net::{Network, NetworkError, Packet};
+//! # use scl_rs::protocol::{Environment, GeneralEnvironment, Protocol, ProtocolId};
 //! # pub struct SendRecvProtocol;
 //! #
 //! # impl<E: Environment> Protocol<E> for SendRecvProtocol {
 //! #     type Output = usize;
-//! #     async fn run(self, env: &mut E) -> Result<usize, Error> {
+//! #     type Error = NetworkError;
+//! #     async fn run(self, env: &mut E) -> Result<usize, NetworkError> {
 //! #         let mut packet = Packet::empty();
 //! #         packet.write(&env.network().local_party().as_usize())?;
 //! #
@@ -482,9 +494,9 @@
 /// The crate's common imports, gathered for a single glob import.
 ///
 /// Most protocol code needs the same handful of items — the [`Protocol`] trait
-/// with its [`Environment`] (and the default [`GeneralEnvironment`]) and [`Error`], the
-/// [`Network`] abstraction with [`Packet`] and [`PartyId`], the [`simulate`]
-/// entry point, the [`Join`] and [`JoinAll`] combinators with their
+/// with its [`Environment`] (and the default [`GeneralEnvironment`]) and the [`ProtocolExt`]
+/// adapters, the [`Network`] abstraction with [`Packet`], [`PartyId`] and [`NetworkError`], the
+/// [`simulate`] entry point, the [`Join`] and [`JoinAll`] combinators with their
 /// [`ForkEnvironment`], and the core `math` traits. Instead of importing each from its
 /// own module, bring them all into scope at once:
 ///
@@ -492,9 +504,14 @@
 /// use scl_rs::prelude::*;
 /// ```
 ///
+/// The prelude exports no protocol error type besides [`NetworkError`]: the library's protocols
+/// fail with errors of their own modules, such as
+/// [`protocol::share::Error`], which share the name `Error`.
+///
 /// [`Protocol`]: crate::protocol::Protocol
 /// [`Environment`]: crate::protocol::Environment
-/// [`Error`]: crate::protocol::Error
+/// [`ProtocolExt`]: crate::protocol::ProtocolExt
+/// [`NetworkError`]: crate::net::NetworkError
 /// [`Network`]: crate::net::Network
 /// [`Packet`]: crate::net::Packet
 /// [`PartyId`]: crate::net::PartyId
@@ -510,11 +527,11 @@ pub mod prelude {
     };
     pub use crate::net::{
         session::SessionId, simulation::simulator::simulate,
-        simulation::simulator::SimulationOutcome, Network, Packet, PartyId,
+        simulation::simulator::SimulationOutcome, Network, NetworkError, Packet, PartyId,
     };
     pub use crate::protocol::{
         concurrent::{Join, JoinAll},
-        Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
+        Environment, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolExt, ProtocolId,
         RandEnvironment,
     };
 }

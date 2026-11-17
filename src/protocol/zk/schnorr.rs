@@ -42,7 +42,7 @@ use crate::{
     abbreviate::Abbreviate,
     math::{ec::EllipticCurve, ring::Ring},
     net::{Network, Packet, PartyId},
-    protocol::{Error, Protocol, ProtocolId, RandEnvironment},
+    protocol::{zk, Protocol, ProtocolId, RandEnvironment},
 };
 
 /// One node's view of a Schnorr proof of knowledge of the discrete logarithm of `h`.
@@ -78,13 +78,13 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Input`](enum@Error) if `prover == verifier`.
+    /// Returns [`zk::Error::Input`] if `prover == verifier`.
     pub fn prover(
         prover: PartyId,
         verifier: PartyId,
         x: C::ScalarField,
         h: C,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, zk::Error> {
         Self::new(prover, verifier, Some(x), h)
     }
 
@@ -94,8 +94,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Input`](enum@Error) if `prover == verifier`.
-    pub fn verifier(prover: PartyId, verifier: PartyId, h: C) -> Result<Self, Error> {
+    /// Returns [`zk::Error::Input`] if `prover == verifier`.
+    pub fn verifier(prover: PartyId, verifier: PartyId, h: C) -> Result<Self, zk::Error> {
         Self::new(prover, verifier, None, h)
     }
 
@@ -106,9 +106,9 @@ where
         verifier: PartyId,
         x: Option<C::ScalarField>,
         h: C,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, zk::Error> {
         if prover == verifier {
-            return Err(Error::Input);
+            return Err(zk::Error::Input);
         }
         Ok(Self {
             prover,
@@ -127,17 +127,18 @@ where
 {
     /// The verifier's decision: `Some(true)` if it accepted the proof and `Some(false)` if it
     /// rejected it. The prover always returns `None`. A rejected proof is an ordinary output, not
-    /// an [`Error`](enum@Error); errors are reserved for network and decoding failures, and for
-    /// [`Error::Input`](enum@Error) when the node does not match its role: the local party is
-    /// neither the prover nor the verifier, or the witness is missing on the prover or present on
-    /// the verifier.
+    /// an [`Error`](Protocol::Error).
     type Output = Option<bool>;
+    /// Errors are reserved for network and decoding failures, and for [`zk::Error::Input`] when
+    /// the node does not match its role: the local party is neither the prover nor the verifier,
+    /// or the witness is missing on the prover or present on the verifier.
+    type Error = zk::Error;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         if me == self.prover {
             // Here, the node is the prover, and it must hold the witness.
-            let x = self.x.ok_or(Error::Input)?;
+            let x = self.x.ok_or(zk::Error::Input)?;
             let verifier = self.verifier;
 
             // Move 1, the commitment. `r` is a one-time nonce that blinds the witness in the
@@ -171,7 +172,7 @@ where
             // Here, the node is the verifier. A witness here means the node was built with the
             // wrong constructor; reject it rather than let the secret sit on the wrong party.
             if self.x.is_some() {
-                return Err(Error::Input);
+                return Err(zk::Error::Input);
             }
             let prover = self.prover;
 
@@ -197,7 +198,7 @@ where
             Ok(Some(left_side == right_side))
         } else {
             // Only the prover and the verifier take part in the proof.
-            Err(Error::Input)
+            Err(zk::Error::Input)
         }
     }
 

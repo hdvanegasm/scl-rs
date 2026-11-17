@@ -4,8 +4,8 @@
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use scl_rs::{
-    net::{simulation::channel::SimpleNetworkConfig, Network, Packet, PartyId},
-    prelude::{simulate, Environment, Error, Protocol},
+    net::{simulation::channel::SimpleNetworkConfig, Network, NetworkError, Packet, PartyId},
+    prelude::{simulate, Environment, Protocol},
     protocol::{GeneralEnvironment, ProtocolId},
 };
 
@@ -21,12 +21,18 @@ impl<E: Environment> Protocol<E> for SendRecvProtocol {
     // Here, you define what is the output of the protocol. This output can be arbitrary: it may be
     // a share, a party ID, a stream of bytes, etc.
     type Output = usize;
+    // Here, you define the error the protocol may fail with. This protocol only sends and
+    // receives packets, so every failure is a `NetworkError`. A protocol that calls the library's
+    // secret-sharing protocols would use `scl_rs::protocol::share::Error<F>` instead, and one that
+    // combines protocols with different errors would define its own error type, with a `From`
+    // conversion for each of them so that `?` works.
+    type Error = NetworkError;
 
     // The key method of a protocol is the `run` method. It is written from the perspective of the
     // current party, that is, you are writing how the current party will behave. Different parties
     // may behave in different ways, and you can access the current party ID using
     // `environment.network().local_party()`.
-    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Self::Error> {
         // You can only send `Packet`s to the network. A packet is a collection of serialized
         // objects. The packet can hold the serialized version of any serializable data structure.
         // Also, one packet can hold any number of completely different data structures as long as

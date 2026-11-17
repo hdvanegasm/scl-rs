@@ -27,12 +27,12 @@ use scl_rs::{
             simulator::{simulate, SimulationOutcome, SIMULATION_ROOT_TAG},
             SimulationError, SimulationTrace,
         },
-        Network, Packet, PartyId,
+        Network, NetworkError, Packet, PartyId,
     },
     protocol::{
         concurrent::Join,
         passive_shamir::{double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr},
-        Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
+        share, Environment, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
         RandEnvironment,
     },
 };
@@ -86,8 +86,9 @@ struct Both;
 
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for Both {
     type Output = ();
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         Join((
             PassiveRandShr::<1, F>::new(T, parties())?,
             PassiveRandDoubleShr::<1, F>::new(T, parties())?,
@@ -108,8 +109,9 @@ struct Alone(bool);
 
 impl<E: RandEnvironment> Protocol<E> for Alone {
     type Output = ();
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         if self.0 {
             PassiveRandShr::<1, F>::new(T, parties())?
                 .execute(env)
@@ -250,8 +252,9 @@ struct Round(&'static str);
 
 impl<E: Environment> Protocol<E> for Round {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         let network = env.network_mut();
         let local = network.local_party();
         let others: Vec<PartyId> = network
@@ -280,8 +283,9 @@ struct JoinThenAfter;
 
 impl<E: Environment + ForkEnvironment> Protocol<E> for JoinThenAfter {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         Join((Round("Left"), Round("Right"))).execute(env).await?;
         Round("After").execute(env).await
     }

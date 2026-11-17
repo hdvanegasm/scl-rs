@@ -9,6 +9,105 @@ scl-rs stays on `0.x` indefinitely (there is no planned `1.0`); breaking changes
 
 ## [Unreleased]
 
+Each protocol now names the error it fails with: `Protocol` gains an associated `Error` type, and
+the crate-wide `protocol::Error` is removed. A protocol's signature lists only the failures it can
+have — a zero-knowledge proof no longer claims it can fail with a share error — and a share error
+is held as a structured `ShareError<T>` that callers match on, instead of a boxed, type-erased error
+they had to downcast. Breaking: every `impl Protocol` must declare `type Error`; `protocol::Error`
+is gone, also from the prelude; the library's protocols and their constructors return
+`protocol::share::Error<T>` or `protocol::zk::Error`; `BoxedProtocol` gains an error type
+parameter; and the sub-protocols of a `Join` must share one error type. *Changed* lists how to
+migrate.
+
+### Added
+
+- **`Protocol::Error`**, an associated type bounded by `std::error::Error + Send + Sync + 'static`.
+  `run` and `execute` return `Result<Self::Output, Self::Error>`. The bounds let a caller propagate
+  it with `?` into `Box<dyn std::error::Error + Send + Sync>` and return it from a task on a
+  multi-threaded runtime. It has no default, because associated type defaults are not stable Rust.
+
+- **`protocol::share::Error<T>`**, the error of the secret-sharing protocols: those of
+  `protocol::share` (`PassiveDealShr`, `PassiveOpenShr`, `PassiveOpenToParty`) and of
+  `protocol::passive_shamir` (`PassiveRandShr`, `PassiveRandDoubleShr`, `PassiveOpenToKing`,
+  `BatchedPassiveOpenToKing`, `PassiveTriple`, `PassiveShamirMul`). Its variants are
+  `Network(NetworkError)`, `Share(ShareError<T>)` and `Input`, with `From` conversions from
+  `NetworkError` and `ShareError<T>`. `T` is the type of the shared values: `S::Value` for a scheme
+  `S`, the field `F` for `ShamirSS<LIMBS, F>`. The DN07 protocols share it with the deal and open
+  protocols because they deal and open through them and fail in the same ways; one type also lets
+  both kinds run in one `Join` without conversion.
+
+- **`protocol::zk::Error`**, the error of `SchnorrPok`, with variants `Network(NetworkError)` and
+  `Input`. A proof the verifier rejects is still an output, `Some(false)`, not an error.
+
+- **`ProtocolExt::err_into::<T>()` and `ErrInto<P, T>`**, in `protocol` and in the prelude. They
+  convert a protocol's error into `T` with `Into`, so that protocols with different error types run
+  in one `Join`, or are boxed into one `JoinAll`:
+  `Join((pok.err_into::<MyError>(), rand_shr.err_into::<MyError>()))`. The adapted protocol runs
+  the same code and reports the inner protocol's `id`, so a trace shows one scope under the inner
+  protocol's name. `err_into` is on a separate trait, implemented for every `Send + Sync` type, not
+  on `Protocol<E>`: a protocol implements `Protocol<E>` for every `E`, and `ErrInto`'s type does not
+  name `E`, so as a method of `Protocol<E>` the call could not infer `E` (E0283). With
+  `futures_util::TryFutureExt` also in scope, `err_into` on a `Send + Sync` future is ambiguous;
+  call `TryFutureExt::err_into(future)` there.
+
+- **`NetworkError` is exported from the prelude**, as the error type of a protocol that only
+  exchanges messages.
+
+### Changed
+
+- **Breaking: `protocol::Error` is removed**, also from the prelude, together with its
+  `From<ShareError<T>>` conversion. Migration: declare `type Error` in every `impl Protocol`, and
+  return `Result<Self::Output, Self::Error>` from `run`:
+  - a protocol that only sends, receives, encodes and decodes packets: `type Error = NetworkError;`
+  - a protocol that calls the secret-sharing protocols, or deals and reconstructs with
+    `LinearShare`: `type Error = share::Error<F>;`, with `F` the shared values' type;
+  - a protocol that calls `SchnorrPok`: `type Error = zk::Error;`
+  - a protocol that calls protocols with different error types: an error type of your own, for
+    example a `thiserror` enum with one `#[from]` variant per error, so that `?` converts each.
+
+  `Error::Input` becomes `share::Error::Input` or `zk::Error::Input`. Code that downcast the boxed
+  source of `Error::Share` to `ShareError<T>` matches `share::Error::Share(e)` instead. The display
+  strings of the variants are unchanged. Before and after:
+
+  ```rust
+  // 0.15.0
+  impl<E: Environment> Protocol<E> for SendRecv {
+      type Output = usize;
+      async fn run(self, env: &mut E) -> Result<usize, Error> { /* … */ }
+  }
+  // now
+  impl<E: Environment> Protocol<E> for SendRecv {
+      type Output = usize;
+      type Error = NetworkError;
+      async fn run(self, env: &mut E) -> Result<usize, NetworkError> { /* … */ }
+  }
+  ```
+
+- **Breaking: the constructors of the library's protocols return the protocol's own error.**
+  `SchnorrPok::prover` and `SchnorrPok::verifier` return `Result<Self, zk::Error>`;
+  `PassiveRandShr::new`, `PassiveRandDoubleShr::new`, `PassiveTriple::new` and
+  `PassiveShamirMul::new` return `Result<Self, share::Error<F>>`. They fail in the same cases as
+  before, with the `Input` variant.
+
+- **Breaking: `BoxedProtocol<E, O>` becomes `BoxedProtocol<E, O, Err>`**, where `Err` is the error
+  type of the protocol that was boxed. `Protocol::boxed` returns `BoxedProtocol<E, O, Self::Error>`.
+  The protocols boxed into one `JoinAll` must therefore share an error type as well as an output
+  type. Migration: code that names the type adds the error type; to box protocols with different
+  errors together, adapt them first: `p.err_into::<MyError>().boxed(map)`.
+
+- **Breaking: the protocols of a `Join` must share one error type**, which is also the `Join`'s; a
+  `JoinAll`'s error type is its protocols'. `try_join!`, which runs them, needs one error type.
+  Migration: adapt the protocols whose error differs with `err_into`.
+
+### Fixed
+
+- `PassiveRandShr`, `PassiveRandDoubleShr` and `PassiveTriple` turned a failed `Matrix::mul_shares`
+  or `Vector::add_shares` into `Error::Share`, boxing a `matrix::Error` or `vector::Error` where the
+  documentation promised a `ShareError<T>`, so downcasting it failed. Neither call can fail there:
+  the extraction matrix has one column per party and one share is collected per party, and a triple
+  has one opened value and one double sharing. They are now `expect`s that state this invariant,
+  so no error variant stands for them.
+
 ## [0.15.0] - 2026-11-12
 
 Adds concurrent composition: independent sub-protocols, of the same or different types, run at the

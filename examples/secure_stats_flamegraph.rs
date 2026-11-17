@@ -46,11 +46,12 @@ use std::fs;
 
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use scl_rs::protocol::share;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::{simulation::channel::SimpleNetworkConfig, Network, PartyId},
     prelude::{
-        simulate, Error, ForkEnvironment, GeneralEnvironment, Join, JoinAll, Protocol, ProtocolId,
+        simulate, ForkEnvironment, GeneralEnvironment, Join, JoinAll, Protocol, ProtocolId,
         RandEnvironment,
     },
     protocol::share::{deal::PassiveDealShr, open::PassiveOpenShr},
@@ -75,8 +76,9 @@ struct InputPhase {
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
     // One share per party in the computation, in party order.
     type Output = Vec<Share>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
         let parties = env.network().party_ids();
         // Full-threshold sharing (degree n − 1): every party is needed to reconstruct, preserving
@@ -109,7 +111,7 @@ impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for InputPhase {
 async fn share_sum_open<E: RandEnvironment + ForkEnvironment>(
     env: &mut E,
     value: Mersenne61,
-) -> Result<Mersenne61, Error> {
+) -> Result<Mersenne61, share::Error<Mersenne61>> {
     let shares: Vec<Share> = InputPhase { value }.execute(env).await?;
 
     let sum_share = shares
@@ -128,8 +130,9 @@ struct SumValues {
 
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumValues {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         share_sum_open(env, self.input).await
     }
 
@@ -147,8 +150,9 @@ struct SumSquares {
 
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SumSquares {
     type Output = Mersenne61;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         share_sum_open(env, self.input * &self.input).await
     }
 
@@ -167,8 +171,9 @@ struct SecStats {
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for SecStats {
     // (Σ values, Σ squares), learned by everyone.
     type Output = (Mersenne61, Mersenne61);
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         // Neither sum needs the other, so each runs in its own session and the party waits for
         // the slower one only. The outputs come back in tuple order.
         Join((

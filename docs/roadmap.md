@@ -584,7 +584,9 @@ tier. Suggested home: a new `mpc` module (e.g. `src/mpc/`), keeping `ss` as the 
     receiver reconstructs (`Some(secret)`), everyone else sends one message and outputs `None`.
       Also added the `protocol::Error::{Share, Input}` variants — `Share` boxes a type-erased
       `ShareError<T>` so the `Protocol` trait stays ring-independent. _Non-breaking (new
-      protocols)._
+      protocols)._ (Superseded after 0.15.0: `Protocol` now has an associated `Error` type, and
+      these protocols fail with `protocol::share::Error<T>`, whose `Share` variant holds the
+      `ShareError<T>` unboxed.)
   - [x] `open_many` — **DONE (0.11.0)**, as `passive_shamir::open_king::BatchedPassiveOpenToKing`:
     a `Vec` of shares opened in **two rounds regardless of batch size**, one `Packet` per peer
     carrying every value (`write_many_labeled`, read back positionally). It routes through a

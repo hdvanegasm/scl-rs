@@ -22,11 +22,10 @@ use scl_rs::{
             simulator::simulate,
             switchboard::TransmissionTime,
         },
-        Network, Packet, PartyId,
+        Network, NetworkError, Packet, PartyId,
     },
     protocol::{
-        concurrent::Join, Environment, Error, ForkEnvironment, GeneralEnvironment, Protocol,
-        ProtocolId,
+        concurrent::Join, Environment, ForkEnvironment, GeneralEnvironment, Protocol, ProtocolId,
     },
 };
 
@@ -53,8 +52,9 @@ struct Transfer {
 
 impl<E: Environment> Protocol<E> for Transfer {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         let local = env.network().local_party();
         if local == party(0) {
             env.network_mut()
@@ -81,8 +81,9 @@ struct ThreeTransfers;
 
 impl<E: Environment + ForkEnvironment> Protocol<E> for ThreeTransfers {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         Join((
             Transfer { target: party(1) },
             Transfer { target: party(1) },
@@ -103,8 +104,9 @@ struct BackToBack;
 
 impl<E: Environment> Protocol<E> for BackToBack {
     type Output = ();
+    type Error = NetworkError;
 
-    async fn run(self, env: &mut E) -> Result<(), Error> {
+    async fn run(self, env: &mut E) -> Result<(), Self::Error> {
         let network = env.network_mut();
         if network.local_party() == party(0) {
             network.send_to(party(1), &mib_packet()).await?;

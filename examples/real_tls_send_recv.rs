@@ -46,8 +46,8 @@ use rand_chacha::ChaCha20Rng;
 use std::path::Path;
 
 use scl_rs::{
-    net::{session::derive_root_tag, Network, NetworkConfig, Packet, TcpNetwork},
-    prelude::{Environment, Error, GeneralEnvironment, Protocol},
+    net::{session::derive_root_tag, Network, NetworkConfig, NetworkError, Packet, TcpNetwork},
+    prelude::{Environment, GeneralEnvironment, Protocol},
     protocol::ProtocolId,
 };
 
@@ -58,8 +58,9 @@ pub struct SendRecvProtocol;
 
 impl<E: Environment> Protocol<E> for SendRecvProtocol {
     type Output = usize;
+    type Error = NetworkError;
 
-    async fn run(self, environment: &mut E) -> Result<usize, Error> {
+    async fn run(self, environment: &mut E) -> Result<usize, Self::Error> {
         let mut packet = Packet::empty();
 
         packet.write(&environment.network().local_party().as_usize())?;

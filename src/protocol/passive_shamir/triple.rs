@@ -3,7 +3,7 @@ use crate::{
     math::{field::FiniteField, vector::Vector},
     net::PartyId,
     protocol::{
-        passive_shamir::open_king::BatchedPassiveOpenToKing, Error, Protocol, ProtocolId,
+        passive_shamir::open_king::BatchedPassiveOpenToKing, share, Protocol, ProtocolId,
         RandEnvironment,
     },
     ss::shamir::{DoubleShare, ShamirSS},
@@ -84,7 +84,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Input`] if the three input vectors differ in length or are empty, if `king`
+    /// Returns [`share::Error::Input`] if the three input vectors differ in length or are empty, if `king`
     /// is not one of `parties`, if the degrees of `a_shares[i]`, `b_shares[i]` and
     /// `double_shares[i]` disagree, or if `2 * t >= parties.len()` — the masked product is a
     /// degree-`2t` sharing, so fewer than `2t + 1` parties could not open it.
@@ -94,20 +94,20 @@ where
         a_shares: Vec<ShamirSS<LIMBS, F>>,
         b_shares: Vec<ShamirSS<LIMBS, F>>,
         double_shares: Vec<DoubleShare<LIMBS, F>>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, share::Error<F>> {
         let n_triples = a_shares.len();
         if n_triples == 0
             || b_shares.len() != n_triples
             || double_shares.len() != n_triples
             || !parties.contains(&king)
         {
-            return Err(Error::Input);
+            return Err(share::Error::Input);
         }
 
         for ((a, b), double) in a_shares.iter().zip(&b_shares).zip(&double_shares) {
             let t = double.degree();
             if a.degree() != t || b.degree() != t || 2 * t >= parties.len() {
-                return Err(Error::Input);
+                return Err(share::Error::Input);
             }
         }
 
@@ -128,8 +128,9 @@ where
     F: FiniteField<LIMBS> + Send + Sync + From<u64> + Abbreviate + 'static,
 {
     type Output = Vec<ShamirTriple<LIMBS, F>>;
+    type Error = share::Error<F>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let mut d_vec = Vec::new();
         for ((a, b), (_, r_2t)) in self
             .a_shares
@@ -147,9 +148,12 @@ where
         for (r_t, _) in self.double_shares.iter().map(|d| d.parts()) {
             r_t_vec.push(r_t.clone());
         }
+        // `add_shares` fails only when the lengths differ, and they don't: `new` checked that there
+        // is one double sharing per triple, and the batched open returns one value per share
+        // opened, one per triple.
         let c_shares_vec = Vector::from(d)
             .add_shares(-Vector::from(r_t_vec))
-            .map_err(|e| Error::Share(Box::new(e)))?;
+            .expect("one opened value and one double sharing per triple");
 
         let mut result = Vec::new();
         for (a, (b, c)) in self

@@ -20,6 +20,11 @@
 //! - [`mul`] — Beaver multiplication, which spends those triples to multiply live wire values. All
 //!   the products at one depth of a circuit go in a single batch, so a circuit's round count tracks
 //!   its multiplicative depth rather than its gate count.
+//!
+//! Every protocol here, and its constructor, fails with
+//! [`share::Error<F>`](crate::protocol::share::Error), the error of the secret-sharing protocols of
+//! [`protocol::share`](crate::protocol::share): these protocols deal and open through them, and
+//! fail in the same ways.
 
 /// DN07 `Double-Random`: batches of degree-`t` / degree-`2t` sharings of the same unknown secrets.
 pub mod double_rand_share;

@@ -1,7 +1,8 @@
+use scl_rs::protocol::share;
 use scl_rs::{
     math::field::mersenne61::Mersenne61,
     net::PartyId,
-    prelude::{Error, ForkEnvironment, Join, JoinAll, Protocol, ProtocolId, RandEnvironment},
+    prelude::{ForkEnvironment, Join, JoinAll, Protocol, ProtocolId, RandEnvironment},
     protocol::passive_shamir::{
         double_rand_share::PassiveRandDoubleShr, rand_share::PassiveRandShr, triple::PassiveTriple,
     },
@@ -29,18 +30,19 @@ pub struct Preprocessing {
 
 impl<E: RandEnvironment + ForkEnvironment> Protocol<E> for Preprocessing {
     type Output = Vec<Triple>;
+    type Error = share::Error<Mersenne61>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         // How many runs of each randomness protocol cover `VECTOR_LEN` sharings.
         let runs = VECTOR_LEN.div_ceil(self.parties.len() - THRESHOLD);
-        let random = || -> Result<Vec<_>, Error> {
+        let random = || -> Result<Vec<_>, share::Error<Mersenne61>> {
             (0..runs)
                 .map(|_| PassiveRandShr::<1, Mersenne61>::new(THRESHOLD, self.parties.clone()))
                 .collect()
         };
         let doubles = (0..runs)
             .map(|_| PassiveRandDoubleShr::<1, Mersenne61>::new(THRESHOLD, self.parties.clone()))
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Result<Vec<_>, share::Error<Mersenne61>>>()?;
 
         // Random sharings of values no party knows, which become the triples' `a` and `b`, and
         // the correlated randomness that pulls the degree-2t product back down to degree t.

@@ -1,6 +1,6 @@
 use crate::net::{Network, Packet, PartyId};
-use crate::prelude::{Abbreviate, Error, Protocol, RandEnvironment};
-use crate::protocol::ProtocolId;
+use crate::prelude::{Abbreviate, Protocol, RandEnvironment};
+use crate::protocol::{share, ProtocolId};
 use crate::ss::LinearShare;
 
 /// Protocol in which a designated **dealer** splits a secret into shares of a linear secret
@@ -31,6 +31,13 @@ use crate::ss::LinearShare;
 /// receiver can safely block waiting for its share. A dealer that crashes, withholds a share, or
 /// deals inconsistently is outside this model; lifting the assumption (receive timeouts,
 /// verifiable dealing) is planned malicious-model work — see `docs/roadmap.md` §11.
+///
+/// # Errors
+///
+/// Fails with [`share::Error::Input`] on the dealer if it was constructed with
+/// [`receiver`](PassiveDealShr::receiver), so that it holds no secret; with
+/// [`share::Error::Share`] if the scheme cannot split the secret; and with
+/// [`share::Error::Network`] if sending or receiving a share fails.
 pub struct PassiveDealShr<S>
 where
     S: LinearShare,
@@ -96,13 +103,14 @@ where
     S::Value: Sync + Send + 'static,
 {
     type Output = S;
+    type Error = share::Error<S::Value>;
 
-    async fn run(self, env: &mut E) -> Result<Self::Output, Error> {
+    async fn run(self, env: &mut E) -> Result<Self::Output, Self::Error> {
         let me = env.network().local_party();
 
         // Compute and send the shares if I am the dealer.
         if self.dealer == me {
-            let dealer_info = self.secret_info.ok_or(Error::Input)?;
+            let dealer_info = self.secret_info.ok_or(share::Error::Input)?;
             let shares = S::shares_from_secret(
                 dealer_info.secret,
                 &dealer_info.receivers,
